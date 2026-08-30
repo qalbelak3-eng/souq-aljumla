@@ -72,6 +72,8 @@ export default function AdminNotificationsPage() {
     fetchStatsAndLogs();
   }, []);
 
+  const [isSentSuccess, setIsSentSuccess] = useState(false);
+
   const handleSendNotification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !body.trim()) {
@@ -97,6 +99,18 @@ export default function AdminNotificationsPage() {
       const data = await res.json();
       if (data.success) {
         toast.showToast(data.message || 'تم إرسال التنبيه لهواتف المشتركين بنجاح! 🚀🔔', 'success');
+        
+        // Reset form fields
+        setTitle('');
+        setBody('');
+        setImage('');
+        setUrl('/products?filter=offers');
+        
+        // Show success state on button temporarily
+        setIsSentSuccess(true);
+        setTimeout(() => setIsSentSuccess(false), 3500);
+
+        // Immediate update of table
         fetchStatsAndLogs();
       } else {
         toast.showToast(data.error || 'حدث خطأ أثناء إرسال الإشعار', 'error');
@@ -363,11 +377,29 @@ export default function AdminNotificationsPage() {
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={isSending}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 active:scale-98 text-white font-black py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer text-xs disabled:opacity-50"
+                disabled={isSending || isSentSuccess}
+                className={`w-full text-white font-black py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer text-xs ${
+                  isSentSuccess
+                    ? 'bg-emerald-600 scale-[0.99]'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 active:scale-98 disabled:opacity-50'
+                }`}
               >
-                <Send className="w-4 h-4" />
-                <span>{isSending ? 'جاري إرسال التنبيهات للأجهزة...' : `🚀 إرسال التنبيه الآن لـ (${getTargetAudienceCount()}) جهاز`}</span>
+                {isSentSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-white animate-bounce" />
+                    <span>تم إرسال التنبيه للأجهزة بنجاح ✅</span>
+                  </>
+                ) : isSending ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                    <span>جاري إرسال التنبيهات للأجهزة...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>🚀 إرسال التنبيه الآن لـ ({getTargetAudienceCount()}) جهاز</span>
+                  </>
+                )}
               </button>
             </div>
 
