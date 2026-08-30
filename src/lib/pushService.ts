@@ -97,6 +97,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
       });
       successCount++;
     } catch (err: any) {
+      console.error('webpush.sendNotification failed for endpoint:', sub.endpoint, 'Status:', err.statusCode, 'Body:', err.body);
       failureCount++;
       if (err.statusCode === 410 || err.statusCode === 404) {
         deletePushSubscription(sub.endpoint);
