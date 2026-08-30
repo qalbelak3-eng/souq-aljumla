@@ -113,7 +113,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isTablet = /iPad|Tablet/i.test(navigator.userAgent);
 
-      await fetch('/api/notifications/subscribe', {
+      const subRes = await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,15 +126,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }),
       });
 
-      setPermission('granted');
-      if (showToastAlert) {
-        toast.showToast('تم تفعيل التنبيهات المباشرة على هاتفك بنجاح 🔔✅', 'success');
+      const subJson = await subRes.json();
+      if (subJson.success) {
+        setPermission('granted');
+        alert('🎉 تم ربط هاتفك بالكامل بنظام إشعارات سوق الجملة! ستصلك التنبيهات حتى عند غلق الشاشة 🔔');
+      } else {
+        throw new Error(subJson.error || 'فشل حفظ الاشتراك');
       }
     } catch (err: any) {
       console.error('Error subscribing to push:', err);
-      if (showToastAlert) {
-        toast.showToast('تعذر ربط الإشعارات بالخادم، يرجى المحاولة لاحقاً', 'error');
-      }
+      alert('⚠️ تنبيه: ' + (err.message || 'تعذر ربط الإشعار بالخادم'));
     } finally {
       setIsSubscribing(false);
     }
