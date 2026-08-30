@@ -69,11 +69,19 @@ export default function AdminNotificationsPage() {
             retailCount: subData.retailCount || 0,
           });
         }
-        if (sendData.success && Array.isArray(sendData.logs) && sendData.logs.length > 0) {
-          setLogs(sendData.logs);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('souq_admin_push_logs', JSON.stringify(sendData.logs));
-          }
+        if (sendData.success && Array.isArray(sendData.logs)) {
+          setLogs((prev) => {
+            const merged = [...sendData.logs];
+            prev.forEach((p) => {
+              if (!merged.some((m) => m.id === p.id)) {
+                merged.push(p);
+              }
+            });
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('souq_admin_push_logs', JSON.stringify(merged));
+            }
+            return merged;
+          });
         }
         setIsLoadingStats(false);
       })

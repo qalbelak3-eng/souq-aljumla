@@ -1218,6 +1218,21 @@
   ],
   "pushNotificationLogs": [
     {
+      "title": "test",
+      "body": "test",
+      "icon": "/app-icon.png",
+      "badge": "/app-icon.png",
+      "url": "/products?filter=offers",
+      "targetAudience": "all",
+      "targetAudienceLabel": "الجميع (كافة الزبائن والتجار والماركتات)",
+      "sentCount": 2,
+      "successCount": 0,
+      "failureCount": 2,
+      "sentBy": "المدير العام",
+      "id": "notif-1788094725188",
+      "createdAt": "2026-08-30T12:58:45.188Z"
+    },
+    {
       "title": "🔥 عروض وخصومات كبرى في سوق الجملة!",
       "body": "تخفيضات حصرية الآن على كراتين الشيبس، السناكات، ومشروبات الطاقة. اطلب الآن واستفد من التوصيل السريع!",
       "icon": "/app-icon.png",

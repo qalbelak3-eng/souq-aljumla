@@ -74,15 +74,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           return true;
         });
 
-        const finalLogs = filtered.length > 0 ? filtered : data.logs;
-        setNotifications(finalLogs);
+        const freshLogs = filtered.length > 0 ? filtered : data.logs;
 
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_saved_notifications', JSON.stringify(finalLogs));
-          const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-          const unread = finalLogs.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
-          setUnreadCount(unread);
-        }
+        setNotifications((prev) => {
+          const merged = [...freshLogs];
+          prev.forEach((p) => {
+            if (!merged.some((m) => m.id === p.id)) {
+              merged.push(p);
+            }
+          });
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_saved_notifications', JSON.stringify(merged));
+            const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
+            const unread = merged.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+            setUnreadCount(unread);
+          }
+          return merged;
+        });
       }
     } catch (err) {
       console.error('Error fetching notifications:', err);
