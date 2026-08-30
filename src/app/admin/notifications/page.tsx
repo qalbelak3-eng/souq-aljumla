@@ -44,6 +44,18 @@ export default function AdminNotificationsPage() {
 
   const fetchStatsAndLogs = () => {
     setIsLoadingStats(true);
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedLogs = localStorage.getItem('souq_admin_push_logs');
+        if (cachedLogs) {
+          const parsed = JSON.parse(cachedLogs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLogs(parsed);
+          }
+        }
+      } catch {}
+    }
+
     Promise.all([
       fetch('/api/notifications/subscribe').then((r) => r.json()),
       fetch('/api/notifications/send').then((r) => r.json()),
@@ -57,8 +69,11 @@ export default function AdminNotificationsPage() {
             retailCount: subData.retailCount || 0,
           });
         }
-        if (sendData.success && Array.isArray(sendData.logs)) {
+        if (sendData.success && Array.isArray(sendData.logs) && sendData.logs.length > 0) {
           setLogs(sendData.logs);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_admin_push_logs', JSON.stringify(sendData.logs));
+          }
         }
         setIsLoadingStats(false);
       })
@@ -100,6 +115,18 @@ export default function AdminNotificationsPage() {
       if (data.success) {
         toast.showToast(data.message || 'تم إرسال التنبيه لهواتف المشتركين بنجاح! 🚀🔔', 'success');
         
+        // Add log immediately to state & localStorage
+        if (data.result?.log) {
+          setLogs((prev) => {
+            const updated = [data.result.log, ...prev.filter(p => p.id !== data.result.log.id)];
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('souq_admin_push_logs', JSON.stringify(updated));
+              localStorage.setItem('souq_saved_notifications', JSON.stringify(updated));
+            }
+            return updated;
+          });
+        }
+
         // Reset form fields
         setTitle('');
         setBody('');

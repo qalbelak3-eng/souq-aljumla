@@ -45,9 +45,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const refreshNotifications = useCallback(async () => {
     try {
+      // 1. First load from client storage immediately
+      if (typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('souq_saved_notifications');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setNotifications(parsed);
+              const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
+              const unread = parsed.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+              setUnreadCount(unread);
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Fetch fresh logs from server
       const res = await fetch('/api/notifications/send', { cache: 'no-store' });
       const data = await res.json();
-      if (data.success && Array.isArray(data.logs)) {
+      if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
         const userType = user?.accountType || 'retail';
         const filtered = data.logs.filter((log: PushNotificationLog) => {
           if (!log.targetAudience || log.targetAudience === 'all') return true;
@@ -57,11 +74,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           return true;
         });
 
-        setNotifications(filtered);
+        const finalLogs = filtered.length > 0 ? filtered : data.logs;
+        setNotifications(finalLogs);
 
         if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_saved_notifications', JSON.stringify(finalLogs));
           const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-          const unread = filtered.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+          const unread = finalLogs.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
           setUnreadCount(unread);
         }
       }
