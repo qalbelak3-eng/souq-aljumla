@@ -1,0 +1,30 @@
+{
+  "name": "سوق الجملة",
+  "short_name": "سوق الجملة",
+  "description": "سوق الجملة - للتسوق بالجملة والمفرد في العراق 🇮🇶",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f8fc",
+  "theme_color": "#1b8738",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/app-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f3f8fc;
+  --foreground: #0f172a;
+}
+
+body {
+  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* App-like Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Gentle Headphone Shake / Wiggle Animation */
+@keyframes headphone-shake {
+  0%, 65%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  70% {
+    transform: rotate(-16deg) scale(1.1);
+  }
+  75% {
+    transform: rotate(16deg) scale(1.1);
+  }
+  80% {
+    transform: rotate(-12deg) scale(1.08);
+  }
+  85% {
+    transform: rotate(12deg) scale(1.08);
+  }
+  90% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.animate-headphone-shake {
+  display: inline-block;
+  animation: headphone-shake 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Gentle Slow Wobble / Sway Animation for Category Icons */
+@keyframes icon-sway {
+  0%, 60%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  68% {
+    transform: translateY(-2px) rotate(-10deg) scale(1.08);
+  }
+  76% {
+    transform: translateY(-2px) rotate(10deg) scale(1.08);
+  }
+  84% {
+    transform: translateY(-1px) rotate(-6deg) scale(1.04);
+  }
+  92% {
+    transform: translateY(0) rotate(4deg) scale(1.02);
+  }
+}
+
+.animate-icon-sway {
+  display: inline-block;
+  animation: icon-sway 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Dedicated Clean Print Styles */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* When printing statement sheet, hide any backdrop or container artifacts */
+  .statement-modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .statement-modal-card {
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    word-break: break-word !important;
+    overflow: hidden !important;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+}
