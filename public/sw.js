@@ -2,7 +2,6 @@
 self.addEventListener('push', function (event) {
   let title = 'سوق الجملة 🇮🇶';
   let body = 'لديك عرض جديد وتخفيضات خاصة في سوق الجملة!';
-  let image = undefined;
   let url = '/';
 
   if (event.data) {
@@ -10,7 +9,6 @@ self.addEventListener('push', function (event) {
       const data = event.data.json();
       if (data.title) title = data.title;
       if (data.body) body = data.body;
-      if (data.image) image = data.image;
       if (data.data && data.data.url) url = data.data.url;
       else if (data.url) url = data.url;
     } catch {
@@ -18,14 +16,11 @@ self.addEventListener('push', function (event) {
     }
   }
 
+  // iOS Safari requires standard title and body
   const options = {
     body: body,
-    icon: '/app-icon.png',
-    badge: '/app-icon.png',
-    image: image || undefined,
-    vibrate: [200, 100, 200, 100, 200],
-    tag: 'souq-aljumla-push-' + Date.now(),
-    renotify: true,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: { url: url },
   };
 
