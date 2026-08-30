@@ -117,9 +117,11 @@ const initialUsers: User[] = [
   },
 ];
 
+let inMemoryDb: DatabaseSchema | null = null;
+
 function ensureDbExists(): DatabaseSchema {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (inMemoryDb) {
+    return inMemoryDb;
   }
 
   const defaultAdmin = {
@@ -127,136 +129,55 @@ function ensureDbExists(): DatabaseSchema {
     password: "admin123"
   };
 
-  if (!fs.existsSync(DB_FILE)) {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      if (raw && raw.trim().length > 0) {
+        inMemoryDb = JSON.parse(raw) as DatabaseSchema;
+        return inMemoryDb;
+      }
     }
-
-    if (fs.existsSync(SOURCE_DB_FILE)) {
-      try {
-        const sourceData = fs.readFileSync(SOURCE_DB_FILE, 'utf-8');
-        fs.writeFileSync(DB_FILE, sourceData, 'utf-8');
-        return JSON.parse(sourceData) as DatabaseSchema;
-      } catch {}
-    }
-
-    const defaultData: DatabaseSchema = {
-      products: initialProducts,
-      categories: initialCategories,
-      orders: [],
-      settings: initialSettings,
-      users: initialUsers,
-      coupons: initialCoupons,
-      banners: initialBanners,
-      payments: [],
-      adminAuth: defaultAdmin,
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2), 'utf-8');
-    return defaultData;
-  }
+  } catch {}
 
   try {
-    const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    if (!raw || raw.trim().length === 0) {
-      throw new Error('Empty database file');
-    }
-    const parsed = JSON.parse(raw) as DatabaseSchema;
-    if (!parsed.adminAuth) {
-      parsed.adminAuth = defaultAdmin;
-    }
-    if (!parsed.users) {
-      parsed.users = initialUsers;
-    }
-    if (!parsed.banners) {
-      parsed.banners = initialBanners;
-    }
-    if (!parsed.payments) {
-      parsed.payments = [];
-    }
-    if (!parsed.purchaseInvoices) {
-      parsed.purchaseInvoices = [];
-    }
-    if (!parsed.offers) {
-      parsed.offers = [];
-    }
-    if (!parsed.complaints) {
-      parsed.complaints = [];
-    }
-    if (!parsed.pushSubscriptions) {
-      parsed.pushSubscriptions = [];
-    }
-    if (!parsed.pushNotificationLogs) {
-      parsed.pushNotificationLogs = [];
-    }
-    if (!parsed.settings) {
-      parsed.settings = initialSettings;
-    } else if (!parsed.settings.competitions) {
-      parsed.settings.competitions = initialSettings.competitions;
-    }
-    return parsed;
-  } catch (err) {
-    console.error('Error reading database file safely:', err);
-    // If parse failed momentarily during concurrent access, try to read once more
-    try {
-      const retryRaw = fs.readFileSync(DB_FILE, 'utf-8');
-      if (retryRaw && retryRaw.trim().length > 0) {
-        return JSON.parse(retryRaw) as DatabaseSchema;
+    if (fs.existsSync(SOURCE_DB_FILE)) {
+      const sourceRaw = fs.readFileSync(SOURCE_DB_FILE, 'utf-8');
+      if (sourceRaw && sourceRaw.trim().length > 0) {
+        inMemoryDb = JSON.parse(sourceRaw) as DatabaseSchema;
+        return inMemoryDb;
       }
-    } catch {}
+    }
+  } catch {}
 
-    return {
-      products: [],
-      categories: [],
-      orders: [],
-      settings: initialSettings,
-      users: initialUsers,
-      coupons: initialCoupons,
-      banners: initialBanners,
-      payments: [],
-      purchaseInvoices: [],
-      offers: [],
-      adminAuth: defaultAdmin,
-    };
-  }
+  inMemoryDb = {
+    products: initialProducts,
+    categories: initialCategories,
+    orders: [],
+    settings: initialSettings,
+    users: initialUsers,
+    coupons: initialCoupons,
+    banners: initialBanners,
+    payments: [],
+    purchaseInvoices: [],
+    offers: [],
+    pushSubscriptions: [],
+    pushNotificationLogs: [],
+    adminAuth: defaultAdmin,
+  };
+  return inMemoryDb;
 }
 
 function saveDb(data: DatabaseSchema) {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  const backupsDir = path.join(DATA_DIR, 'backups');
-  if (!fs.existsSync(backupsDir)) {
-    fs.mkdirSync(backupsDir, { recursive: true });
-  }
+  inMemoryDb = data;
 
-  const tempFile = `${DB_FILE}.tmp`;
-  const backupFile = path.join(DATA_DIR, 'store_db.backup.json');
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const versionedBackup = path.join(backupsDir, `store_db_${timestamp}.json`);
-
-  fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
   try {
-    fs.copyFileSync(tempFile, backupFile);
-    fs.copyFileSync(tempFile, versionedBackup);
-    fs.renameSync(tempFile, DB_FILE);
-  } catch {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    fs.writeFileSync(backupFile, JSON.stringify(data, null, 2), 'utf-8');
-  }
-
-  // Keep latest 30 backups to prevent infinite disk growth
-  try {
-    const files = fs.readdirSync(backupsDir)
-      .filter(f => f.startsWith('store_db_') && f.endsWith('.json'))
-      .map(f => ({ name: f, time: fs.statSync(path.join(backupsDir, f)).mtime.getTime() }))
-      .sort((a, b) => b.time - a.time);
-
-    if (files.length > 30) {
-      files.slice(30).forEach(f => {
-        try { fs.unlinkSync(path.join(backupsDir, f.name)); } catch {}
-      });
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-  } catch {}
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('saveDb serverless disk write error (using in-memory):', e);
+  }
 }
 
 // Products CRUD with Automatic Active Offers Overlay & Real Order Analytics
