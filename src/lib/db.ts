@@ -39,8 +39,10 @@ import {
 } from '@/types';
 import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners } from '@/data/initialData';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const IS_SERVERLESS = process.env.NETLIFY === 'true' || process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
+const DATA_DIR = IS_SERVERLESS ? path.join('/tmp', 'souq_data') : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store_db.json');
+const SOURCE_DB_FILE = path.join(process.cwd(), 'data', 'store_db.json');
 
 export interface AdminCredentials {
   username: string;
@@ -129,6 +131,15 @@ function ensureDbExists(): DatabaseSchema {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+
+    if (fs.existsSync(SOURCE_DB_FILE)) {
+      try {
+        const sourceData = fs.readFileSync(SOURCE_DB_FILE, 'utf-8');
+        fs.writeFileSync(DB_FILE, sourceData, 'utf-8');
+        return JSON.parse(sourceData) as DatabaseSchema;
+      } catch {}
+    }
+
     const defaultData: DatabaseSchema = {
       products: initialProducts,
       categories: initialCategories,
