@@ -616,6 +616,153 @@ export default function AdminSettingsPage() {
             </div>
           </div>
 
+          {/* ===== قسم موقع المخزن وتسعير الكيلومتر ===== */}
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📦</span>
+              <h3 className="font-black text-sm text-slate-900">موقع المخزن / نقطة انطلاق المندوب</h3>
+              <span className="text-[10px] bg-blue-100 text-blue-800 font-black px-2 py-0.5 rounded-lg">تسعير بالكيلومتر GPS</span>
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium">
+              حدد موقع المخزن بدقة لكي يتم حساب كروة التوصيل تلقائياً بناءً على المسافة الفعلية بالكيلومتر من المخزن إلى موقع العميل.
+            </p>
+
+            {/* اسم المخزن */}
+            <div className="space-y-1">
+              <label className="text-xs font-black text-slate-700">اسم المخزن / نقطة الانطلاق</label>
+              <input
+                type="text"
+                value={settings.warehouseName ?? ''}
+                onChange={(e) => setSettings({ ...settings, warehouseName: e.target.value })}
+                placeholder="مثال: مخزن سوق الجملة - الطريق الرابط"
+                className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-bold text-slate-900 focus:border-blue-400 focus:outline-none"
+              />
+            </div>
+
+            {/* إحداثيات المخزن */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-700">خط العرض (Latitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={settings.warehouseLat ?? ''}
+                  onChange={(e) => setSettings({ ...settings, warehouseLat: Number(e.target.value) || undefined })}
+                  placeholder="32.6068"
+                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-700">خط الطول (Longitude)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={settings.warehouseLng ?? ''}
+                  onChange={(e) => setSettings({ ...settings, warehouseLng: Number(e.target.value) || undefined })}
+                  placeholder="44.0186"
+                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* زر تحديد موقع المخزن عبر GPS */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!navigator.geolocation) return;
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    setSettings({
+                      ...settings,
+                      warehouseLat: lat,
+                      warehouseLng: lng,
+                      warehouseMapsUrl: `https://www.google.com/maps?q=${lat},${lng}`,
+                    });
+                  },
+                  () => alert('تعذر تحديد الموقع، يرجى إدخال الإحداثيات يدوياً')
+                );
+              }}
+              className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-black text-xs py-2.5 px-4 rounded-xl transition"
+            >
+              <span>📍</span>
+              <span>تحديد موقع المخزن الآن عبر GPS (إذا كنت في المخزن)</span>
+            </button>
+
+            {/* عرض الموقع الحالي */}
+            {settings.warehouseLat && settings.warehouseLng && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between gap-2">
+                <div>
+                  <span className="font-black text-emerald-900 text-xs block">✅ موقع المخزن محدد</span>
+                  <span className="text-[11px] text-emerald-700 font-mono">
+                    {settings.warehouseLat.toFixed(6)}, {settings.warehouseLng.toFixed(6)}
+                  </span>
+                </div>
+                <a
+                  href={`https://www.google.com/maps?q=${settings.warehouseLat},${settings.warehouseLng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] bg-white border border-emerald-300 text-emerald-800 font-black px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition"
+                >
+                  عرض على الخريطة 🗺️
+                </a>
+              </div>
+            )}
+
+            {/* تسعير الكيلومتر */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-700">سعر الكيلومتر الواحد (د.ع) 🛵</label>
+                <input
+                  type="number"
+                  min="100"
+                  step="50"
+                  value={settings.pricePerKm ?? 500}
+                  onChange={(e) => setSettings({ ...settings, pricePerKm: Number(e.target.value) })}
+                  placeholder="500"
+                  className="w-full bg-white border-2 border-blue-300 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-slate-500">مثال: 500 د.ع × 5 كم = 2,500 د.ع</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-700">أقل كروة ممكنة (د.ع) ↓</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="250"
+                  value={settings.minDeliveryFee ?? 1500}
+                  onChange={(e) => setSettings({ ...settings, minDeliveryFee: Number(e.target.value) })}
+                  placeholder="1500"
+                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-700">أعلى كروة ممكنة (د.ع) ↑</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={settings.maxDeliveryFee ?? 10000}
+                  onChange={(e) => setSettings({ ...settings, maxDeliveryFee: Number(e.target.value) })}
+                  placeholder="10000"
+                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* مثال توضيحي */}
+            {settings.pricePerKm && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 font-bold">
+                📊 <strong>مثال:</strong> عميل على بُعد 8 كم →
+                الكروة = {Math.min(
+                  settings.maxDeliveryFee ?? 10000,
+                  Math.max(settings.minDeliveryFee ?? 1500, Math.round((8 * (settings.pricePerKm ?? 500)) / 250) * 250)
+                ).toLocaleString()} د.ع
+              </div>
+            )}
+          </div>
+
           {/* Area & Distance-based Zones Configuration */}
           {(settings.deliveryPricingMode || 'distance_tiered') === 'distance_tiered' && (
             <div className="pt-2 border-t border-slate-100 space-y-3">

@@ -300,8 +300,17 @@ export interface StoreSettings {
   deliveryFee?: number;
   freeDeliveryThreshold?: number;
   minOrderAmount?: number; // الحد الأدنى لقيمة الطلبية بالدينار العراقي (مثال: 10000)
-  deliveryPricingMode?: 'fixed' | 'distance_tiered'; // نظام الكروة: ثابت أو متدرج حسب المنطقة والمسافة
+  deliveryPricingMode?: 'fixed' | 'distance_tiered' | 'per_km'; // نظام الكروة: ثابت، متدرج، أو بالكيلومتر
   deliveryZones?: DeliveryZone[]; // قائمة المناطق وتكلفة كل منطقة
+  // موقع المخزن / نقطة انطلاق المندوب
+  warehouseLat?: number;       // خط العرض للمخزن
+  warehouseLng?: number;       // خط الطول للمخزن
+  warehouseName?: string;      // اسم المخزن أو نقطة الانطلاق
+  warehouseMapsUrl?: string;   // رابط خرائط Google للمخزن
+  // تسعير الكيلومتر
+  pricePerKm?: number;         // سعر الكيلومتر الواحد بالدينار العراقي (مثال: 500)
+  minDeliveryFee?: number;     // أقل كروة ممكنة بالدينار (مثال: 1500)
+  maxDeliveryFee?: number;     // أعلى كروة ممكنة بالدينار (مثال: 10000)
   cashbackPerItem?: number; // المبلغ المكتسب الافتراضي (150 د.ع)
   cashbackCustomerPerItem?: number; // للزبون العادي (المفرد)
   cashbackMarketPerItem?: number; // لأصحاب الماركتات

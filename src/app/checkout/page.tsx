@@ -25,6 +25,7 @@ import { useAuth } from '@/context/AuthContext';
 import { PaymentMethod, StoreSettings } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
 import { getUserCashbackRate } from '@/lib/pricing';
+import { calculateDeliveryFeeByDistance } from '@/lib/delivery';
 
 interface KarbalaAreaOption {
   name: string;
@@ -101,14 +102,26 @@ export default function CheckoutPage() {
   // Selected area object matching city
   const selectedAreaObj = KARBALA_AREAS.find((a) => a.name === city) || KARBALA_AREAS[0];
 
+
   // Dynamic Free Delivery calculation
   const freeThreshold = storeSettings?.freeDeliveryThreshold ?? 50000;
   const isFreeDeliveryQualified = subtotal >= freeThreshold && subtotal > 0;
 
+  // حساب الكروة: أولاً بالكيلومتر (GPS) إذا متوفر، وإلا بالمنطقة
   let calculatedDeliveryFee = 3000;
+  let gpsDeliveryInfo: { distanceKm: number; fee: number } | null = null;
+
   if (isFreeDeliveryQualified) {
     calculatedDeliveryFee = 0;
+  } else if (coords.lat && coords.lng && storeSettings?.warehouseLat && storeSettings?.pricePerKm) {
+    // ✅ حساب بالكيلومتر الفعلي من موقع المخزن
+    const result = calculateDeliveryFeeByDistance(coords.lat, coords.lng, storeSettings);
+    if (result) {
+      calculatedDeliveryFee = result.fee;
+      gpsDeliveryInfo = { distanceKm: result.distanceKm, fee: result.fee };
+    }
   } else if ((storeSettings?.deliveryPricingMode || 'distance_tiered') === 'distance_tiered' && storeSettings?.deliveryZones) {
+    // 📍 احتياطي: المناطق المحددة
     const matchedZone = storeSettings.deliveryZones.find((z) => z.id === selectedAreaObj.zoneId);
     if (matchedZone && typeof matchedZone.fee === 'number') {
       calculatedDeliveryFee = matchedZone.fee;
@@ -692,6 +705,29 @@ export default function CheckoutPage() {
                   </button>
                 )}
               </div>
+
+              {/* بانر المسافة والكروة المحسوبة بالكيلومتر */}
+              {gpsDeliveryInfo && !isFreeDeliveryQualified && (
+                <div className="sm:col-span-2 bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 text-base">
+                      📐
+                    </div>
+                    <div>
+                      <span className="font-black text-blue-900 block text-xs">
+                        المسافة من المخزن: {gpsDeliveryInfo.distanceKm} كم
+                      </span>
+                      <span className="text-[10px] text-blue-700 font-bold">
+                        تم حساب الكروة تلقائياً بناءً على موقعك الجغرافي الفعلي
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-black text-blue-900 text-sm">{gpsDeliveryInfo.fee.toLocaleString()} د.ع</span>
+                    <span className="text-[10px] text-blue-600 font-bold block">كروة التوصيل</span>
+                  </div>
+                </div>
+              )}
 
               {/* Save Address Checkbox */}
               <div className="sm:col-span-2 flex items-center gap-2 pt-1">
