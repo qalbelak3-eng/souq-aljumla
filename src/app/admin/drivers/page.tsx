@@ -31,9 +31,12 @@ import {
   User,
   Eye,
   CheckCircle2,
-  MessageCircle
+  MessageCircle,
+  Star,
+  Sparkles,
+  ThumbsUp
 } from 'lucide-react';
-import { Driver, Vehicle, Order } from '@/types';
+import { Driver, Vehicle, Order, DriverRating } from '@/types';
 import { useConfirm } from '@/context/ConfirmModalContext';
 
 interface DriverWithStats extends Driver {
@@ -50,11 +53,13 @@ interface VehicleWithStats extends Vehicle {
 
 export default function AdminDriversPage() {
   const { confirm } = useConfirm();
-  const [activeTab, setActiveTab] = useState<'drivers' | 'vehicles'>('drivers');
+  const [activeTab, setActiveTab] = useState<'drivers' | 'vehicles' | 'ratings'>('drivers');
   
   // Drivers State
   const [drivers, setDrivers] = useState<DriverWithStats[]>([]);
   const [vehicles, setVehicles] = useState<VehicleWithStats[]>([]);
+  const [allRatings, setAllRatings] = useState<DriverRating[]>([]);
+  const [selectedDriverRatingsModal, setSelectedDriverRatingsModal] = useState<{ driver: Driver; ratings: DriverRating[] } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -130,18 +135,23 @@ export default function AdminDriversPage() {
   const fetchDriversAndVehicles = async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-      const [resDrivers, resVehicles] = await Promise.all([
+      const [resDrivers, resVehicles, resRatings] = await Promise.all([
         fetch('/api/admin/drivers', { cache: 'no-store' }),
         fetch('/api/admin/vehicles', { cache: 'no-store' }),
+        fetch('/api/driver-ratings', { cache: 'no-store' }),
       ]);
       const dataDrivers = await resDrivers.json();
       const dataVehicles = await resVehicles.json();
+      const dataRatings = await resRatings.json();
 
       if (dataDrivers.success) {
         setDrivers(dataDrivers.drivers || []);
       }
       if (dataVehicles.success) {
         setVehicles(dataVehicles.vehicles || []);
+      }
+      if (dataRatings.success) {
+        setAllRatings(dataRatings.ratings || []);
       }
     } catch (e) {
       console.error(e);
@@ -490,7 +500,7 @@ export default function AdminDriversPage() {
       </div>
 
       {/* TABS SELECTOR */}
-      <div className="flex items-center gap-2 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 w-fit">
+      <div className="flex items-center gap-2 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 w-fit flex-wrap">
         <button
           onClick={() => { setActiveTab('drivers'); setSearchQuery(''); }}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
@@ -513,6 +523,18 @@ export default function AdminDriversPage() {
         >
           <Car className="w-4 h-4" />
           <span>🚗 أسطول السيارات والمركبات ({vehicles.length})</span>
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('ratings'); setSearchQuery(''); }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+            activeTab === 'ratings'
+              ? 'bg-amber-500 text-white shadow-sm'
+              : 'text-slate-700 hover:bg-white/60'
+          }`}
+        >
+          <Star className="w-4 h-4" />
+          <span>⭐ سجل تقييمات وآراء الزبائن ({allRatings.length})</span>
         </button>
       </div>
 
@@ -626,11 +648,19 @@ export default function AdminDriversPage() {
                                       متوقف
                                     </span>
                                   )}
-                                  <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const driverRatings = allRatings.filter(r => r.driverId === driver.id);
+                                      setSelectedDriverRatingsModal({ driver, ratings: driverRatings });
+                                    }}
+                                    className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                                    title="انقر لعرض تفاصيل تقييمات هذا السائق"
+                                  >
                                     <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>
                                     <span>({driver.ratingTierLabel || (driver.ratingsCount ? 'ممتاز 🌟' : 'سائق معتمد 🌟')})</span>
                                     <span className="text-slate-400 font-normal font-mono">({driver.ratingsCount || 0} تقييم)</span>
-                                  </span>
+                                  </button>
                                 </div>
                                 <div className="text-slate-500 font-mono text-[11px] mt-0.5" dir="ltr">
                                   <span>{driver.phone} • كلمة المرور: {driver.password || '123'}</span>
@@ -688,8 +718,19 @@ export default function AdminDriversPage() {
                           <td className="py-4 px-4 whitespace-nowrap text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
+                                onClick={() => {
+                                  const driverRatings = allRatings.filter(r => r.driverId === driver.id);
+                                  setSelectedDriverRatingsModal({ driver, ratings: driverRatings });
+                                }}
+                                className="bg-amber-100 hover:bg-amber-200 text-amber-900 p-2 rounded-xl border border-amber-300 transition cursor-pointer"
+                                title="عرض تقييمات وآراء الزبائن بالسائق ⭐"
+                              >
+                                <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                              </button>
+
+                              <button
                                 onClick={() => handleOpenDriverOrders(driver)}
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-800 p-2 rounded-xl border border-amber-200 transition cursor-pointer"
+                                className="bg-sky-50 hover:bg-sky-100 text-sky-800 p-2 rounded-xl border border-sky-200 transition cursor-pointer"
                                 title="كشف وسجل طلبيات ورحلات السائق"
                               >
                                 <FileText className="w-3.5 h-3.5" />
@@ -879,6 +920,193 @@ export default function AdminDriversPage() {
                 </table>
               </div>
             )}
+          </div>
+      {/* TAB 3: CUSTOMER REVIEWS & DRIVER RATINGS */}
+      {activeTab === 'ratings' && (
+        <div className="space-y-6">
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-400 block">إجمالي تقييمات الزبائن</span>
+                <span className="text-2xl font-black text-amber-500 font-mono mt-1 block">
+                  {allRatings.length} تقييم
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+                <Star className="w-6 h-6 fill-amber-500 text-amber-500" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-400 block">متوسط تقييم الأسطول العام</span>
+                <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
+                  {allRatings.length > 0
+                    ? (allRatings.reduce((sum, r) => sum + r.rating, 0) / allRatings.length).toFixed(1)
+                    : '5.0'} / 5 ⭐
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
+                <ThumbsUp className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-400 block">نسبة رضا الزبائن</span>
+                <span className="text-2xl font-black text-emerald-600 font-mono mt-1 block">
+                  {allRatings.length > 0
+                    ? Math.round((allRatings.filter(r => r.rating >= 4).length / allRatings.length) * 100)
+                    : 100}%
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shadow-xs">
+                <Sparkles className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+
+          {/* Ratings Table Card */}
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <h3 className="font-black text-sm text-slate-900">
+                سجل آراء وتقييمات الزبائن التفصيلي ({allRatings.length})
+              </h3>
+            </div>
+
+            {allRatings.length === 0 ? (
+              <div className="p-12 text-center space-y-2">
+                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto text-xl">⭐</div>
+                <h4 className="font-black text-slate-800 text-sm">لا توجد تقييمات مسجلة بعد</h4>
+                <p className="text-xs text-slate-500">عندما يقوم الزبائن بتقييم السائقين والخدمة بعد استلام الطلبيات، ستظهر جميع التقييمات والملاحظات هنا فوراً.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
+                    <tr className="divide-x divide-x-reverse divide-slate-100">
+                      <th className="py-3 px-4">السائق المقيّم</th>
+                      <th className="py-3 px-4">الزبون والطلبية</th>
+                      <th className="py-3 px-4">التقييم والدرجة</th>
+                      <th className="py-3 px-4">الوسم المختار</th>
+                      <th className="py-3 px-4">ملاحظة ورأي الزبون</th>
+                      <th className="py-3 px-4">تاريخ التقييم</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {allRatings.map((rate) => (
+                      <tr key={rate.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
+                        <td className="py-4 px-4 whitespace-nowrap font-bold text-slate-900">
+                          <span className="bg-amber-50 border border-amber-200 px-2 py-1 rounded-xl text-amber-950">
+                            🛵 {rate.driverName || 'مندوب التوصيل'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <span className="font-bold text-slate-800 block">{rate.customerName}</span>
+                          <span className="text-[10px] text-slate-400 font-mono block">فاتورة #{rate.orderNumber} • {rate.customerPhone}</span>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-500 font-black flex items-center gap-0.5">
+                              {'⭐'.repeat(rate.rating)}
+                            </span>
+                            <span className="font-black text-slate-700">({rate.ratingLabel || `${rate.rating}/5`})</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          {rate.tag ? (
+                            <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded-lg border border-slate-200">
+                              {rate.tag}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="py-4 px-4 max-w-xs">
+                          {rate.comment ? (
+                            <p className="text-xs text-slate-800 font-medium bg-amber-50/60 p-2 rounded-xl border border-amber-100">
+                              "{rate.comment}"
+                            </p>
+                          ) : (
+                            <span className="text-slate-400 font-medium">بدون تعليق نصي</span>
+                          )}
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                          {new Date(rate.createdAt).toLocaleDateString('ar-IQ')} {new Date(rate.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: INDIVIDUAL DRIVER RATINGS POPUP */}
+      {selectedDriverRatingsModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs" dir="rtl">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black">
+                  <Star className="w-5 h-5 fill-white" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">
+                    تقييمات وآراء الزبائن بالسائق: {selectedDriverRatingsModal.driver.name}
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-bold">
+                    المعدل: ⭐ {selectedDriverRatingsModal.driver.averageRating || '5.0'} ({selectedDriverRatingsModal.driver.ratingTierLabel || 'ممتاز 🌟'})
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setSelectedDriverRatingsModal(null)} className="text-slate-400 hover:text-slate-700 p-1 font-bold">
+                ✕
+              </button>
+            </div>
+
+            {selectedDriverRatingsModal.ratings.length === 0 ? (
+              <div className="p-8 text-center space-y-2">
+                <p className="text-xs font-bold text-slate-500">لا توجد تقييمات مسجلة لهذا السائق بعد</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {selectedDriverRatingsModal.ratings.map((rate) => (
+                  <div key={rate.id} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-slate-900">{rate.customerName} ({rate.customerPhone})</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-amber-500 font-bold">{'⭐'.repeat(rate.rating)}</span>
+                        <span className="text-[10px] font-black text-slate-600">({rate.ratingLabel})</span>
+                      </div>
+                    </div>
+                    {rate.tag && (
+                      <span className="inline-block bg-white text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                        {rate.tag}
+                      </span>
+                    )}
+                    {rate.comment && (
+                      <p className="text-xs text-slate-800 bg-white p-2.5 rounded-xl border border-slate-200">
+                        "{rate.comment}"
+                      </p>
+                    )}
+                    <span className="text-[10px] text-slate-400 font-mono block text-left">
+                      {new Date(rate.createdAt).toLocaleDateString('ar-IQ')} {new Date(rate.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setSelectedDriverRatingsModal(null)}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs py-2.5 rounded-xl transition cursor-pointer"
+            >
+              إغلاق
+            </button>
           </div>
         </div>
       )}
