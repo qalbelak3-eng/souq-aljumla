@@ -273,10 +273,8 @@ export default function AdminOrdersPage() {
     setEditProductToAdd('');
   };
 
-  // Add Item to Edit Order
-  const handleAddItemToEdit = () => {
-    if (!editProductToAdd) return;
-    const prod = products.find((p) => p.id === editProductToAdd);
+  // Add Item to Edit Order (Auto add on select)
+  const handleSelectProductForEdit = (prod: Product) => {
     if (!prod) return;
 
     const isWholesale = editingOrder?.items[0]?.saleType === 'wholesale';
@@ -302,7 +300,6 @@ export default function AdminOrdersPage() {
         },
       ]);
     }
-    setEditProductToAdd('');
   };
 
   // Save Order Edit & Return Stock
@@ -1170,30 +1167,23 @@ export default function AdminOrdersPage() {
               </span>
             </div>
 
-            {/* Add extra product line */}
+            {/* Add extra product line with smart searchable combobox */}
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-              <span className="font-bold text-slate-700 block">إضافة صنف إضافي للفاتورة:</span>
-              <div className="flex gap-2">
-                <select
-                  value={editProductToAdd}
-                  onChange={(e) => setEditProductToAdd(e.target.value)}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                >
-                  <option value="">-- اختر مادة لإضافتها --</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (المخزون المتوفر: {p.stock})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleAddItemToEdit}
-                  className="bg-brand-blue hover:bg-brand-blueDark text-white font-bold px-4 py-2 rounded-xl transition"
-                >
-                  + إضافة
-                </button>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-brand-blue" />
+                  <span>إضافة أصناف جديدة للفاتورة:</span>
+                </span>
+                <span className="text-[11px] text-slate-500 font-bold">
+                  (يُضاف الصنف ويفتح سطر جديد تلقائياً عند الاختيار ⚡)
+                </span>
               </div>
+              <SearchableProductOrderSelect
+                products={products}
+                onSelect={(prod) => {
+                  handleSelectProductForEdit(prod);
+                }}
+              />
             </div>
 
             {/* Items List in Invoice */}
