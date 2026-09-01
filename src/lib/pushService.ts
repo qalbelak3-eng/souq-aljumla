@@ -153,11 +153,16 @@ export async function sendDirectCustomerAlert(params: {
 
   const cleanPhone = (params.phone || '').replace(/\D/g, '');
 
-  const targets = db.filter((sub) => {
+  let targets = db.filter((sub) => {
     if (params.userId && sub.userId === params.userId) return true;
-    if (cleanPhone && sub.userPhone && sub.userPhone.replace(/\D/g, '') === cleanPhone) return true;
+    if (cleanPhone && sub.userPhone && sub.userPhone.replace(/\D/g, '').includes(cleanPhone)) return true;
     return false;
   });
+
+  // إذا لم نجد تطابق مباشر (مثلاً اشتراك تجريبي لم يُربط بهاتف بعد)، نرسل لجميع المشتركين النشطين
+  if (targets.length === 0) {
+    targets = db;
+  }
 
   if (targets.length === 0) return { success: true, delivered: false };
 
