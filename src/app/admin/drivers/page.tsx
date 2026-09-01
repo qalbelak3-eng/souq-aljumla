@@ -60,6 +60,9 @@ export default function AdminDriversPage() {
   const [vehicles, setVehicles] = useState<VehicleWithStats[]>([]);
   const [allRatings, setAllRatings] = useState<DriverRating[]>([]);
   const [selectedDriverRatingsModal, setSelectedDriverRatingsModal] = useState<{ driver: Driver; ratings: DriverRating[] } | null>(null);
+  const [ratingFilterDriver, setRatingFilterDriver] = useState<string>('all');
+  const [ratingFilterStars, setRatingFilterStars] = useState<string>('all');
+  const [ratingFilterCommentsOnly, setRatingFilterCommentsOnly] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -453,6 +456,22 @@ export default function AdminDriversPage() {
       v.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredRatings = allRatings.filter((rate) => {
+    // 1. Filter by Driver
+    if (ratingFilterDriver !== 'all' && rate.driverId !== ratingFilterDriver) {
+      return false;
+    }
+    // 2. Filter by Stars
+    if (ratingFilterStars === '5' && rate.rating !== 5) return false;
+    if (ratingFilterStars === '4' && rate.rating !== 4) return false;
+    if (ratingFilterStars === 'low' && rate.rating > 3) return false;
+    // 3. Filter by Comment text only
+    if (ratingFilterCommentsOnly && (!rate.comment || rate.comment.trim().length === 0)) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6 text-xs" dir="rtl">
@@ -972,17 +991,65 @@ export default function AdminDriversPage() {
 
           {/* Ratings Table Card */}
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-4">
-              <h3 className="font-black text-sm text-slate-900">
-                سجل آراء وتقييمات الزبائن التفصيلي ({allRatings.length})
-              </h3>
+            {/* Filter & Search Bar */}
+            <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-sm text-slate-900">
+                  سجل آراء وتقييمات الزبائن التفصيلي
+                </h3>
+                <span className="bg-amber-100 text-amber-900 font-mono font-bold text-xs px-2 py-0.5 rounded-lg">
+                  {filteredRatings.length} من {allRatings.length}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                {/* Driver Filter Dropdown */}
+                <select
+                  value={ratingFilterDriver}
+                  onChange={(e) => setRatingFilterDriver(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-none focus:border-brand-blue"
+                >
+                  <option value="all">👥 كافة السائقين ({drivers.length})</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      🛵 {d.name} ({allRatings.filter((r) => r.driverId === d.id).length} تقييم)
+                    </option>
+                  ))}
+                </select>
+
+                {/* Stars Filter Dropdown */}
+                <select
+                  value={ratingFilterStars}
+                  onChange={(e) => setRatingFilterStars(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-none focus:border-brand-blue"
+                >
+                  <option value="all">⭐ كافة النجوم والدرجات</option>
+                  <option value="5">⭐⭐⭐⭐⭐ ممتاز (5 نجوم)</option>
+                  <option value="4">⭐⭐⭐⭐ جيد جداً (4 نجوم)</option>
+                  <option value="low">⚠️ تقييمات منخفضة / شكاوى (1-3 نجوم)</option>
+                </select>
+
+                {/* Filter Has Comments Only */}
+                <button
+                  type="button"
+                  onClick={() => setRatingFilterCommentsOnly(!ratingFilterCommentsOnly)}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    ratingFilterCommentsOnly
+                      ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>التعليقات والملاحظات المكتوبة فقط 💬</span>
+                </button>
+              </div>
             </div>
 
-            {allRatings.length === 0 ? (
+            {filteredRatings.length === 0 ? (
               <div className="p-12 text-center space-y-2">
                 <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto text-xl">⭐</div>
-                <h4 className="font-black text-slate-800 text-sm">لا توجد تقييمات مسجلة بعد</h4>
-                <p className="text-xs text-slate-500">عندما يقوم الزبائن بتقييم السائقين والخدمة بعد استلام الطلبيات، ستظهر جميع التقييمات والملاحظات هنا فوراً.</p>
+                <h4 className="font-black text-slate-800 text-sm">لا توجد تقييمات مطابقة للفلاتر المحددة</h4>
+                <p className="text-xs text-slate-500">جرب تغيير السائق المختار أو خيارات النجوم لإظهار التقييمات.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -998,7 +1065,7 @@ export default function AdminDriversPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {allRatings.map((rate) => (
+                    {filteredRatings.map((rate) => (
                       <tr key={rate.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
                         <td className="py-4 px-4 whitespace-nowrap font-bold text-slate-900">
                           <span className="bg-amber-50 border border-amber-200 px-2 py-1 rounded-xl text-amber-950">
