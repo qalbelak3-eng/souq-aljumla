@@ -56,6 +56,8 @@ export default function DriverDashboardPage() {
     customerWhatsAppUrl: string;
     accountantWhatsAppUrl: string;
   } | null>(null);
+  const [customerWhatsAppSent, setCustomerWhatsAppSent] = useState<boolean>(false);
+  const [accountantWhatsAppSent, setAccountantWhatsAppSent] = useState<boolean>(false);
 
   // Load Driver Session & Store Settings
   useEffect(() => {
@@ -240,6 +242,8 @@ export default function DriverDashboardPage() {
         const custUrl = generateDeliveryCustomerWhatsAppLink(finishedOrder, driver.name, activeSettings);
         const acctUrl = generateDeliveryAccountantWhatsAppLink(finishedOrder, driver.name, activeSettings);
 
+        setCustomerWhatsAppSent(false);
+        setAccountantWhatsAppSent(false);
         setCompletedDeliveryData({
           order: finishedOrder,
           customerWhatsAppUrl: custUrl,
@@ -867,33 +871,54 @@ export default function DriverDashboardPage() {
               </div>
             </div>
 
-            {/* Two Big WhatsApp Buttons */}
+            {/* Two Big WhatsApp Buttons - يختفي كل زر فور الضغط عليه */}
             <div className="space-y-2.5 pt-1">
-              <span className="text-[11px] font-black text-slate-700 block text-center">
-                📢 إرسال إشعارات التسليم والتحصيل فوراً:
-              </span>
+              {!customerWhatsAppSent || !accountantWhatsAppSent ? (
+                <span className="text-[11px] font-black text-slate-700 block text-center">
+                  📢 إرسال إشعارات التسليم والتحصيل فوراً:
+                </span>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl text-center space-y-1">
+                  <span className="text-xs font-black text-emerald-800 block">✓ تم إرسال كافة إشعارات الواتساب بنجاح!</span>
+                  <span className="text-[10px] text-emerald-600 font-bold block">تم إخطار الزبون والمحاسب بتفاصيل الفاتورة والمبالغ المحصلة.</span>
+                </div>
+              )}
 
               {/* 1. Send to Customer */}
-              <a
-                href={completedDeliveryData.customerWhatsAppUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2"
-              >
-                <MessageCircle className="w-5 h-5" />
-                <span>إرسال إشعار للزبون عبر الواتساب 💬</span>
-              </a>
+              {!customerWhatsAppSent ? (
+                <a
+                  href={completedDeliveryData.customerWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setCustomerWhatsAppSent(true)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  <span>إرسال إشعار للزبون عبر الواتساب 💬</span>
+                </a>
+              ) : (
+                <div className="bg-slate-100 text-emerald-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 border border-slate-200">
+                  <span>✓ تم إرسال إشعار الزبون</span>
+                </div>
+              )}
 
               {/* 2. Send to Accountant */}
-              <a
-                href={completedDeliveryData.accountantWhatsAppUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black text-xs sm:text-sm py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2"
-              >
-                <FileText className="w-5 h-5" />
-                <span>إرسال إشعار للمحاسب المالي عبر الواتساب 💼</span>
-              </a>
+              {!accountantWhatsAppSent ? (
+                <a
+                  href={completedDeliveryData.accountantWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setAccountantWhatsAppSent(true)}
+                  className="w-full bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black text-xs sm:text-sm py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>إرسال إشعار للمحاسب المالي عبر الواتساب 💼</span>
+                </a>
+              ) : (
+                <div className="bg-slate-100 text-amber-800 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 border border-slate-200">
+                  <span>✓ تم إرسال إشعار المحاسب المالي</span>
+                </div>
+              )}
             </div>
 
             {/* Done / Continue Button */}
