@@ -284,7 +284,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     try {
-      const auth = localStorage.getItem('etihad_admin_auth');
+      const auth = typeof window !== 'undefined' ? localStorage.getItem('etihad_admin_auth') : null;
       if (auth) {
         const parsed = JSON.parse(auth);
         if (parsed && parsed.username) {
@@ -298,11 +298,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     setIsAuthenticated(false);
-    router.push('/admin/login');
+    router.replace('/admin/login');
   }, [pathname, isLoginPage, router]);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isLoginPage) {
       fetchLiveAlerts();
 
       const interval = setInterval(() => {
@@ -317,11 +317,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         window.removeEventListener('focus', handleFocus);
       };
     }
-  }, [isAuthenticated, fetchLiveAlerts, pathname]);
+  }, [isAuthenticated, fetchLiveAlerts, isLoginPage, pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('etihad_admin_auth');
-    router.push('/admin/login');
+    setIsAuthenticated(false);
+    router.replace('/admin/login');
   };
 
   if (isLoginPage) {
@@ -331,9 +332,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (isAuthenticated === null || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#f3f8fc] flex items-center justify-center p-4">
-        <div className="text-center space-y-3">
+        <div className="text-center space-y-4 max-w-xs">
           <div className="w-10 h-10 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-slate-500 font-bold">جاري التحقق من صلاحيات الإدارة...</p>
+          <p className="text-xs text-slate-600 font-bold">جاري التحقق من صلاحيات الإدارة...</p>
+          <button
+            type="button"
+            onClick={() => router.replace('/admin/login')}
+            className="text-[11px] text-brand-blue font-bold underline block mx-auto cursor-pointer"
+          >
+            اضغط هنا إذا لم يتم تحويلك تلقائياً لصفحة الدخول 🔑
+          </button>
         </div>
       </div>
     );
