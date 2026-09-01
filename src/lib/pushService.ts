@@ -2,9 +2,9 @@ import webpush from 'web-push';
 import { PushSubscriptionRecord, PushNotificationLog } from '@/types';
 import { getPushSubscriptions, deletePushSubscription, recordPushNotificationLog } from '@/lib/db';
 
-export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BO6OyAqdpwomGLV4HFOXZRjjxzJdh6gcskWb3xCIwbtFzXyGJ3_YJ4ngeI2WbwUH3eHJ0ayA2LwfnKw7M-wrx9o';
-export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'fZQ4Xv55L1p4q_tYLLjGGe8RFHyAJ-5MyYL-2PCjtcQ';
-export const VAPID_SUBJECT = 'mailto:admin@souq-aljumla.iq';
+export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BCemmhMkVO3oWHVRJkLIsaTBbBq6yV_be5pZQR7PREU-nbbYzIcMExgpYlkq5uJREvytFXHCMtYaI--BKuXDG2E';
+export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'ZjoxCbfjm0gNP6x6IU0OYZgAIUsFa1_ibgXzrV11aoc';
+export const VAPID_SUBJECT = 'mailto:qalbelak3@gmail.com';
 
 webpush.setVapidDetails(
   VAPID_SUBJECT,
