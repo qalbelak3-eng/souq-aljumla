@@ -25,11 +25,14 @@ import {
   CheckCircle2,
   DollarSign,
   MapPin,
-  Car
+  Car,
+  Printer,
+  FileText
 } from 'lucide-react';
 import { Order, OrderItem, OrderStatus, Product, User as UserType, Driver, Vehicle } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
+import EtihadLogo from '@/components/EtihadLogo';
 
 export default function AdminOrdersPage() {
   const toast = useToast();
@@ -62,6 +65,12 @@ export default function AdminOrdersPage() {
   const [manualPaymentMethod, setManualPaymentMethod] = useState<'cod' | 'cash' | 'zaincash' | 'debt'>('cod');
   const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
+  const [autoPrintOnSave, setAutoPrintOnSave] = useState(false);
+  const [autoPrintWithoutPrices, setAutoPrintWithoutPrices] = useState(false);
+
+  // PRINT INVOICE MODAL (A4 Clean Invoice / Delivery Manifest)
+  const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  const [printWithoutPrices, setPrintWithoutPrices] = useState<boolean>(false);
 
   // EDIT ORDER / RETURN ITEMS MODAL
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -422,13 +431,22 @@ export default function AdminOrdersPage() {
       });
 
       const data = await res.json();
-      if (data.success) {
-        alert('تم إنشاء الفاتورة والطلبية وخصم المخزون بنجاح! 🎉');
+      if (data.success && data.order) {
+        toast.success('تم إنشاء الفاتورة والطلبية وخصم المخزون بنجاح! 🎉');
         fetchOrders();
         fetchProductsAndMerchants();
         setIsManualOrderModalOpen(false);
+
+        // 🖨️ فتح نافذة الطباعة فوراً إذا كان الخيار مؤشراً
+        if (autoPrintOnSave) {
+          setPrintOrder(data.order);
+          setPrintWithoutPrices(autoPrintWithoutPrices);
+          setTimeout(() => {
+            window.print();
+          }, 400);
+        }
       } else {
-        alert(data.error || 'تعذر إنشاء الفاتورة');
+        toast.error(data.error || 'تعذر إنشاء الفاتورة');
       }
     } catch (err) {
       console.error(err);
@@ -782,7 +800,31 @@ export default function AdminOrdersPage() {
                       {/* 4. Actions Column */}
                       <td className="py-3 px-2.5 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* 1. Edit / Return items icon */}
+                          {/* 1. Print Official A4 Invoice (With Prices) */}
+                          <button
+                            onClick={() => {
+                              setPrintOrder(order);
+                              setPrintWithoutPrices(false);
+                            }}
+                            className="bg-purple-50 hover:bg-purple-100 text-purple-800 p-2 rounded-xl border border-purple-200 transition shadow-2xs cursor-pointer"
+                            title="طباعة الفاتورة الرسمية A4 (بالأسعار) 🖨️"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-purple-700" />
+                          </button>
+
+                          {/* 2. Print Delivery Sheet (Without Prices) */}
+                          <button
+                            onClick={() => {
+                              setPrintOrder(order);
+                              setPrintWithoutPrices(true);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 p-2 rounded-xl border border-indigo-200 transition shadow-2xs cursor-pointer"
+                            title="طباعة كشف تسليم للسائق (بدون أسعار) 🚚"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-indigo-700" />
+                          </button>
+
+                          {/* 3. Edit / Return items icon */}
                           <button
                             onClick={() => handleOpenEditOrder(order)}
                             className="bg-amber-50 hover:bg-amber-100 text-amber-800 p-2 rounded-xl border border-amber-200 transition shadow-2xs cursor-pointer"
@@ -791,7 +833,7 @@ export default function AdminOrdersPage() {
                             <Edit className="w-3.5 h-3.5 text-amber-700" />
                           </button>
 
-                          {/* 2. View details icon */}
+                          {/* 4. View details icon */}
                           <button
                             onClick={() => setSelectedOrder(order)}
                             className="bg-sky-50 hover:bg-sky-100 text-sky-800 p-2 rounded-xl border border-sky-200 transition shadow-2xs cursor-pointer"
@@ -800,7 +842,7 @@ export default function AdminOrdersPage() {
                             <Eye className="w-3.5 h-3.5 text-sky-700" />
                           </button>
 
-                          {/* 3. Location icon */}
+                          {/* 5. Location icon */}
                           {order.customer.mapsUrl && (
                             <a
                               href={order.customer.mapsUrl}
@@ -813,7 +855,7 @@ export default function AdminOrdersPage() {
                             </a>
                           )}
 
-                          {/* 4. WhatsApp message icon */}
+                          {/* 6. WhatsApp message icon */}
                           <a
                             href={customerWhatsApp}
                             target="_blank"
@@ -1005,22 +1047,52 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                onClick={() => {
-                  const o = selectedOrder;
-                  setSelectedOrder(null);
-                  handleOpenEditOrder(o);
-                }}
-                className="bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold py-2.5 px-5 rounded-xl border border-amber-200 flex items-center gap-1.5"
-              >
-                <Edit className="w-4 h-4 text-amber-700" />
-                <span>تعديل الفاتورة أو إرجاع بضاعة 📦</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const o = selectedOrder;
+                    setPrintOrder(o);
+                    setPrintWithoutPrices(false);
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-black py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة فاتورة A4 (بالأسعار) 🖨️</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const o = selectedOrder;
+                    setPrintOrder(o);
+                    setPrintWithoutPrices(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>طباعة كشف تسليم للسائق (بدون أسعار) 🚚</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const o = selectedOrder;
+                    setSelectedOrder(null);
+                    handleOpenEditOrder(o);
+                  }}
+                  className="bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold py-2.5 px-4 rounded-xl border border-amber-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Edit className="w-4 h-4 text-amber-700" />
+                  <span>تعديل الفاتورة 📦</span>
+                </button>
+              </div>
 
               <button
+                type="button"
                 onClick={() => setSelectedOrder(null)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-5 rounded-xl"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-5 rounded-xl cursor-pointer"
               >
                 إغلاق
               </button>
@@ -1578,6 +1650,33 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
+              {/* Print Options Strip */}
+              <div className="bg-purple-50/70 border border-purple-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-purple-950 text-xs select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoPrintOnSave}
+                    onChange={(e) => setAutoPrintOnSave(e.target.checked)}
+                    className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 accent-purple-600 cursor-pointer"
+                  />
+                  <Printer className="w-4 h-4 text-purple-700" />
+                  <span>طباعة الفاتورة A4 فور الحفظ 🖨️</span>
+                </label>
+
+                {autoPrintOnSave && (
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-900 text-xs select-none bg-white px-3 py-1.5 rounded-xl border border-purple-200">
+                    <input
+                      type="checkbox"
+                      checked={autoPrintWithoutPrices}
+                      onChange={(e) => setAutoPrintWithoutPrices(e.target.checked)}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+                    />
+                    <FileText className="w-4 h-4 text-indigo-700" />
+                    <span>طباعة بدون أسعار (كشف تسليم للسائق / منافيست) 🚚</span>
+                  </label>
+                )}
+              </div>
+
               {/* Final Footer Strip */}
               <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between font-bold">
                 <div>
@@ -1610,6 +1709,228 @@ export default function AdminOrdersPage() {
               </div>
 
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: CLEAN A4 OFFICIAL INVOICE & DELIVERY MANIFEST (الطباعة الرسمية النظيفة) */}
+      {printOrder && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:p-0 print:m-0 print:bg-transparent">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 space-y-4 text-xs my-8 max-h-[90vh] flex flex-col print:max-h-none print:shadow-none print:border-none print:p-0 print:my-0 print:w-full">
+            
+            {/* Top Toolbar (Hidden on Print) */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 no-print print:hidden">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-brand-blue" />
+                <h3 className="text-base font-black text-slate-900">
+                  {printWithoutPrices ? 'طباعة كشف تسليم للسائق (بدون أسعار)' : 'طباعة الفاتورة الرسمية (A4)'}
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Toggle Mode */}
+                <button
+                  type="button"
+                  onClick={() => setPrintWithoutPrices(!printWithoutPrices)}
+                  className={`py-1.5 px-3 rounded-xl font-bold transition text-xs border ${
+                    printWithoutPrices
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900'
+                      : 'bg-purple-50 border-purple-300 text-purple-900'
+                  }`}
+                >
+                  {printWithoutPrices ? '🔄 التبديل إلى: فاتورة بالأسعار' : '🔄 التبديل إلى: كشف بدون أسعار (للسائق)'}
+                </button>
+
+                <button
+                  onClick={() => window.print()}
+                  className="bg-brand-blue hover:bg-brand-blueDark text-white font-black py-1.5 px-4 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة الآن 🖨️</span>
+                </button>
+
+                <button
+                  onClick={() => setPrintOrder(null)}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* A4 PRINTABLE DOCUMENT BODY */}
+            <div id="printable-order-sheet" className="space-y-4 print:p-0 relative overflow-y-auto max-h-[calc(88vh-120px)] print:max-h-none print:overflow-visible pr-1 font-sans">
+              
+              {/* Subtle Watermark Logo for A4 Paper */}
+              <div className="absolute inset-0 pointer-events-none select-none flex items-center justify-center opacity-[0.04] z-0">
+                <div className="w-80 h-80 flex items-center justify-center scale-125">
+                  <EtihadLogo size="lg" />
+                </div>
+              </div>
+
+              <div className="relative z-10 space-y-4">
+                
+                {/* Clean Official Header */}
+                <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3">
+                  <div>
+                    <EtihadLogo size="sm" />
+                    <p className="text-[10px] text-slate-600 font-bold mt-0.5">
+                      سوق الجملة لتجارة المواد الغذائية والسناكات 🇮🇶
+                    </p>
+                  </div>
+
+                  <div className="text-left font-mono">
+                    <span className="text-sm font-black text-slate-900 block font-sans">
+                      {printWithoutPrices ? 'كشف تسليم ومنافيست بضاعة 🚚' : 'فاتورة مبيعات رسمية 🧾'}
+                    </span>
+                    <span className="text-xs font-bold text-slate-800 block">
+                      رقم الطلبية: #{printOrder.orderNumber}
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      التاريخ: {new Date(printOrder.createdAt).toLocaleDateString('ar-IQ')} - {new Date(printOrder.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Minimal Customer Info Strip */}
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">اسم العميل:</span>
+                    <span className="font-black text-slate-900">{printOrder.customer.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">رقم الهاتف:</span>
+                    <span className="font-bold text-slate-800 font-mono" dir="ltr">{printOrder.customer.phone}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">المتجر / الماركت:</span>
+                    <span className="font-bold text-emerald-800">{printOrder.customer.businessName || 'زبون نقدي'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">المدينة والعنوان:</span>
+                    <span className="font-bold text-slate-800">{printOrder.customer.city || 'العراق'} - {printOrder.customer.address || 'داخل المدينة'}</span>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="border border-slate-300 rounded-2xl overflow-hidden">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-slate-100 text-slate-800 border-b border-slate-300 font-black text-[11px]">
+                      <tr className="divide-x divide-x-reverse divide-slate-300">
+                        <th className="py-2.5 px-3 text-center w-10">ت #</th>
+                        <th className="py-2.5 px-3">اسم المادة / الصنف</th>
+                        <th className="py-2.5 px-3 text-center">العبوة والنوع</th>
+                        <th className="py-2.5 px-3 text-center w-24">الكمية</th>
+                        {!printWithoutPrices && (
+                          <>
+                            <th className="py-2.5 px-3 text-center w-28">سعر الوحدة</th>
+                            <th className="py-2.5 px-3 text-center w-32">المجموع</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-bold">
+                      {printOrder.items.map((item, idx) => (
+                        <tr key={idx} className="divide-x divide-x-reverse divide-slate-200">
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
+                          <td className="py-2.5 px-3 text-slate-900 font-black">{item.name}</td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap text-slate-600">
+                            {item.saleType === 'wholesale' ? '📦 جملة' : '🛒 مفرد'} ({item.unitLabel})
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-black text-slate-900 text-sm">
+                            {item.quantity}
+                          </td>
+                          {!printWithoutPrices && (
+                            <>
+                              <td className="py-2.5 px-3 text-center font-mono text-slate-800">
+                                {item.price.toLocaleString()} د.ع
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono font-black text-slate-900">
+                                {(item.price * item.quantity).toLocaleString()} د.ع
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Totals & Notes Section */}
+                {!printWithoutPrices ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {/* Left: Notes & Payment Method */}
+                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold block">طريقة الدفع:</span>
+                        <span className="font-black text-slate-900">
+                          {printOrder.paymentMethod === 'debt' ? '📝 آجل على الحساب (دين)' : '💵 دفع عند الاستلام (كاش)'}
+                        </span>
+                      </div>
+                      {printOrder.customer.notes && (
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block">ملاحظات:</span>
+                          <span className="text-slate-700 font-bold">{printOrder.customer.notes}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Financial Totals */}
+                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1 text-xs">
+                      <div className="flex justify-between text-slate-600 font-bold">
+                        <span>المجموع الفرعي:</span>
+                        <span className="font-mono">{printOrder.subtotal.toLocaleString()} د.ع</span>
+                      </div>
+                      {(printOrder.deliveryFee ?? 0) > 0 && (
+                        <div className="flex justify-between text-slate-600 font-bold">
+                          <span>أجور التوصيل:</span>
+                          <span className="font-mono">{printOrder.deliveryFee?.toLocaleString()} د.ع</span>
+                        </div>
+                      )}
+                      {(printOrder.discount ?? 0) > 0 && (
+                        <div className="flex justify-between text-emerald-700 font-bold">
+                          <span>الخصم:</span>
+                          <span className="font-mono">-{printOrder.discount?.toLocaleString()} د.ع</span>
+                        </div>
+                      )}
+                      <div className="border-t border-slate-300 pt-1.5 flex justify-between items-center text-sm font-black text-slate-900">
+                        <span>المجموع النهائي المطلوب:</span>
+                        <span className="text-base text-[#e0452c] font-black font-mono">
+                          {printOrder.total.toLocaleString()} د.ع
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold block">إجمالي عدد الطرود / الكراتين:</span>
+                      <span className="text-base font-black font-mono text-slate-900">
+                        {printOrder.items.reduce((sum, it) => sum + it.quantity, 0)} طرد / كرتون
+                      </span>
+                    </div>
+                    <div className="text-slate-500 text-[11px] font-bold">
+                      📦 كشف تسليم بضاعة للمندوب والمستلم بدون كشف الأسعار
+                    </div>
+                  </div>
+                )}
+
+                {/* Signature Strip */}
+                <div className="pt-4 border-t border-slate-300 grid grid-cols-2 text-center text-xs font-bold text-slate-600 gap-6">
+                  <div className="space-y-8">
+                    <span>توقيع واستلام الزبون / الماركت</span>
+                    <div className="border-b border-dashed border-slate-400 w-36 mx-auto" />
+                  </div>
+                  <div className="space-y-8">
+                    <span>توقيع منظم الفاتورة / السائق الموزع</span>
+                    <div className="border-b border-dashed border-slate-400 w-36 mx-auto" />
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
 
           </div>
         </div>

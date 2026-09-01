@@ -139,7 +139,7 @@ export interface CustomerInfo {
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-export type PaymentMethod = 'cod' | 'zaincash' | 'qicard' | 'bank_transfer' | 'online' | 'cash';
+export type PaymentMethod = 'cod' | 'zaincash' | 'qicard' | 'bank_transfer' | 'online' | 'cash' | 'debt';
 
 export interface OrderItem {
   productId: string;
