@@ -7,6 +7,7 @@ import { ConfirmProvider } from '@/context/ConfirmModalContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import StoreLayoutWrapper from '@/components/StoreLayoutWrapper';
 import ServiceWorkerCleaner from '@/components/ServiceWorkerCleaner';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 
 export const viewport: Viewport = {
   themeColor: '#1b8738',
@@ -43,6 +44,7 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className="min-h-screen flex flex-col bg-[#f3f8fc] text-slate-900 selection:bg-brand-blue selection:text-white">
         <ServiceWorkerCleaner />
+        <PWAInstallPrompt />
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>
