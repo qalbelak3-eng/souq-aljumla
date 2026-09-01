@@ -587,30 +587,15 @@ export default function AdminPurchasesPage() {
                             <div className="flex items-center justify-between">
                               <label className="text-[10px] font-bold text-slate-700">اسم الصنف:</label>
                               <span className="text-[9px] bg-blue-100 text-brand-blue font-bold px-1.5 py-0.2 rounded">
-                                أصناف {invCompany} 🏢
-                              </span>
-                            </div>
-                            <select
-                              value={item.productId}
-                              onChange={(e) => updateItemRow(idx, 'productId', e.target.value)}
-                              className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-2 text-xs font-bold text-slate-900 focus:border-brand-blue"
-                            >
-                              <option value="">-- اختر صنف من {invCompany} --</option>
-                              {products.filter(p => p.company === invCompany).map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} ({p.wholesaleUnit || 'كرتون'})
-                                </option>
-                              ))}
-                              {products.filter(p => p.company === invCompany).length === 0 && (
-                                <optgroup label="⚠️ لم تسجل أصناف لهذه الشركة بعد (عرض كافة الأصناف)">
-                                  {products.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.name} ({p.company || p.category})
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </select>
+                            <SearchableProductSelect
+                              companyProducts={products.filter(p => p.company === invCompany)}
+                              allProducts={products}
+                              selectedProductId={item.productId}
+                              companyName={invCompany}
+                              onSelect={(prod) => {
+                                updateItemRow(idx, 'productId', prod.id);
+                              }}
+                            />
                           </div>
 
                           {/* Cartons Quantity */}
@@ -869,6 +854,156 @@ export default function AdminPurchasesPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// 🔍 Searchable Product Combobox Component for High-Volume Company Products
+function SearchableProductSelect({
+  companyProducts,
+  allProducts,
+  selectedProductId,
+  companyName,
+  onSelect,
+}: {
+  companyProducts: Product[];
+  allProducts: Product[];
+  selectedProductId: string;
+  companyName: string;
+  onSelect: (product: Product) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  const availableList = companyProducts.length > 0 ? companyProducts : allProducts;
+  const selectedProduct = allProducts.find((p) => p.id === selectedProductId);
+
+  // Filter products by typed search term
+  const filteredList = availableList.filter((p) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      p.name.toLowerCase().includes(term) ||
+      (p.category && p.category.toLowerCase().includes(term)) ||
+      (p.company && p.company.toLowerCase().includes(term))
+    );
+  });
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={wrapperRef}>
+      {/* Trigger Button / Display */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white border border-slate-300 hover:border-brand-blue rounded-xl py-1.5 px-2.5 text-right text-xs font-bold text-slate-900 flex items-center justify-between gap-1 shadow-2xs transition cursor-pointer"
+      >
+        <span className="truncate block">
+          {selectedProduct ? (
+            <span className="text-slate-900">
+              {selectedProduct.name}{' '}
+              <span className="text-slate-400 font-normal">({selectedProduct.wholesaleUnit || 'كرتون'})</span>
+            </span>
+          ) : (
+            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن صنف ({availableList.length} متوفر) --</span>
+          )}
+        </span>
+        <span className="text-slate-400 text-[10px] shrink-0">▼</span>
+      </button>
+
+      {/* Dropdown Popup */}
+      {isOpen && (
+        <div className="absolute z-50 right-0 left-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 space-y-1.5 animate-fadeIn text-xs max-h-72 flex flex-col min-w-[260px]">
+          
+          {/* Quick Search Input */}
+          <div className="relative shrink-0">
+            <input
+              type="text"
+              autoFocus
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="اكتب للبحث السريع (مثال: حار، ليمون، رز)..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-1.5 pr-7 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-[9px] absolute left-2 top-1/2 -translate-y-1/2 font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Results Count / Info */}
+          <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
+            <span>{filteredList.length} صنف مطابق</span>
+            <span>أصناف: {companyName || 'الكل'}</span>
+          </div>
+
+          {/* Product Items List */}
+          <div className="overflow-y-auto space-y-1 divide-y divide-slate-100 flex-1 pr-0.5">
+            {filteredList.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 space-y-1">
+                <span className="text-base block">🔍</span>
+                <span className="text-xs font-bold block">لا توجد أصناف تطابق "{searchTerm}"</span>
+              </div>
+            ) : (
+              filteredList.map((p) => {
+                const isSelected = p.id === selectedProductId;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(p);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`w-full text-right p-2 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-50 text-brand-blue font-black border border-blue-200'
+                        : 'hover:bg-slate-50 text-slate-800'
+                    }`}
+                  >
+                    <div className="truncate">
+                      <span className="font-bold text-xs block text-slate-900 truncate">
+                        {p.name}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        العبوة: {p.wholesaleUnit || 'كرتون'} • المخزون: {p.stock} {p.wholesaleUnit || 'كرتون'}
+                      </span>
+                    </div>
+
+                    <div className="text-left shrink-0">
+                      <span className="font-mono font-black text-xs text-purple-700 block">
+                        {(p.costPrice || 0).toLocaleString()} د.ع
+                      </span>
+                      {isSelected && (
+                        <span className="text-[10px] text-brand-blue font-bold">محدد ✓</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
