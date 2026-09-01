@@ -1180,7 +1180,10 @@ export default function AdminOrdersPage() {
               </div>
               <SearchableProductOrderSelect
                 products={products}
-                onSelect={(prod) => {
+                saleType={editingOrder?.items[0]?.saleType || 'wholesale'}
+                merchantId={editingOrder?.customer.userId || ''}
+                merchants={merchants || []}
+                onSelectProduct={(prod) => {
                   handleSelectProductForEdit(prod);
                 }}
               />
@@ -2232,23 +2235,23 @@ function SearchableMerchantSelect({
 
 // 🔍 Searchable Product Selector for Order Lines with Instant Auto-Add
 function SearchableProductOrderSelect({
-  products,
-  saleType,
-  merchantId,
-  merchants,
+  products = [],
+  saleType = 'wholesale',
+  merchantId = '',
+  merchants = [],
   onSelectProduct,
 }: {
   products: Product[];
-  saleType: 'wholesale' | 'retail';
-  merchantId: string;
-  merchants: UserType[];
+  saleType?: 'wholesale' | 'retail';
+  merchantId?: string;
+  merchants?: UserType[];
   onSelectProduct: (product: Product) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const wrapperRef = React.useRef<HTMLDivElement>(null);
 
-  const selectedMerchant = merchants.find((u) => u.id === merchantId);
+  const selectedMerchant = (merchants || []).find((u) => u && u.id === merchantId);
   const tier = selectedMerchant?.merchantTier || 'bronze';
 
   const filteredProducts = products.filter((p) => {
