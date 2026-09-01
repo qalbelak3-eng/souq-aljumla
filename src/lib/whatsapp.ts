@@ -146,7 +146,7 @@ export function generateDeliveryAccountantWhatsAppLink(order: Order, driverName:
     `📅 *تاريخ وساعة التسليم:* ${new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })} - ${new Date().toLocaleDateString('ar-IQ')}`,
     order.driverNotes ? `📝 *ملاحظات السائق:* ${order.driverNotes}` : '',
     `━━━━━━━━━━━━━━━━━━`,
-    `النظام المحاسبي الآلي - سوق الجملة والاتحاد 🇮🇶`,
+    `النظام المحاسبي الآلي - سوق الجملة`,
   ].filter(Boolean).join('\n');
 
   return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
