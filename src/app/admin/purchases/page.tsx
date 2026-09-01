@@ -584,9 +584,12 @@ export default function AdminPurchasesPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                           {/* Product Selector */}
                           <div className="sm:col-span-4 space-y-0.5">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between pb-0.5">
                               <label className="text-[10px] font-bold text-slate-700">اسم الصنف:</label>
-                              <span className="text-[9px] bg-blue-100 text-brand-blue font-bold px-1.5 py-0.2 rounded">
+                              <span className="text-[9px] bg-blue-100 text-brand-blue font-bold px-1.5 py-0.5 rounded">
+                                أصناف {invCompany || 'الشركة'} 🏢
+                              </span>
+                            </div>
                             <SearchableProductSelect
                               companyProducts={products.filter(p => p.company === invCompany)}
                               allProducts={products}
