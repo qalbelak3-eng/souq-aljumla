@@ -2242,7 +2242,7 @@ function SearchableProductOrderSelect({
   onSelectProduct,
 }: {
   products: Product[];
-  saleType?: 'wholesale' | 'retail';
+  saleType?: any;
   merchantId?: string;
   merchants?: UserType[];
   onSelectProduct: (product: Product) => void;
