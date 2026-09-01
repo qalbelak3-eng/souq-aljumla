@@ -238,7 +238,7 @@ export default function CheckoutPage() {
       }
     }
 
-    // Auto-detect live GPS in background to check if user is at the selected address
+    // Auto-detect live GPS in background with High Accuracy to check if user is at the selected address
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -265,7 +265,8 @@ export default function CheckoutPage() {
             }
           }
         },
-        () => {}
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
   }, [user]);
