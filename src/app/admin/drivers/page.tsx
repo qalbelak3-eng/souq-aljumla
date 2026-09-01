@@ -637,6 +637,7 @@ export default function AdminDriversPage() {
                   <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
                     <tr className="divide-x divide-x-reverse divide-slate-100">
                       <th className="py-3 px-4">السائق والمعلومات</th>
+                      <th className="py-3 px-4 text-center">⭐ تقييم الزبائن والأداء</th>
                       <th className="py-3 px-4">المركبة الافتراضية 🚗</th>
                       <th className="py-3 px-4">الطلبيات النشطة</th>
                       <th className="py-3 px-4">المسلّم اليوم</th>
@@ -648,6 +649,9 @@ export default function AdminDriversPage() {
                     {filteredDrivers.map((driver) => {
                       const hasCash = (driver.currentCashInHand || 0) > 0;
                       const matchedVeh = vehicles.find(v => v.id === driver.defaultVehicleId);
+                      const driverRatings = allRatings.filter(r => r.driverId === driver.id);
+                      const avgRating = driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0';
+
                       return (
                         <tr key={driver.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
                           <td className="py-4 px-4 whitespace-nowrap">
@@ -667,25 +671,33 @@ export default function AdminDriversPage() {
                                       متوقف
                                     </span>
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const driverRatings = allRatings.filter(r => r.driverId === driver.id);
-                                      setSelectedDriverRatingsModal({ driver, ratings: driverRatings });
-                                    }}
-                                    className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-2xs"
-                                    title="انقر لعرض تفاصيل تقييمات هذا السائق"
-                                  >
-                                    <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>
-                                    <span>({driver.ratingTierLabel || (driver.ratingsCount ? 'ممتاز 🌟' : 'سائق معتمد 🌟')})</span>
-                                    <span className="text-slate-400 font-normal font-mono">({driver.ratingsCount || 0} تقييم)</span>
-                                  </button>
                                 </div>
                                 <div className="text-slate-500 font-mono text-[11px] mt-0.5" dir="ltr">
                                   <span>{driver.phone} • كلمة المرور: {driver.password || '123'}</span>
                                 </div>
                               </div>
                             </div>
+                          </td>
+
+                          {/* 🌟 عمود تقييم الزبائن المباشر */}
+                          <td className="py-4 px-4 whitespace-nowrap text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDriverRatingsModal({ driver, ratings: driverRatings });
+                              }}
+                              className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 text-xs font-black px-3 py-1.5 rounded-xl inline-flex flex-col items-center gap-0.5 cursor-pointer transition shadow-2xs group"
+                              title="انقر لعرض آراء وملاحظات الزبائن المفصلة عن هذا السائق"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className="text-amber-500">★</span>
+                                <span className="font-black text-sm">{avgRating}</span>
+                                <span className="text-[10px] text-amber-800 font-bold">/ 5</span>
+                              </div>
+                              <span className="text-[10px] text-slate-500 group-hover:text-amber-900 font-medium">
+                                ({driverRatings.length || driver.ratingsCount || 0} تقييم 💬)
+                              </span>
+                            </button>
                           </td>
 
                           <td className="py-4 px-4 whitespace-nowrap">
