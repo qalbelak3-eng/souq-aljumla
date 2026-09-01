@@ -544,12 +544,12 @@
       "total": 20900,
       "notes": "",
       "paymentMethod": "cod",
-      "status": "shipped",
+      "status": "delivered",
       "whatsappSent": false,
       "id": "ord-1788270008188",
       "orderNumber": "INV-1005",
       "createdAt": "2026-09-01T13:40:08.188Z",
-      "updatedAt": "2026-09-01T13:40:18.413Z",
+      "updatedAt": "2026-09-01T13:48:17.673Z",
       "driverId": "drv-1787845130699",
       "driverName": "غيث الجنابي",
       "driverPhone": "07710101010",
@@ -557,7 +557,13 @@
       "vehicleId": "veh-1787845492660",
       "vehicleName": "كيا فحل",
       "vehiclePlate": "14563",
-      "outForDeliveryAt": "2026-09-01T13:40:18.413Z"
+      "outForDeliveryAt": "2026-09-01T13:40:18.413Z",
+      "collectionStatus": "debt_unpaid",
+      "deliveredAt": "2026-09-01T13:48:17.673Z",
+      "driverNotes": "",
+      "collectedAmount": 0,
+      "remainingDebtAmount": 20900,
+      "paidAmount": 0
     },
     {
       "customer": {
@@ -830,7 +836,7 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "c-lead-1-1788270016494",
+            "id": "c-lead-1-1788270497508",
             "rank": 1,
             "name": "جملة الجبوري",
             "city": "كربلاء المقدسة",
@@ -839,7 +845,7 @@
             "badge": "🥇"
           },
           {
-            "id": "c-lead-2-1788270016494",
+            "id": "c-lead-2-1788270497509",
             "rank": 2,
             "name": "مرتضى عادي",
             "city": "كربلاء المقدسة",

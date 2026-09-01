@@ -310,18 +310,12 @@ export default function OrderSuccessPage() {
                 </div>
               </div>
 
-              {/* ملاحظة وإقرار المندوب والاتفاق المالي */}
+              {/* ملاحظة السائق المختصرة */}
               {order.driverNotes && (
-                <div className="mt-3 bg-white/90 border-2 border-amber-300 rounded-2xl p-3.5 space-y-1 shadow-2xs">
-                  <div className="flex items-center gap-1.5 text-amber-950 font-black text-xs">
-                    <span>📝</span>
-                    <span>ملاحظة وإقرار المندوب ({order.driverName || 'المندوب'}) وتفاصيل الاتفاق:</span>
-                  </div>
-                  <p className="text-xs text-slate-800 font-bold bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 leading-relaxed">
+                <div className="pt-2 border-t border-emerald-200/80 flex items-center gap-2 text-xs">
+                  <span className="font-black text-emerald-950 shrink-0">💬 ملاحظة السائق:</span>
+                  <span className="font-bold text-slate-800 bg-white/90 px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs">
                     "{order.driverNotes}"
-                  </p>
-                  <span className="text-[10px] text-slate-500 font-medium block">
-                    💡 هذه الملاحظة مسجلة وموثقة رسمياً في النظام ومحفوظة لتثبيت الاتفاق بين الطرفين وتذكير بموعد التسديد.
                   </span>
                 </div>
               )}
@@ -496,23 +490,18 @@ export default function OrderSuccessPage() {
           ) : null}
         </div>
 
-        {/* صندوق إقرار وملاحظة المندوب الرسمي أسفل الفاتورة */}
+        {/* ملاحظة السائق أسفل الفاتورة */}
         {order.driverNotes && (
-          <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-1.5 print:border-slate-400">
-            <div className="flex items-center justify-between text-xs font-black text-slate-900">
-              <span className="flex items-center gap-1.5">
-                <span>📝</span>
-                <span>إقرار وتثبيت ملاحظة المندوب ({order.driverName || 'المندوب'}):</span>
-              </span>
-              {order.deliveredAt && (
-                <span className="text-[10px] text-slate-500 font-mono">
-                  بتاريخ: {new Date(order.deliveredAt).toLocaleDateString('ar-IQ')} {new Date(order.deliveredAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-black text-slate-800">💬 ملاحظة السائق:</span>
+              <span className="font-bold text-slate-700 font-sans">"{order.driverNotes}"</span>
             </div>
-            <p className="text-xs text-slate-800 font-bold bg-white p-3 rounded-xl border border-slate-200 leading-relaxed font-sans">
-              "{order.driverNotes}"
-            </p>
+            {order.deliveredAt && (
+              <span className="text-[10px] text-slate-400 font-mono">
+                {new Date(order.deliveredAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </div>
         )}
 
