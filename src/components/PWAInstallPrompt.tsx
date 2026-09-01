@@ -112,44 +112,49 @@ export default function PWAInstallPrompt() {
           </div>
 
           {/* تعليمات iOS */}
-          <div className="mt-4 bg-blue-50 rounded-2xl p-3.5 space-y-2.5">
+          <div className="mt-4 bg-blue-50/80 border border-blue-200/80 rounded-2xl p-3.5 space-y-3">
             <p className="text-xs font-black text-slate-800 text-center">
-              كيفية التثبيت على iPhone / iPad:
+              طريقة التثبيت على أجهزة iPhone / iPad 🍏:
             </p>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5 text-xs">
               <div className="flex items-center gap-3">
-                <div className="w-7 h-7 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0">
+                <div className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
                   ١
                 </div>
-                <span className="text-xs text-slate-700 font-bold flex items-center gap-1.5">
-                  اضغط على أيقونة المشاركة
-                  <span className="inline-flex items-center justify-center w-6 h-6 bg-white rounded-lg border border-slate-200 shadow-sm">
-                    <Share className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-slate-800 font-bold flex items-center gap-1.5 flex-wrap">
+                  اضغط على زر المشاركة
+                  <span className="inline-flex items-center justify-center w-6 h-6 bg-white rounded-lg border border-slate-200 shadow-xs">
+                    <Share className="w-3.5 h-3.5 text-blue-600" />
                   </span>
-                  في الأسفل
+                  في أسفل شاشة المتصفح
                 </span>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="w-7 h-7 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0">
+                <div className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
                   ٢
                 </div>
-                <span className="text-xs text-slate-700 font-bold flex items-center gap-1.5">
-                  اختر
-                  <span className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] font-black shadow-sm">
-                    <Plus className="w-3 h-3" />
-                    Add to Home Screen
+                <div className="space-y-1">
+                  <span className="text-slate-800 font-bold flex items-center gap-1.5 flex-wrap">
+                    اختر
+                    <span className="inline-flex items-center gap-1 bg-white border border-blue-300 text-blue-950 rounded-lg px-2 py-1 text-xs font-black shadow-xs">
+                      <Plus className="w-3.5 h-3.5 text-blue-600" />
+                      <span>إضافة إلى الصفحة الرئيسية ➕</span>
+                    </span>
                   </span>
-                </span>
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    (أو إذا كان جهازك بالإنجليزية: <strong>Add to Home Screen</strong>)
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="w-7 h-7 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0">
+                <div className="w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
                   ٣
                 </div>
-                <span className="text-xs text-slate-700 font-bold">
-                  اضغط <span className="text-blue-600">Add</span> للتأكيد ✅
+                <span className="text-slate-800 font-bold">
+                  اضغط <span className="text-blue-700 font-black">إضافة (Add)</span> في الزاوية العلوية ✅
                 </span>
               </div>
             </div>
@@ -158,7 +163,7 @@ export default function PWAInstallPrompt() {
           {/* زر الفهم */}
           <button
             onClick={handleDismiss}
-            className="w-full mt-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs py-2.5 rounded-2xl transition"
+            className="w-full mt-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs py-2.5 rounded-2xl transition cursor-pointer"
           >
             فهمت، شكراً! 👍
           </button>
