@@ -1716,8 +1716,8 @@ export default function AdminOrdersPage() {
 
       {/* MODAL 4: CLEAN A4 OFFICIAL INVOICE & DELIVERY MANIFEST (الطباعة الرسمية النظيفة) */}
       {printOrder && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:p-0 print:m-0 print:bg-transparent">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 space-y-4 text-xs my-8 max-h-[90vh] flex flex-col print:max-h-none print:shadow-none print:border-none print:p-0 print:my-0 print:w-full">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:p-0 print:m-0 print:bg-transparent order-print-modal-overlay">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 space-y-4 text-xs my-8 max-h-[90vh] flex flex-col print:max-h-none print:shadow-none print:border-none print:p-0 print:my-0 print:w-full order-print-modal-card">
             
             {/* Top Toolbar (Hidden on Print) */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 no-print print:hidden">

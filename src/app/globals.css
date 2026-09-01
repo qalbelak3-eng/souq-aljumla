@@ -113,8 +113,9 @@ body {
     display: none !important;
   }
 
-  /* When printing statement sheet, hide any backdrop or container artifacts */
-  .statement-modal-overlay {
+  /* When printing statement sheet or order invoice, hide any backdrop or container artifacts */
+  .statement-modal-overlay,
+  .order-print-modal-overlay {
     position: static !important;
     background: transparent !important;
     padding: 0 !important;
@@ -123,10 +124,31 @@ body {
     display: block !important;
   }
 
-  .statement-modal-card {
+  .statement-modal-card,
+  .order-print-modal-card {
+    position: static !important;
     max-height: none !important;
     box-shadow: none !important;
     border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    background: transparent !important;
+  }
+
+  /* Hide main admin layout and non-printable elements when order print is open */
+  body:has(#printable-order-sheet) > *:not(:has(#printable-order-sheet)) {
+    display: none !important;
+  }
+
+  body:has(#printable-statement-sheet) > *:not(:has(#printable-statement-sheet)) {
+    display: none !important;
+  }
+
+  #printable-order-sheet,
+  #printable-statement-sheet {
+    max-height: none !important;
+    overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
