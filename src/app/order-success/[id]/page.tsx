@@ -168,12 +168,29 @@ export default function OrderSuccessPage() {
           </div>
 
           {order.status === 'cancelled' ? (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-2xl text-red-700 flex items-center gap-3">
-              <AlertCircle className="w-6 h-6 shrink-0" />
-              <div>
-                <h4 className="font-bold text-xs">تم إلغاء هذه الطلبية</h4>
-                <p className="text-[11px] text-red-500 mt-0.5">يرجى التواصل معنا عبر الواتساب للاستفسار.</p>
+            <div className="bg-rose-50 border-2 border-rose-200 p-4 sm:p-5 rounded-3xl text-rose-900 space-y-2.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-rose-950">تم إرجاع / إلغاء هذه الطلبية 📦❌</h4>
+                  <p className="text-xs text-rose-700 font-bold mt-0.5">
+                    {order.driverName ? `المندوب: ${order.driverName}` : 'بواسطة إدارة المتجر'}
+                    {order.deliveredAt && ` • بتاريخ: ${new Date(order.deliveredAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
+                </div>
               </div>
+
+              {/* ملاحظة سبب الإلغاء أو الإرجاع المسجلة من السائق */}
+              {order.driverNotes && (
+                <div className="pt-2 border-t border-rose-200/80 flex items-center gap-2 text-xs">
+                  <span className="font-black text-rose-950 shrink-0">💬 سبب الإرجاع / ملاحظة السائق:</span>
+                  <span className="font-bold text-slate-800 bg-white/90 px-3 py-1 rounded-xl border border-rose-200 shadow-2xs">
+                    "{order.driverNotes}"
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2">
