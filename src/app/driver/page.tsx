@@ -286,25 +286,19 @@ export default function DriverDashboardPage() {
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h1 className="font-black text-sm text-slate-900">{driver.name}</h1>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.2 rounded-md">
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md">
                   نشط 🟢
                 </span>
-                {driver.averageRating && (
-                  <span className="bg-amber-100 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.2 rounded-md flex items-center gap-1">
-                    <span>⭐ {driver.averageRating}</span>
-                    <span>({driver.ratingTierLabel || 'ممتاز 🌟'})</span>
-                  </span>
-                )}
+                <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>
+                  <span>({driver.ratingTierLabel || (driver.ratingsCount ? 'ممتاز 🌟' : 'سائق معتمد 🌟')})</span>
+                  <span className="text-slate-400 font-normal">({driver.ratingsCount || 0} تقييم)</span>
+                </span>
               </div>
               <div className="flex items-center gap-2 text-[11px] text-slate-500 font-bold mt-0.5 flex-wrap">
                 <span>{driver.vehicleInfo || 'مندوب التوصيل المعتمد'}</span>
-                {driver.ratingsCount && driver.ratingsCount > 0 ? (
-                  <span className="text-[10px] text-slate-400 font-medium font-mono">
-                    • ({driver.ratingsCount} تقييم من الزبائن)
-                  </span>
-                ) : null}
               </div>
             </div>
           </div>
@@ -349,7 +343,7 @@ export default function DriverDashboardPage() {
 
           <div className="text-center bg-white/20 backdrop-blur-xs border border-white/30 p-3 rounded-2xl shrink-0">
             <span className="text-xs font-bold text-emerald-100 block">طلبياتك</span>
-            <span className="text-xl font-black text-white font-mono block">
+            <span className="text-2xl font-black text-white font-mono block">
               {activeOrders.length}
             </span>
             <span className="text-[10px] text-emerald-100 font-bold block">قيد التوصيل</span>

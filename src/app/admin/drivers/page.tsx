@@ -618,26 +618,22 @@ export default function AdminDriversPage() {
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-900">{driver.name}</span>
                                   {driver.isActive ? (
-                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded">
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
                                       نشط ✅
                                     </span>
                                   ) : (
-                                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.2 rounded">
+                                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded">
                                       متوقف
                                     </span>
                                   )}
-                                  {driver.averageRating && (
-                                    <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                                      <span>⭐ {driver.averageRating}</span>
-                                      <span>({driver.ratingTierLabel || 'ممتاز 🌟'})</span>
-                                    </span>
-                                  )}
+                                  <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-1.5 py-0.5 rounded flex items-center gap-1">
+                                    <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>
+                                    <span>({driver.ratingTierLabel || (driver.ratingsCount ? 'ممتاز 🌟' : 'سائق معتمد 🌟')})</span>
+                                    <span className="text-slate-400 font-normal font-mono">({driver.ratingsCount || 0} تقييم)</span>
+                                  </span>
                                 </div>
-                                <div className="text-slate-500 font-mono text-[11px] mt-0.5 flex items-center gap-2 flex-wrap" dir="ltr">
+                                <div className="text-slate-500 font-mono text-[11px] mt-0.5" dir="ltr">
                                   <span>{driver.phone} • كلمة المرور: {driver.password || '123'}</span>
-                                  {driver.ratingsCount && driver.ratingsCount > 0 ? (
-                                    <span className="text-[10px] text-amber-700 font-bold">({driver.ratingsCount} تقييم)</span>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>
