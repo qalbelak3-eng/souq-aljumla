@@ -544,12 +544,22 @@
       "total": 71000,
       "notes": "",
       "paymentMethod": "cod",
-      "status": "pending",
+      "status": "cancelled",
       "whatsappSent": false,
       "id": "ord-1788277276217",
       "orderNumber": "INV-1011",
       "createdAt": "2026-09-01T15:41:16.217Z",
-      "updatedAt": "2026-09-01T15:41:16.217Z"
+      "updatedAt": "2026-09-01T15:47:36.270Z",
+      "driverId": "drv-1787845130699",
+      "driverName": "غيث الجنابي",
+      "driverPhone": "07710101010",
+      "driverAssignedAt": "2026-09-01T15:46:45.862Z",
+      "vehicleId": "veh-1787845492660",
+      "vehicleName": "كيا فحل",
+      "vehiclePlate": "14563",
+      "outForDeliveryAt": "2026-09-01T15:46:55.012Z",
+      "collectionStatus": "returned",
+      "driverNotes": "لم يقم بتسديد المبلغ "
     },
     {
       "customer": {
@@ -1175,7 +1185,7 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "w-lead-1-1788277276217",
+            "id": "w-lead-1-1788277654515",
             "rank": 1,
             "name": "علي الجبوري (تجربة داخلية)",
             "city": "كربلاء المقدسة - حي العامل",
@@ -1194,16 +1204,16 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "c-lead-1-1788277276217",
+            "id": "c-lead-1-1788277654515",
             "rank": 1,
             "name": "جملة الجبوري",
             "city": "كربلاء المقدسة",
-            "score": "6 طلبية (225,600 د.ع)",
+            "score": "7 طلبية (296,600 د.ع)",
             "prize": "قسيمة 150,000 د.ع 🥇",
             "badge": "🥇"
           },
           {
-            "id": "c-lead-2-1788277276217",
+            "id": "c-lead-2-1788277654515",
             "rank": 2,
             "name": "مرتضى عادي",
             "city": "كربلاء المقدسة",

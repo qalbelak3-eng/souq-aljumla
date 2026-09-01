@@ -134,7 +134,7 @@ export function generateDeliveryAccountantWhatsAppLink(order: Order, driverName:
   }
 
   const message = [
-    `💼 *إشعار تسليم وتحصيل طلبية - سوق الجملة* 💼`,
+    `*إشعار تسليم وتحصيل طلبية - سوق الجملة*`,
     `━━━━━━━━━━━━━━━━━━`,
     `🔖 *رقم الفاتورة:* #${order.orderNumber}`,
     `👤 *الزبون / المحل:* ${order.customer.name} ${order.customer.businessName ? `(${order.customer.businessName})` : ''}`,
