@@ -330,6 +330,10 @@ export default function AdminOrdersPage() {
       setManualBusinessName(m.businessName || '');
       setManualCity(m.city || 'كربلاء المقدسة');
       setManualAddress(m.address || '');
+
+      // 🧠 تلقائياً: إذا كان تاجر أو ماركت يعتمد أسعار الجملة، وإذا زبون مفرد يعتمد أسعار المفرد
+      const isMerchant = m.accountType === 'merchant' || m.accountType === 'wholesale' || m.accountType === 'market' || !!m.businessName || m.merchantStatus === 'approved';
+      setManualSaleType(isMerchant ? 'wholesale' : 'retail');
     }
   };
 
@@ -1348,30 +1352,79 @@ export default function AdminOrdersPage() {
 
               </div>
 
-              {/* Pricing Sale Type Toggle */}
-              <div className="flex items-center justify-between bg-slate-100 p-3 rounded-2xl border border-slate-200">
-                <span className="font-bold text-slate-800">نوع التسعير في الفاتورة:</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setManualSaleType('wholesale')}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition ${
-                      manualSaleType === 'wholesale' ? 'bg-brand-blue text-white shadow-xs' : 'bg-white text-slate-700'
-                    }`}
-                  >
-                    📦 أسعار كراتين الجملة
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setManualSaleType('retail')}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition ${
-                      manualSaleType === 'retail' ? 'bg-brand-blue text-white shadow-xs' : 'bg-white text-slate-700'
-                    }`}
-                  >
-                    🛒 أسعار المفرد
-                  </button>
+              {/* Pricing Sale Type Logic */}
+              {manualCustomerType === 'registered' && manualSelectedMerchantId ? (
+                (() => {
+                  const selectedM = merchants.find((u) => u.id === manualSelectedMerchantId);
+                  const isMerchant = selectedM?.accountType === 'merchant' || selectedM?.accountType === 'wholesale' || selectedM?.accountType === 'market' || !!selectedM?.businessName || selectedM?.merchantStatus === 'approved';
+                  const tierLabel = selectedM?.merchantTier === 'gold' ? 'ذهبـي VIP 🥇' : selectedM?.merchantTier === 'silver' ? 'فضـي 🥈' : 'برونـزي 🥉';
+
+                  return (
+                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                      isMerchant ? 'bg-emerald-50/80 border-emerald-200' : 'bg-blue-50/80 border-blue-200'
+                    }`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+                          isMerchant ? 'bg-emerald-600 text-white' : 'bg-brand-blue text-white'
+                        }`}>
+                          {isMerchant ? '👑' : '🛒'}
+                        </div>
+                        <div>
+                          <span className="font-black text-slate-900 text-xs block">
+                            {isMerchant ? (
+                              <span>تاجر / ماركت معتمد: <span className="text-emerald-800">{selectedM?.businessName || selectedM?.name}</span></span>
+                            ) : (
+                              <span>زبون تجزئة ومفرد مسجل: <span className="text-brand-blue">{selectedM?.name}</span></span>
+                            )}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-bold block">
+                            {isMerchant
+                              ? `الفئة: (${tierLabel}) — تم اعتماد أسعار كراتين الجملة والماركتات آلياً ✓`
+                              : 'تم اعتماد أسعار المفرد والقطاعي آلياً ✓'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className={`text-[11px] font-black px-3 py-1 rounded-xl border ${
+                        isMerchant
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-brand-blue text-white border-blue-700'
+                      }`}>
+                        {isMerchant ? '📦 تسعير كراتين الجملة' : '🛒 تسعير المفرد'}
+                      </span>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="flex items-center justify-between bg-slate-100 p-3 rounded-2xl border border-slate-200">
+                  <div>
+                    <span className="font-bold text-slate-900 text-xs block">نوع التسعير في الفاتورة:</span>
+                    <span className="text-[10px] text-slate-500 font-bold">
+                      {manualCustomerType === 'registered' ? 'اختر التاجر أعلاه للاعتماد التلقائي' : 'زبون غير مسجل — حدد نوع التسعير المطلوب:'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setManualSaleType('wholesale')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                        manualSaleType === 'wholesale' ? 'bg-brand-blue text-white shadow-xs' : 'bg-white text-slate-700'
+                      }`}
+                    >
+                      📦 أسعار كراتين الجملة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualSaleType('retail')}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                        manualSaleType === 'retail' ? 'bg-brand-blue text-white shadow-xs' : 'bg-white text-slate-700'
+                      }`}
+                    >
+                      🛒 أسعار المفرد
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Add Products Line */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
