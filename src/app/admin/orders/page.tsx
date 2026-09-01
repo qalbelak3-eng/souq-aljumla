@@ -1224,11 +1224,22 @@ export default function AdminOrdersPage() {
                               setEditItems(updated);
                             }
                           }}
-                          className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs"
+                          className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs cursor-pointer"
                         >
                           -
                         </button>
-                        <span className="w-10 text-center font-black font-mono text-sm">{item.quantity}</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            const updated = [...editItems];
+                            updated[idx].quantity = val;
+                            setEditItems(updated);
+                          }}
+                          className="w-14 text-center font-black font-mono text-sm bg-white border border-slate-300 rounded-lg py-1 px-1 focus:ring-2 focus:ring-brand-blue outline-none"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -1236,7 +1247,7 @@ export default function AdminOrdersPage() {
                             updated[idx].quantity += 1;
                             setEditItems(updated);
                           }}
-                          className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs"
+                          className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs cursor-pointer"
                         >
                           +
                         </button>
@@ -1618,11 +1629,22 @@ export default function AdminOrdersPage() {
                                 setManualItems(updated);
                               }
                             }}
-                            className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs"
+                            className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs cursor-pointer"
                           >
                             -
                           </button>
-                          <span className="w-10 text-center font-black font-mono text-sm">{item.quantity}</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1);
+                              const updated = [...manualItems];
+                              updated[idx].quantity = val;
+                              setManualItems(updated);
+                            }}
+                            className="w-14 text-center font-black font-mono text-sm bg-white border border-slate-300 rounded-lg py-1 px-1 focus:ring-2 focus:ring-brand-blue outline-none"
+                          />
                           <button
                             type="button"
                             onClick={() => {
@@ -1630,7 +1652,7 @@ export default function AdminOrdersPage() {
                               updated[idx].quantity += 1;
                               setManualItems(updated);
                             }}
-                            className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs"
+                            className="w-7 h-7 bg-white rounded-lg font-black text-slate-800 hover:bg-slate-200 flex items-center justify-center shadow-xs cursor-pointer"
                           >
                             +
                           </button>
