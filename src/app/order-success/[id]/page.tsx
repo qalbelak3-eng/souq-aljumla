@@ -43,7 +43,13 @@ export default function OrderSuccessPage() {
 
   const fetchOrderLive = async () => {
     try {
-      const res = await fetch(`/api/orders/${orderId}`);
+      const res = await fetch(`/api/orders/${orderId}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       const data = await res.json();
       if (data.success && data.order) {
         const newOrder: Order = data.order;
@@ -62,7 +68,7 @@ export default function OrderSuccessPage() {
         }
 
         prevStatusRef.current = newOrder.status;
-        setOrder(newOrder);
+        setOrder({ ...newOrder });
         if (data.whatsappUrl) setWhatsappUrl(data.whatsappUrl);
         setLastUpdatedTime(new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       }
@@ -86,7 +92,7 @@ export default function OrderSuccessPage() {
     fetchOrderLive();
     const interval = setInterval(() => {
       fetchOrderLive();
-    }, 2500);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [orderId]);
