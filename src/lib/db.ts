@@ -3024,15 +3024,38 @@ export function recordPushNotificationLog(log: Omit<PushNotificationLog, 'id' | 
   const db = ensureDbExists();
   if (!db.pushNotificationLogs) db.pushNotificationLogs = [];
 
+  const now = new Date();
+  let expiresAt: string | undefined = undefined;
+
+  if (log.expiryHours && log.expiryHours > 0) {
+    const expDate = new Date(now.getTime() + log.expiryHours * 60 * 60 * 1000);
+    expiresAt = expDate.toISOString();
+  }
+
   const newLog: PushNotificationLog = {
     ...log,
     id: `notif-${Date.now()}`,
-    createdAt: new Date().toISOString(),
+    expiresAt: expiresAt || log.expiresAt,
+    createdAt: now.toISOString(),
   };
 
   db.pushNotificationLogs.unshift(newLog);
   saveDb(db);
   return newLog;
+}
+
+export function deletePushNotificationLog(id: string): boolean {
+  const db = ensureDbExists();
+  if (!db.pushNotificationLogs) return false;
+
+  const initialLen = db.pushNotificationLogs.length;
+  db.pushNotificationLogs = db.pushNotificationLogs.filter((log) => log.id !== id);
+
+  if (db.pushNotificationLogs.length !== initialLen) {
+    saveDb(db);
+    return true;
+  }
+  return false;
 }
 
 

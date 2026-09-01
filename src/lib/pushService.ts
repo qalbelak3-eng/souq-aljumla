@@ -21,6 +21,8 @@ export interface SendPushPayload {
   url?: string;
   targetAudience?: 'all' | 'wholesale' | 'market' | 'retail';
   sentBy?: string;
+  expiryHours?: number; // مدة الصلاحية بالساعات (24 ساعة، 48 ساعة، أو 0 = دائم)
+  expiresAt?: string;
 }
 
 export async function sendWebPushNotification(payload: SendPushPayload): Promise<{
@@ -55,6 +57,8 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
       successCount: 0,
       failureCount: 0,
       sentBy: payload.sentBy || 'مدير النظام',
+      expiryHours: payload.expiryHours,
+      expiresAt: payload.expiresAt,
     });
 
     return {
@@ -120,6 +124,8 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
     successCount,
     failureCount,
     sentBy: payload.sentBy || 'مدير النظام',
+    expiryHours: payload.expiryHours,
+    expiresAt: payload.expiresAt,
   });
 
   return {

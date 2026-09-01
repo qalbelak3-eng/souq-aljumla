@@ -45,16 +45,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const refreshNotifications = useCallback(async () => {
     try {
-      // 1. First load from client storage immediately
+      // 1. Check cached in localStorage and filter out expired
       if (typeof window !== 'undefined') {
         try {
           const cached = localStorage.getItem('souq_saved_notifications');
           if (cached) {
             const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setNotifications(parsed);
+            if (Array.isArray(parsed)) {
+              const nowTime = Date.now();
+              const validCached = parsed.filter((n: PushNotificationLog) => {
+                if (n.expiresAt && new Date(n.expiresAt).getTime() <= nowTime) {
+                  return false; // منتهي الصلاحية
+                }
+                return true;
+              });
+              setNotifications(validCached);
               const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-              const unread = parsed.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+              const unread = validCached.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
               setUnreadCount(unread);
             }
           }
@@ -66,7 +73,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const data = await res.json();
       if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
         const userType = user?.accountType || 'retail';
+        const nowTime = Date.now();
+
         const filtered = data.logs.filter((log: PushNotificationLog) => {
+          // استبعاد المنتهي الصلاحية فوراً
+          if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
+            return false;
+          }
+
           if (!log.targetAudience || log.targetAudience === 'all') return true;
           if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
           if (log.targetAudience === 'market') return userType === 'market';
@@ -74,13 +88,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           return true;
         });
 
-        const freshLogs = filtered.length > 0 ? filtered : data.logs;
+        const freshLogs = filtered;
 
         setNotifications((prev) => {
           const merged = [...freshLogs];
           prev.forEach((p) => {
             if (!merged.some((m) => m.id === p.id)) {
-              merged.push(p);
+              // تحقق من الصلاحية أيضاً للعناصر السابقة
+              if (!p.expiresAt || new Date(p.expiresAt).getTime() > nowTime) {
+                merged.push(p);
+              }
             }
           });
           if (typeof window !== 'undefined') {

@@ -15,7 +15,10 @@ import {
   Clock,
   ShieldCheck,
   Zap,
-  ExternalLink
+  ExternalLink,
+  Trash2,
+  Hourglass,
+  Calendar
 } from 'lucide-react';
 import { PushNotificationLog } from '@/types';
 import { useToast } from '@/context/ToastContext';
@@ -40,7 +43,9 @@ export default function AdminNotificationsPage() {
   const [targetAudience, setTargetAudience] = useState<'all' | 'wholesale' | 'market' | 'retail'>('all');
   const [image, setImage] = useState('');
   const [url, setUrl] = useState('/products?filter=offers');
+  const [expiryHours, setExpiryHours] = useState<number>(24); // افتراضياً 24 ساعة للعروض اليومية
   const [isSending, setIsSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchStatsAndLogs = () => {
     setIsLoadingStats(true);
@@ -116,6 +121,7 @@ export default function AdminNotificationsPage() {
           url: url.trim() || '/',
           targetAudience,
           sentBy: 'المدير العام',
+          expiryHours: Number(expiryHours) || 0,
         }),
       });
 
@@ -155,6 +161,39 @@ export default function AdminNotificationsPage() {
       toast.showToast('فشل الاتصال بالخادم', 'error');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من رغبتك بحذف هذا الإشعار من السجل؟')) {
+      return;
+    }
+
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/notifications/send?id=${id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        toast.showToast('تم حذف الإشعار من السجل بنجاح 🗑️', 'success');
+        setLogs((prev) => {
+          const updated = prev.filter((item) => item.id !== id);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_admin_push_logs', JSON.stringify(updated));
+            localStorage.setItem('souq_saved_notifications', JSON.stringify(updated));
+          }
+          return updated;
+        });
+      } else {
+        toast.showToast(data.error || 'فشل حذف الإشعار', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.showToast('حدث خطأ أثناء الاتصال بالخادم', 'error');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -408,6 +447,42 @@ export default function AdminNotificationsPage() {
               )}
             </div>
 
+            {/* Notification Expiry / Duration Options */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                  <Hourglass className="w-4 h-4 text-amber-600" />
+                  <span>مدة صلاحية الإشعار / وقت انتهاء العرض ⏳</span>
+                </label>
+                <span className="text-[10px] text-slate-500 font-bold">
+                  يختفي تلقائياً من هواتف الزبائن بعد انتهاء المدة
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { value: 24, label: 'يوم واحد (24 ساعة) 🔥', desc: 'مناسب للعروض اليومية' },
+                  { value: 48, label: 'يومان (48 ساعة) ⚡', desc: 'عروض نهاية الأسبوع' },
+                  { value: 168, label: 'أسبوع كامل (7 أيام) 📅', desc: 'تخفيضات أسبوعية' },
+                  { value: 0, label: 'دائم بدون انتهاء ♾️', desc: 'إعلانات وتحديثات عامة' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setExpiryHours(opt.value)}
+                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
+                      expiryHours === opt.value
+                        ? 'border-amber-500 bg-amber-50/80 text-amber-950 font-black ring-2 ring-amber-400/30'
+                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-slate-700 font-medium'
+                    }`}
+                  >
+                    <span className="text-xs block leading-tight">{opt.label}</span>
+                    <span className="text-[9px] text-slate-500 mt-1">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Submit Button */}
             <div className="pt-2">
               <button
@@ -431,8 +506,8 @@ export default function AdminNotificationsPage() {
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    <span>🚀 إرسال التنبيه الآن لـ ({getTargetAudienceCount()}) جهاز</span>
+                    <Send className="w-4 h-4 text-white" />
+                    <span>إرسال التنبيه الفوري لـ ({getTargetAudienceCount()}) جهاز 🚀</span>
                   </>
                 )}
               </button>
@@ -519,11 +594,15 @@ export default function AdminNotificationsPage() {
       {/* Previous Notification Logs Table */}
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs space-y-4">
         
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
           <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
             <span>📜 سجل الإشعارات والتنبيهات المرسلة سابقاً</span>
             <span className="text-xs text-slate-400 font-bold">({logs.length})</span>
           </h3>
+
+          <span className="text-[11px] text-slate-500 font-medium">
+            💡 يمكنك حذف أي إشعار يدوياً أو تركه لينتهي تلقائياً حسب مدة العرض
+          </span>
         </div>
 
         {logs.length === 0 ? (
@@ -538,32 +617,70 @@ export default function AdminNotificationsPage() {
                   <th className="py-2.5 px-3">التاريخ والوقت</th>
                   <th className="py-2.5 px-3">عنوان الإشعار</th>
                   <th className="py-2.5 px-3">الفئة المستهدفة</th>
+                  <th className="py-2.5 px-3 text-center">حالة الصلاحية</th>
                   <th className="py-2.5 px-3 text-center">الأجهزة المستلمة</th>
                   <th className="py-2.5 px-3">المرسل</th>
+                  <th className="py-2.5 px-3 text-center">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3 px-3 text-slate-600 font-mono text-[11px] whitespace-nowrap">
-                      {new Date(log.createdAt).toLocaleString('ar-IQ')}
-                    </td>
-                    <td className="py-3 px-3 font-black text-slate-900 max-w-xs truncate" title={log.title}>
-                      {log.title}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="bg-slate-100 text-slate-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                        {log.targetAudienceLabel || log.targetAudience}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-center font-mono font-black text-emerald-600">
-                      ✅ {log.successCount} / {log.sentCount}
-                    </td>
-                    <td className="py-3 px-3 text-slate-500 text-[11px]">
-                      {log.sentBy || 'المدير'}
-                    </td>
-                  </tr>
-                ))}
+                {logs.map((log) => {
+                  const isExpired = log.expiresAt ? new Date(log.expiresAt).getTime() <= Date.now() : false;
+
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-3 text-slate-600 font-mono text-[11px] whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString('ar-IQ')}
+                      </td>
+                      <td className="py-3 px-3 font-black text-slate-900 max-w-xs truncate" title={log.title}>
+                        {log.title}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="bg-slate-100 text-slate-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                          {log.targetAudienceLabel || log.targetAudience}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {log.expiresAt ? (
+                          isExpired ? (
+                            <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black px-2 py-0.5 rounded-full">
+                              ⏳ منتهي الصلاحية
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-full">
+                              🟢 نشط (ينتهي: {new Date(log.expiresAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })})
+                            </span>
+                          )
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            ♾️ دائم
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-black text-emerald-600">
+                        ✅ {log.successCount} / {log.sentCount}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 text-[11px]">
+                        {log.sentBy || 'المدير'}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNotification(log.id)}
+                          disabled={deletingId === log.id}
+                          className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition flex items-center justify-center mx-auto cursor-pointer disabled:opacity-50"
+                          title="حذف الإشعار من السجل"
+                        >
+                          {deletingId === log.id ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

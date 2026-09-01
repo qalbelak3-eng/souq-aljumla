@@ -725,6 +725,8 @@ export interface PushNotificationLog {
   successCount: number;
   failureCount: number;
   sentBy?: string;
+  expiryHours?: number; // مدة الصلاحية بالساعات (مثلاً 24 ساعة للعروض اليومية)
+  expiresAt?: string; // تاريخ ووقت انتهاء الصلاحية (ISO String)
   createdAt: string;
 }
 
