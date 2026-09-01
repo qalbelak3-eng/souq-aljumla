@@ -172,10 +172,24 @@ export default function AdminPurchasesPage() {
             productId: prod.id,
             productName: prod.name,
             unit: prod.wholesaleUnit || 'كرتون',
-            costPrice: prod.costPrice || next[index].costPrice,
-            boxesPerCarton: prod.boxesPerCarton || 6,
-            itemsPerBox: prod.itemsPerBox || 24,
+            costPrice: prod.costPrice || next[index].costPrice || 0,
+            boxesPerCarton: prod.boxesPerCarton || 1,
+            itemsPerBox: prod.itemsPerBox || 1,
           };
+
+          // ⚡ يفتح سطر جديد تلقائياً بمجرد اختيار صنف في آخر سطر
+          if (index === next.length - 1) {
+            next.push({
+              productId: '',
+              productName: '',
+              company: invCompany,
+              unit: 'كرتون',
+              quantity: 10,
+              costPrice: 0,
+              boxesPerCarton: 1,
+              itemsPerBox: 1,
+            });
+          }
         }
       } else {
         next[index] = { ...next[index], [field]: value };
@@ -185,12 +199,19 @@ export default function AdminPurchasesPage() {
   };
 
   const calculateModalTotal = () => {
-    return invItems.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.costPrice) || 0), 0);
+    return invItems.reduce((sum, item) => {
+      if (!item.productId) return sum;
+      return sum + (Number(item.quantity) || 0) * (Number(item.costPrice) || 0);
+    }, 0);
   };
 
   const handleSaveInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invCompany || invItems.length === 0) return;
+    const validItems = invItems.filter(it => it.productId && it.productId.trim() !== '');
+    if (!invCompany || validItems.length === 0) {
+      toast.error('يرجى اختيار صنف واحد على الأقل في الفاتورة');
+      return;
+    }
 
     try {
       const res = await fetch('/api/purchases', {
@@ -201,7 +222,7 @@ export default function AdminPurchasesPage() {
           date: invDate,
           paymentMethod: invPaymentMethod,
           notes: invNotes,
-          items: invItems,
+          items: validItems,
         }),
       });
       const data = await res.json();
@@ -556,14 +577,9 @@ export default function AdminPurchasesPage() {
                   <label className="font-black text-slate-900 text-xs flex items-center gap-1.5">
                     <span>قائمة السلع والأصناف المشتراة في الفاتورة:</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={addItemRow}
-                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1 text-[11px]"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ إضافة صنف آخر</span>
-                  </button>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    (يفتح سطر جديد تلقائياً بمجرد اختيار الصنف ⚡)
+                  </span>
                 </div>
 
                 <div className="space-y-3">
