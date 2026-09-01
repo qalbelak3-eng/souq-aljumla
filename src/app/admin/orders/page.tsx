@@ -306,7 +306,7 @@ export default function AdminOrdersPage() {
   const handleSaveOrderEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder || editItems.length === 0) {
-      alert('يجب أن تحتوي الفاتورة على صنف واحد على الأقل');
+      toast.error('يجب أن تحتوي الفاتورة على صنف واحد على الأقل');
       return;
     }
 
@@ -329,7 +329,7 @@ export default function AdminOrdersPage() {
 
       const data = await res.json();
       if (data.success && data.order) {
-        alert('تم تعديل الفاتورة وإرجاع/تحديث المخزون وحساب العميل بنجاح!');
+        toast.success('تم تعديل الفاتورة وإرجاع/تحديث المخزون وحساب العميل بنجاح! 🎉');
         fetchOrders();
         fetchProductsAndMerchants();
         setEditingOrder(null);
@@ -337,11 +337,11 @@ export default function AdminOrdersPage() {
           setSelectedOrder(data.order);
         }
       } else {
-        alert(data.error || 'حدث خطأ أثناء تعديل الفاتورة');
+        toast.error(data.error || 'حدث خطأ أثناء تعديل الفاتورة');
       }
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ في الاتصال بالخادم');
+      toast.error('حدث خطأ في الاتصال بالخادم');
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -430,11 +430,11 @@ export default function AdminOrdersPage() {
   const handleSubmitManualOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualCustomerName.trim() || !manualCustomerPhone.trim()) {
-      alert('يرجى إدخال اسم الزبون ورقم الهاتف');
+      toast.error('يرجى إدخال اسم الزبون ورقم الهاتف');
       return;
     }
     if (manualItems.length === 0) {
-      alert('يرجى إضافة صنف واحد على الأقل للطلبية');
+      toast.error('يرجى إضافة صنف واحد على الأقل للطلبية');
       return;
     }
 
@@ -487,7 +487,7 @@ export default function AdminOrdersPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ في الاتصال بالخادم');
+      toast.error('حدث خطأ في الاتصال بالخادم');
     } finally {
       setIsSubmittingManualOrder(false);
     }
