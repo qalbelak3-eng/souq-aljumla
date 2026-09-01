@@ -32,6 +32,7 @@ import {
   Minus,
   Wallet,
   ArrowDownLeft,
+  ArrowDownRight,
   ArrowUpRight,
   Shield,
   ShieldAlert,
