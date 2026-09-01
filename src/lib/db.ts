@@ -469,7 +469,7 @@ export function createOrder(orderData: Omit<Order, 'id' | 'orderNumber' | 'creat
 
   // 📦 AUTOMATIC REAL-TIME STOCK DEDUCTION UPON SALE
   for (const item of enrichedItems) {
-    const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+    const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
     if (prodIdx > -1) {
       const prod = db.products[prodIdx];
       const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
@@ -501,7 +501,7 @@ export function updateOrderStatus(id: string, status: Order['status']): Order | 
   // If order was cancelled, restore inventory
   if (status === 'cancelled' && oldStatus !== 'cancelled') {
     for (const item of db.orders[index].items || []) {
-      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
       if (prodIdx > -1) {
         const prod = db.products[prodIdx];
         const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
@@ -518,7 +518,7 @@ export function updateOrderStatus(id: string, status: Order['status']): Order | 
   } else if (oldStatus === 'cancelled' && status !== 'cancelled') {
     // If uncancelled, re-deduct inventory
     for (const item of db.orders[index].items || []) {
-      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
       if (prodIdx > -1) {
         const prod = db.products[prodIdx];
         const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;

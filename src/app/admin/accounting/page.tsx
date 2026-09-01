@@ -1017,7 +1017,7 @@ function AdminAccountingContent() {
                 </div>
               </div>
               <div className="text-2xl font-black font-mono text-emerald-700">
-                {(vaultSummary?.totalInflow ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
+                {(vaultSummary?.totalInflowAllTime ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
               </div>
               <p className="text-[11px] text-slate-400 font-bold">
                 مبيعات نقدية + تحصيلات زبائن + تصفيات سواق
@@ -1033,7 +1033,7 @@ function AdminAccountingContent() {
                 </div>
               </div>
               <div className="text-2xl font-black font-mono text-rose-700">
-                {(vaultSummary?.totalOutflow ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
+                {(vaultSummary?.totalOutflowAllTime ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
               </div>
               <p className="text-[11px] text-slate-400 font-bold">
                 مصاريف تشغيلية + سداد شركات مجهزة + مسحوبات
@@ -1122,7 +1122,7 @@ function AdminAccountingContent() {
                         if (!vaultSearchQuery) return true;
                         const q = vaultSearchQuery.toLowerCase();
                         return (
-                          (m.receiptNumber && m.receiptNumber.toLowerCase().includes(q)) ||
+                          (m.transactionNumber && m.transactionNumber.toLowerCase().includes(q)) ||
                           (m.partyName && m.partyName.toLowerCase().includes(q)) ||
                           (m.notes && m.notes.toLowerCase().includes(q)) ||
                           (m.categoryLabel && m.categoryLabel.toLowerCase().includes(q))
@@ -1133,7 +1133,7 @@ function AdminAccountingContent() {
                         return (
                           <tr key={m.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
                             <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
-                              #{m.receiptNumber || m.id.slice(-6)}
+                              #{m.transactionNumber || m.id.slice(-6)}
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-500">
                               {new Date(m.date).toLocaleString('ar-IQ')}
@@ -1161,7 +1161,7 @@ function AdminAccountingContent() {
                               </span>
                             </td>
                             <td className="py-3 px-4 text-center whitespace-nowrap font-mono text-[11px] text-slate-500">
-                              {m.operator?.name || m.createdByName || 'مدير النظام'}
+                              {m.performedBy?.name || 'مدير النظام'}
                             </td>
                           </tr>
                         );
@@ -1236,8 +1236,9 @@ function AdminAccountingContent() {
                         if (!auditSearchQuery) return true;
                         const q = auditSearchQuery.toLowerCase();
                         return (
-                          (log.operatorName && log.operatorName.toLowerCase().includes(q)) ||
-                          (log.action && log.action.toLowerCase().includes(q)) ||
+                          (log.operator?.name && log.operator.name.toLowerCase().includes(q)) ||
+                          (log.actionLabel && log.actionLabel.toLowerCase().includes(q)) ||
+                          (log.actionType && log.actionType.toLowerCase().includes(q)) ||
                           (log.details && log.details.toLowerCase().includes(q))
                         );
                       })
@@ -1248,19 +1249,19 @@ function AdminAccountingContent() {
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap font-black text-slate-900">
                             <span className="bg-slate-100 px-2.5 py-1 rounded-xl text-slate-800 border border-slate-200">
-                              👤 {log.operatorName || 'المحاسب'}
+                              👤 {log.operator?.name || 'المحاسب'}
                             </span>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-xl text-[11px] font-bold">
-                              {log.action}
+                              {log.actionLabel || log.actionType}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-slate-700">
-                            {log.details}
+                            {log.details || log.target?.name || '-'}
                           </td>
                           <td className="py-3 px-4 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                            {log.amount ? `${log.amount.toLocaleString()} د.ع` : '-'}
+                            {log.financialImpact?.amount ? `${log.financialImpact.amount.toLocaleString()} د.ع` : '-'}
                           </td>
                         </tr>
                       ))

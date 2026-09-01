@@ -1277,19 +1277,12 @@ export default function AdminOrdersPage() {
 
                 {manualCustomerType === 'registered' && (
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">اختر التاجر / الماركت:</label>
-                    <select
-                      value={manualSelectedMerchantId}
-                      onChange={(e) => handleMerchantSelect(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                    >
-                      <option value="">-- اختر تاجر من القائمة --</option>
-                      {merchants.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} {m.businessName ? `(${m.businessName})` : ''} - {m.phone}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="font-bold text-slate-700 block mb-1">اختر التاجر / الماركت / الزبون المسجل 👑:</label>
+                    <SearchableMerchantSelect
+                      merchants={merchants}
+                      selectedMerchantId={manualSelectedMerchantId}
+                      onSelect={(m) => handleMerchantSelect(m.id)}
+                    />
                   </div>
                 )}
 
@@ -1382,33 +1375,55 @@ export default function AdminOrdersPage() {
 
               {/* Add Products Line */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-                <span className="font-bold text-slate-800 block">إضافة المواد للطلبية:</span>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedProductToAdd}
-                    onChange={(e) => setSelectedProductToAdd(e.target.value)}
-                    className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900"
-                  >
-                    <option value="">-- اختر صنف لإضافته --</option>
-                    {products.map((p) => {
-                      const price = manualSaleType === 'wholesale' ? p.wholesalePrice : p.price;
-                      const unit = manualSaleType === 'wholesale' ? p.wholesaleUnit : p.retailUnit;
-                      return (
-                        <option key={p.id} value={p.id}>
-                          {p.name} - ({price.toLocaleString()} د.ع / {unit}) - المتوفر: {p.stock}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddItemToManual}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl transition flex items-center gap-1 shadow-xs"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>إضافة</span>
-                  </button>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 block">إضافة وتحديد المواد للطلبية:</span>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    (يُضاف الصنف ويُفتح سطر جديد تلقائياً عند الاختيار ⚡)
+                  </span>
                 </div>
+                <SearchableProductOrderSelect
+                  products={products}
+                  saleType={manualSaleType}
+                  merchantId={manualSelectedMerchantId}
+                  merchants={merchants}
+                  onSelectProduct={(prod) => {
+                    // ⚡ بمجرد اختيار الصنف، يُضاف فوراً للطلبية
+                    const selectedMerchant = merchants.find((u) => u.id === manualSelectedMerchantId);
+                    const tier = selectedMerchant?.merchantTier || 'bronze';
+
+                    let price = prod.price;
+                    if (manualSaleType === 'wholesale') {
+                      if (tier === 'gold') {
+                        price = prod.vipPrice || prod.specialPrice || prod.wholesalePrice;
+                      } else if (tier === 'silver') {
+                        price = prod.specialPrice || prod.wholesalePrice;
+                      } else {
+                        price = prod.wholesalePrice;
+                      }
+                    }
+                    const unitLabel = manualSaleType === 'wholesale' ? prod.wholesaleUnit : prod.retailUnit;
+
+                    const existingIdx = manualItems.findIndex((it) => it.productId === prod.id);
+                    if (existingIdx > -1) {
+                      const updated = [...manualItems];
+                      updated[existingIdx].quantity += 1;
+                      setManualItems(updated);
+                    } else {
+                      setManualItems([
+                        ...manualItems,
+                        {
+                          productId: prod.id,
+                          name: prod.name,
+                          price,
+                          quantity: 1,
+                          saleType: manualSaleType,
+                          unitLabel: unitLabel || (manualSaleType === 'wholesale' ? 'كرتون' : 'قطعة'),
+                          image: prod.images?.[0] || '',
+                        },
+                      ]);
+                    }
+                  }}
+                />
               </div>
 
               {/* Added Items List */}
@@ -1547,6 +1562,314 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// 🔍 Searchable Customer / Merchant Combobox Component for High-Volume Customers
+function SearchableMerchantSelect({
+  merchants,
+  selectedMerchantId,
+  onSelect,
+}: {
+  merchants: UserType[];
+  selectedMerchantId: string;
+  onSelect: (merchant: UserType) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  const selectedMerchant = merchants.find((m) => m.id === selectedMerchantId);
+
+  const filteredMerchants = merchants.filter((m) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      m.name.toLowerCase().includes(term) ||
+      (m.businessName && m.businessName.toLowerCase().includes(term)) ||
+      (m.phone && m.phone.includes(term)) ||
+      (m.city && m.city.toLowerCase().includes(term))
+    );
+  });
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full text-xs" ref={wrapperRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white border border-slate-300 hover:border-brand-blue rounded-xl py-2 px-3 text-right font-bold text-slate-900 flex items-center justify-between gap-2 shadow-2xs transition cursor-pointer"
+      >
+        <span className="truncate block">
+          {selectedMerchant ? (
+            <span className="text-slate-900">
+              👤 {selectedMerchant.name}{' '}
+              {selectedMerchant.businessName && (
+                <span className="text-emerald-700 font-bold">({selectedMerchant.businessName})</span>
+              )}{' '}
+              <span className="text-slate-400 font-mono text-[11px]">- {selectedMerchant.phone}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن التاجر / الماركت ({merchants.length} مسجل) --</span>
+          )}
+        </span>
+        <span className="text-slate-400 text-[10px] shrink-0">▼</span>
+      </button>
+
+      {/* Dropdown Box */}
+      {isOpen && (
+        <div className="absolute z-50 right-0 left-0 mt-1 bg-white border border-slate-300 rounded-2xl shadow-2xl p-2 space-y-1.5 animate-fadeIn text-xs max-h-80 flex flex-col min-w-[280px]">
+          
+          {/* Quick Search */}
+          <div className="relative shrink-0">
+            <input
+              type="text"
+              autoFocus
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="اكتب اسم الزبون، المحل، أو رقم الهاتف..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-8 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-[9px] absolute left-2 top-1/2 -translate-y-1/2 font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
+            <span>{filteredMerchants.length} زبون مطابق</span>
+            <span>دليل التجار والزبائن</span>
+          </div>
+
+          {/* List */}
+          <div className="overflow-y-auto space-y-1 divide-y divide-slate-100 flex-1 pr-0.5 max-h-56">
+            {filteredMerchants.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 space-y-1">
+                <span className="text-base block">🔍</span>
+                <span className="text-xs font-bold block">لا يوجد زبون يطابق "{searchTerm}"</span>
+              </div>
+            ) : (
+              filteredMerchants.map((m) => {
+                const isSelected = m.id === selectedMerchantId;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(m);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`w-full text-right p-2.5 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-50 text-brand-blue font-black border border-blue-200'
+                        : 'hover:bg-slate-50 text-slate-800'
+                    }`}
+                  >
+                    <div className="truncate">
+                      <div className="font-black text-xs text-slate-900 truncate flex items-center gap-1.5">
+                        <span>{m.name}</span>
+                        {m.businessName && (
+                          <span className="text-emerald-700 font-bold">({m.businessName})</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono font-medium block">
+                        📱 {m.phone || 'بدون هاتف'} • 📍 {m.city || 'كربلاء المقدسة'}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {isSelected ? (
+                        <span className="text-[10px] text-brand-blue font-bold">محدد ✓</span>
+                      ) : (
+                        <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold">
+                          اختيار ↵
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 🔍 Searchable Product Selector for Order Lines with Instant Auto-Add
+function SearchableProductOrderSelect({
+  products,
+  saleType,
+  merchantId,
+  merchants,
+  onSelectProduct,
+}: {
+  products: Product[];
+  saleType: 'wholesale' | 'retail';
+  merchantId: string;
+  merchants: UserType[];
+  onSelectProduct: (product: Product) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  const selectedMerchant = merchants.find((u) => u.id === merchantId);
+  const tier = selectedMerchant?.merchantTier || 'bronze';
+
+  const filteredProducts = products.filter((p) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      p.name.toLowerCase().includes(term) ||
+      (p.company && p.company.toLowerCase().includes(term)) ||
+      (p.category && p.category.toLowerCase().includes(term))
+    );
+  });
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full text-xs" ref={wrapperRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white border border-slate-300 hover:border-emerald-600 rounded-xl py-2 px-3 text-right font-bold text-slate-900 flex items-center justify-between gap-2 shadow-2xs transition cursor-pointer"
+      >
+        <span className="text-slate-500 font-normal">
+          🔍 اكتب أو اختر صنف لإضافته فورياً للطلبية ({products.length} صنف متوفر)...
+        </span>
+        <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+          + اختيار سريع
+        </span>
+      </button>
+
+      {/* Dropdown Box */}
+      {isOpen && (
+        <div className="absolute z-50 right-0 left-0 mt-1 bg-white border border-slate-300 rounded-2xl shadow-2xl p-2 space-y-1.5 animate-fadeIn text-xs max-h-80 flex flex-col min-w-[280px]">
+          
+          {/* Quick Search */}
+          <div className="relative shrink-0">
+            <input
+              type="text"
+              autoFocus
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="اكتب اسم الصنف أو الشركة للبحث السريع (مثال: رز، حار، زيت)..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-8 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-[9px] absolute left-2 top-1/2 -translate-y-1/2 font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
+            <span>{filteredProducts.length} صنف مطابق</span>
+            <span>التسعير: {saleType === 'wholesale' ? 'جملة 📦' : 'مفرد 🛒'}</span>
+          </div>
+
+          {/* List */}
+          <div className="overflow-y-auto space-y-1 divide-y divide-slate-100 flex-1 pr-0.5 max-h-56">
+            {filteredProducts.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 space-y-1">
+                <span className="text-base block">🔍</span>
+                <span className="text-xs font-bold block">لا توجد أصناف تطابق "{searchTerm}"</span>
+              </div>
+            ) : (
+              filteredProducts.map((p) => {
+                let price = p.price;
+                if (saleType === 'wholesale') {
+                  if (tier === 'gold') {
+                    price = p.vipPrice || p.specialPrice || p.wholesalePrice;
+                  } else if (tier === 'silver') {
+                    price = p.specialPrice || p.wholesalePrice;
+                  } else {
+                    price = p.wholesalePrice;
+                  }
+                }
+                const unit = saleType === 'wholesale' ? p.wholesaleUnit || 'كرتون' : p.retailUnit || 'قطعة';
+                const isOutOfStock = p.stock === 0 || p.stock < 0;
+
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectProduct(p);
+                      setSearchTerm('');
+                      setIsOpen(false);
+                    }}
+                    className="w-full text-right p-2.5 rounded-xl hover:bg-emerald-50/70 transition flex items-center justify-between gap-2 cursor-pointer group"
+                  >
+                    <div className="truncate">
+                      <span className="font-black text-xs text-slate-900 truncate block group-hover:text-emerald-950">
+                        {p.name}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        {p.company || p.category} • العبوة: {unit} • المخزون: {p.stock}
+                      </span>
+                    </div>
+
+                    <div className="text-left shrink-0">
+                      <span className="font-mono font-black text-xs text-emerald-700 block">
+                        {price.toLocaleString()} د.ع
+                      </span>
+                      {isOutOfStock ? (
+                        <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.2 rounded font-black">
+                          نافذ ⚠️
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-600 font-bold group-hover:underline">
+                          + إضافة للطلبية
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
