@@ -603,7 +603,7 @@
       "id": "ord-1788270862806",
       "orderNumber": "INV-1008",
       "createdAt": "2026-09-01T13:54:22.806Z",
-      "updatedAt": "2026-09-01T13:55:15.354Z",
+      "updatedAt": "2026-09-01T14:02:38.577Z",
       "driverId": "drv-1787845130699",
       "driverName": "غيث الجنابي",
       "driverPhone": "07710101010",
@@ -617,7 +617,10 @@
       "driverNotes": "",
       "collectedAmount": 10000,
       "remainingDebtAmount": 10900,
-      "paidAmount": 10000
+      "paidAmount": 10000,
+      "driverCashSettled": true,
+      "driverCashSettledAt": "2026-09-01T14:02:38.577Z",
+      "paymentReceiptNumber": "REC-1004"
     },
     {
       "customer": {
@@ -707,7 +710,7 @@
       "id": "ord-1788270684299",
       "orderNumber": "INV-1006",
       "createdAt": "2026-09-01T13:51:24.299Z",
-      "updatedAt": "2026-09-01T13:52:02.289Z",
+      "updatedAt": "2026-09-01T14:02:38.577Z",
       "driverId": "drv-1787845130699",
       "driverName": "غيث الجنابي",
       "driverPhone": "07710101010",
@@ -721,7 +724,10 @@
       "driverNotes": "الباقي يوم الخميس",
       "collectedAmount": 10000,
       "remainingDebtAmount": 10900,
-      "paidAmount": 10000
+      "paidAmount": 10000,
+      "driverCashSettled": true,
+      "driverCashSettledAt": "2026-09-01T14:02:38.577Z",
+      "paymentReceiptNumber": "REC-1005"
     },
     {
       "customer": {
@@ -815,7 +821,7 @@
       "id": "ord-1788269578928",
       "orderNumber": "INV-1004",
       "createdAt": "2026-09-01T13:32:58.928Z",
-      "updatedAt": "2026-09-01T13:34:48.035Z",
+      "updatedAt": "2026-09-01T14:02:38.577Z",
       "driverId": "drv-1787845130699",
       "driverName": "غيث الجنابي",
       "driverPhone": "07710101010",
@@ -829,7 +835,10 @@
       "driverNotes": "",
       "collectedAmount": 71000,
       "remainingDebtAmount": 0,
-      "paidAmount": 71000
+      "paidAmount": 71000,
+      "driverCashSettled": true,
+      "driverCashSettledAt": "2026-09-01T14:02:38.577Z",
+      "paymentReceiptNumber": "REC-1006"
     },
     {
       "customer": {
@@ -869,7 +878,7 @@
       "id": "ord-1788269182923",
       "orderNumber": "INV-1003",
       "createdAt": "2026-09-01T13:26:22.923Z",
-      "updatedAt": "2026-09-01T13:31:54.639Z",
+      "updatedAt": "2026-09-01T14:02:38.577Z",
       "driverId": "drv-1787845130699",
       "driverName": "غيث الجنابي",
       "driverPhone": "07710101010",
@@ -883,7 +892,10 @@
       "driverNotes": "",
       "collectedAmount": 71000,
       "remainingDebtAmount": 0,
-      "paidAmount": 71000
+      "paidAmount": 71000,
+      "driverCashSettled": true,
+      "driverCashSettledAt": "2026-09-01T14:02:38.577Z",
+      "paymentReceiptNumber": "REC-1007"
     },
     {
       "customer": {
@@ -1048,7 +1060,7 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "c-lead-1-1788270963513",
+            "id": "c-lead-1-1788271358567",
             "rank": 1,
             "name": "جملة الجبوري",
             "city": "كربلاء المقدسة",
@@ -1057,7 +1069,7 @@
             "badge": "🥇"
           },
           {
-            "id": "c-lead-2-1788270963513",
+            "id": "c-lead-2-1788271358567",
             "rank": 2,
             "name": "مرتضى عادي",
             "city": "كربلاء المقدسة",
@@ -1247,6 +1259,50 @@
     }
   ],
   "payments": [
+    {
+      "id": "pay-drv-1007-8577",
+      "receiptNumber": "REC-1007",
+      "customerPhone": "07733333333",
+      "customerName": "علي الجبوري",
+      "amount": 71000,
+      "paymentMethod": "cash",
+      "receivedBy": "تصفية عهدة السائق: غيث الجنابي",
+      "notes": "سند قبض نقدي تلقائي - تسديد فاتورة رقم #INV-1003 عبر تصفية عهدة السائق (غيث الجنابي)",
+      "createdAt": "2026-09-01T14:02:38.577Z"
+    },
+    {
+      "id": "pay-drv-1006-8577",
+      "receiptNumber": "REC-1006",
+      "customerPhone": "07733333333",
+      "customerName": "علي الجبوري",
+      "amount": 71000,
+      "paymentMethod": "cash",
+      "receivedBy": "تصفية عهدة السائق: غيث الجنابي",
+      "notes": "سند قبض نقدي تلقائي - تسديد فاتورة رقم #INV-1004 عبر تصفية عهدة السائق (غيث الجنابي)",
+      "createdAt": "2026-09-01T14:02:38.577Z"
+    },
+    {
+      "id": "pay-drv-1005-8577",
+      "receiptNumber": "REC-1005",
+      "customerPhone": "07733333333",
+      "customerName": "علي الجبوري",
+      "amount": 10000,
+      "paymentMethod": "cash",
+      "receivedBy": "تصفية عهدة السائق: غيث الجنابي",
+      "notes": "سند قبض نقدي تلقائي - تسديد فاتورة رقم #INV-1006 عبر تصفية عهدة السائق (غيث الجنابي)",
+      "createdAt": "2026-09-01T14:02:38.577Z"
+    },
+    {
+      "id": "pay-drv-1004-8577",
+      "receiptNumber": "REC-1004",
+      "customerPhone": "07733333333",
+      "customerName": "علي الجبوري",
+      "amount": 10000,
+      "paymentMethod": "cash",
+      "receivedBy": "تصفية عهدة السائق: غيث الجنابي",
+      "notes": "سند قبض نقدي تلقائي - تسديد فاتورة رقم #INV-1008 عبر تصفية عهدة السائق (غيث الجنابي)",
+      "createdAt": "2026-09-01T14:02:38.577Z"
+    },
     {
       "id": "pay-drv-1003-6633",
       "receiptNumber": "REC-1003",
@@ -1504,7 +1560,7 @@
       "password": "123",
       "vehicleInfo": "",
       "isActive": true,
-      "currentCashInHand": 162000,
+      "currentCashInHand": 0,
       "notes": "",
       "createdAt": "2026-08-27T15:38:50.699Z"
     }

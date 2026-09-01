@@ -66,6 +66,22 @@ export async function POST(req: Request) {
       if (!result.success) {
         return NextResponse.json({ success: false, error: result.error || 'فشلت عملية التحديث' }, { status: 400 });
       }
+
+      const driver = getDriverById(driverId);
+
+      // إرسال تنبيه فوري للزبون: طلبيتك خرجت مع المندوب 🚚
+      if (result.order) {
+        try {
+          await sendDirectCustomerAlert({
+            userId: result.order.customer.userId,
+            phone: result.order.customer.phone,
+            title: '🚚 طلبيتك في الطريق إليك الآن!',
+            body: `مرحباً ${result.order.customer.name}، طلبيتك #${result.order.orderNumber} خرجت مع المندوب (${driver?.name || 'مندوب التوصيل'}) وهي في الطريق إلى موقعك 🚀.`,
+            url: `/order-success/${result.order.id}`,
+          });
+        } catch (e) {}
+      }
+
       return NextResponse.json({
         success: true,
         order: result.order,
@@ -82,13 +98,15 @@ export async function POST(req: Request) {
       }
 
       // إرسال تنبيه Push لحظي لهاتف الزبون
-      await sendDirectCustomerAlert({
-        userId: order.customer.userId,
-        phone: order.customer.phone,
-        title: '🛵 المندوب وصل إلى موقعك الآن!',
-        body: `مرحباً ${order.customer.name}، مندوب سوق الجملة (${driver?.name || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
-        url: `/order-success/${order.id}`,
-      });
+      try {
+        await sendDirectCustomerAlert({
+          userId: order.customer.userId,
+          phone: order.customer.phone,
+          title: '🛵 المندوب وصل إلى موقعك الآن!',
+          body: `مرحباً ${order.customer.name}، مندوب سوق الجملة (${driver?.name || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+          url: `/order-success/${order.id}`,
+        });
+      } catch (e) {}
 
       return NextResponse.json({
         success: true,
@@ -96,7 +114,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Action 2: Driver completes delivery with cash / debt / partial / return
+    // Action 3: Driver completes delivery with cash / debt / partial / return
     if (!collectionStatus) {
       return NextResponse.json({ success: false, error: 'يرجى تحديد حالة التحصيل المالي' }, { status: 400 });
     }
@@ -111,13 +129,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: result.error || 'فشلت عملية تحديث الطلبية' }, { status: 400 });
     }
 
+    // إرسال تنبيه فوري للزبون: تم تسليم الطلبية بنجاح 🎉
+    if (result.order) {
+      try {
+        if (collectionStatus === 'returned') {
+          await sendDirectCustomerAlert({
+            userId: result.order.customer.userId,
+            phone: result.order.customer.phone,
+            title: '📦 تم إرجاع الطلبية',
+            body: `مرحباً ${result.order.customer.name}، تم تسجيل إرجاع طلبيتك #${result.order.orderNumber}. ملاحظة المندوب: ${notes || 'تم الإرجاع'}`,
+            url: `/order-success/${result.order.id}`,
+          });
+        } else {
+          await sendDirectCustomerAlert({
+            userId: result.order.customer.userId,
+            phone: result.order.customer.phone,
+            title: '🎉 تم تسليم طلبيتك بنجاح!',
+            body: `مرحباً ${result.order.customer.name}، تم استلام وتسليم طلبيتك #${result.order.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+            url: `/order-success/${result.order.id}`,
+          });
+        }
+      } catch (e) {}
+    }
+
     const updatedDriver = getDriverById(driverId);
 
     return NextResponse.json({
       success: true,
       order: result.order,
       driver: updatedDriver,
-      message: 'تم إتمام عملية التسليم وتحديث الحساب بنجاح! ✅',
+      message: 'تم إتمام عملية التسليم وتحديث حساب السائق والمخزن بنجاح 🚚🎉',
     });
   } catch (error) {
     console.error('Error in driver orders route:', error);

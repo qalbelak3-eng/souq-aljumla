@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOrderById, updateOrderStatus, updateOrder, deleteOrder, getSettings, assignDriverToOrder } from '@/lib/db';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
+import { sendDirectCustomerAlert } from '@/lib/pushService';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -37,6 +38,27 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (!updated) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
     }
+
+    // إرسال تنبيه فوري لهاتف الزبون بناءً على تغير حالة الطلبية 🔔
+    try {
+      if (status === 'processing') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '📦 طلبيتك قيد التجهيز الآن!',
+          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (status === 'cancelled') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '❌ تم إلغاء الطلبية',
+          body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
+          url: `/order-success/${updated.id}`,
+        });
+      }
+    } catch (e) {}
 
     return NextResponse.json({ success: true, order: updated });
   } catch (error: any) {

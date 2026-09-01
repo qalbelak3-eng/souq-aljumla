@@ -127,6 +127,17 @@ export async function POST(request: Request) {
       whatsappSent: false,
     });
 
+    // إرسال تنبيه فوري لهاتف الزبون: تم استلام الطلبية بنجاح 📋
+    try {
+      await sendDirectCustomerAlert({
+        userId: customer.userId,
+        phone: customer.phone,
+        title: '📋 تم استلام طلبيتك بنجاح!',
+        body: `مرحباً ${customer.name}، تم تسجيل طلبيتك #${newOrder.orderNumber} بمبلغ ${finalTotal.toLocaleString()} د.ع وجاري مراجعتها من الكادر.`,
+        url: `/order-success/${newOrder.id}`,
+      });
+    } catch (e) {}
+
     const whatsappUrl = generateWhatsAppLink(newOrder, settings);
 
     return NextResponse.json({
