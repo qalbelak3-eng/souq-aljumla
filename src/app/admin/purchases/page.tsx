@@ -566,7 +566,7 @@ export default function AdminPurchasesPage() {
                   </button>
                 </div>
 
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                <div className="space-y-3">
                   {invItems.map((item, idx) => {
                     const boxes = Number(item.boxesPerCarton) || 6;
                     const piecesPerBox = Number(item.itemsPerBox) || 24;
@@ -910,24 +910,35 @@ function SearchableProductSelect({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-white border border-slate-300 hover:border-brand-blue rounded-xl py-1.5 px-2.5 text-right text-xs font-bold text-slate-900 flex items-center justify-between gap-1 shadow-2xs transition cursor-pointer"
+        className="w-full bg-white border border-slate-300 hover:border-brand-blue rounded-xl py-2 px-2.5 text-right text-xs font-bold text-slate-900 flex items-center justify-between gap-1 shadow-2xs transition cursor-pointer"
       >
         <span className="truncate block">
           {selectedProduct ? (
-            <span className="text-slate-900">
-              {selectedProduct.name}{' '}
-              <span className="text-slate-400 font-normal">({selectedProduct.wholesaleUnit || 'كرتون'})</span>
+            <span className="text-slate-900 flex items-center gap-1.5 truncate">
+              <span>{selectedProduct.name}</span>
+              {(selectedProduct.stock === 0 || selectedProduct.stock < 0) && (
+                <span className="bg-red-100 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded">
+                  (نافذ ⚠️)
+                </span>
+              )}
             </span>
           ) : (
-            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن صنف ({availableList.length} متوفر) --</span>
+            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن صنف ({availableList.length} صنف) --</span>
           )}
         </span>
         <span className="text-slate-400 text-[10px] shrink-0">▼</span>
       </button>
 
+      {/* Out of Stock Warning Message below button if selected product is 0 */}
+      {selectedProduct && (selectedProduct.stock === 0 || selectedProduct.stock < 0) && (
+        <div className="text-[10px] text-red-600 font-black flex items-center gap-1 mt-0.5 animate-fadeIn">
+          <span>⚠️ المنتج غير موجود منه في المخزن (الرصيد: 0)</span>
+        </div>
+      )}
+
       {/* Dropdown Popup */}
       {isOpen && (
-        <div className="absolute z-50 right-0 left-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 space-y-1.5 animate-fadeIn text-xs max-h-72 flex flex-col min-w-[260px]">
+        <div className="absolute z-50 right-0 left-0 mt-1 bg-white border border-slate-300 rounded-2xl shadow-2xl p-2 space-y-1.5 animate-fadeIn text-xs max-h-80 flex flex-col min-w-[280px]">
           
           {/* Quick Search Input */}
           <div className="relative shrink-0">
@@ -936,8 +947,8 @@ function SearchableProductSelect({
               autoFocus
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="اكتب للبحث السريع (مثال: حار، ليمون، رز)..."
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-1.5 pr-7 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
+              placeholder="اكتب اسم الصنف للبحث السريع..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-8 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
             {searchTerm && (
@@ -953,12 +964,12 @@ function SearchableProductSelect({
 
           {/* Results Count / Info */}
           <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
-            <span>{filteredList.length} صنف مطابق</span>
-            <span>أصناف: {companyName || 'الكل'}</span>
+            <span>{filteredList.length} صنف متوفر</span>
+            <span>{companyName || 'الشركة'}</span>
           </div>
 
           {/* Product Items List */}
-          <div className="overflow-y-auto space-y-1 divide-y divide-slate-100 flex-1 pr-0.5">
+          <div className="overflow-y-auto space-y-1 divide-y divide-slate-100 flex-1 pr-0.5 max-h-56">
             {filteredList.length === 0 ? (
               <div className="py-6 text-center text-slate-400 space-y-1">
                 <span className="text-base block">🔍</span>
@@ -967,6 +978,8 @@ function SearchableProductSelect({
             ) : (
               filteredList.map((p) => {
                 const isSelected = p.id === selectedProductId;
+                const isOutOfStock = p.stock === 0 || p.stock < 0;
+
                 return (
                   <button
                     key={p.id}
@@ -976,27 +989,28 @@ function SearchableProductSelect({
                       setIsOpen(false);
                       setSearchTerm('');
                     }}
-                    className={`w-full text-right p-2 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer ${
+                    className={`w-full text-right p-2.5 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer ${
                       isSelected
                         ? 'bg-blue-50 text-brand-blue font-black border border-blue-200'
                         : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
-                    <div className="truncate">
-                      <span className="font-bold text-xs block text-slate-900 truncate">
-                        {p.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium block">
-                        العبوة: {p.wholesaleUnit || 'كرتون'} • المخزون: {p.stock} {p.wholesaleUnit || 'كرتون'}
-                      </span>
-                    </div>
+                    <span className="font-black text-xs text-slate-900 truncate">
+                      {p.name}
+                    </span>
 
-                    <div className="text-left shrink-0">
-                      <span className="font-mono font-black text-xs text-purple-700 block">
-                        {(p.costPrice || 0).toLocaleString()} د.ع
-                      </span>
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {isOutOfStock ? (
+                        <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-md border border-red-200">
+                          الرصيد نافذ ⚠️
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          متوفر بالمخزن ({p.stock})
+                        </span>
+                      )}
                       {isSelected && (
-                        <span className="text-[10px] text-brand-blue font-bold">محدد ✓</span>
+                        <span className="text-[10px] text-brand-blue font-bold">✓</span>
                       )}
                     </div>
                   </button>
