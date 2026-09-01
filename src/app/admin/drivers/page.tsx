@@ -615,7 +615,7 @@ export default function AdminDriversPage() {
                                 <Truck className="w-4 h-4" />
                               </div>
                               <div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-slate-900">{driver.name}</span>
                                   {driver.isActive ? (
                                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded">
@@ -626,9 +626,18 @@ export default function AdminDriversPage() {
                                       متوقف
                                     </span>
                                   )}
+                                  {driver.averageRating && (
+                                    <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                      <span>⭐ {driver.averageRating}</span>
+                                      <span>({driver.ratingTierLabel || 'ممتاز 🌟'})</span>
+                                    </span>
+                                  )}
                                 </div>
-                                <div className="text-slate-500 font-mono text-[11px] mt-0.5" dir="ltr">
-                                  {driver.phone} • كلمة المرور: {driver.password || '123'}
+                                <div className="text-slate-500 font-mono text-[11px] mt-0.5 flex items-center gap-2 flex-wrap" dir="ltr">
+                                  <span>{driver.phone} • كلمة المرور: {driver.password || '123'}</span>
+                                  {driver.ratingsCount && driver.ratingsCount > 0 ? (
+                                    <span className="text-[10px] text-amber-700 font-bold">({driver.ratingsCount} تقييم)</span>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>

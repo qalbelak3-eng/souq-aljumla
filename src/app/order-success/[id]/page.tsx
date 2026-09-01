@@ -403,25 +403,34 @@ export default function OrderSuccessPage() {
                     </div>
                   </div>
 
-                  {/* النجوم */}
-                  <div className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-2xl border border-amber-200 shadow-2xs">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setRating(star)}
-                        className="p-1 hover:scale-125 transition transform cursor-pointer"
-                        title={`${star} نجوم`}
-                      >
-                        <Star
-                          className={`w-5 h-5 ${
-                            star <= rating
-                              ? 'text-amber-400 fill-amber-400'
-                              : 'text-slate-200'
-                          }`}
-                        />
-                      </button>
-                    ))}
+                  {/* النجوم مع الدرجة اللفظية المباشرة */}
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-2xl border border-amber-200 shadow-2xs">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setRating(star)}
+                          className="p-1 hover:scale-125 transition transform cursor-pointer"
+                          title={`${star} نجوم`}
+                        >
+                          <Star
+                            className={`w-5 h-5 ${
+                              star <= rating
+                                ? 'text-amber-400 fill-amber-400'
+                                : 'text-slate-200'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs font-black text-amber-900 border-r border-amber-200 pr-2">
+                      {rating === 5 && 'ممتاز 🌟'}
+                      {rating === 4 && 'جيد جداً 🟢'}
+                      {rating === 3 && 'جيد 🟡'}
+                      {rating === 2 && 'عادي 🟠'}
+                      {rating === 1 && 'سيء 🔴'}
+                    </span>
                   </div>
                 </div>
 
@@ -467,17 +476,19 @@ export default function OrderSuccessPage() {
                     onClick={async () => {
                       setIsSubmittingFeedback(true);
                       try {
-                        const fullText = `[تقييم طلبية #${order.orderNumber} - السائق: ${order.driverName || 'غير محدد'}] [التقييم: ${rating}/5 ⭐] [الوسم: ${feedbackTag}] ${feedbackText ? `\nالملاحظة: ${feedbackText}` : ''}`;
-                        await fetch('/api/complaints', {
+                        // إرسال التقييم الرسمي لنظام السائق
+                        await fetch('/api/driver-ratings', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
+                            driverId: order.driverId || 'drv-1',
+                            orderId: order.id,
+                            orderNumber: order.orderNumber,
                             customerName: order.customer.name,
                             customerPhone: order.customer.phone,
-                            businessName: order.customer.businessName,
-                            city: order.customer.city,
-                            userId: order.customer.userId,
-                            text: fullText,
+                            rating: rating,
+                            tag: feedbackTag,
+                            comment: feedbackText,
                           }),
                         });
                         setFeedbackSent(true);

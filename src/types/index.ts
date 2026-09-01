@@ -165,6 +165,23 @@ export interface Vehicle {
   createdAt: string;
 }
 
+export type RatingTier = 'excellent' | 'very_good' | 'good' | 'average' | 'poor';
+
+export interface DriverRating {
+  id: string;
+  driverId: string;
+  driverName?: string;
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  rating: number; // 1 to 5
+  ratingLabel: string; // 'ممتاز' | 'جيد جداً' | 'جيد' | 'عادي' | 'سيء'
+  tag?: string;
+  comment?: string;
+  createdAt: string;
+}
+
 export interface Driver {
   id: string;
   name: string;
@@ -174,6 +191,9 @@ export interface Driver {
   defaultVehicleId?: string; // معرف السيارة الافتراضية
   isActive: boolean;
   currentCashInHand?: number; // إجمالي الكاش الموجود في عهدة السائق حالياً
+  averageRating?: number; // معدل تقييم السائق من الزبائن (مثال: 4.8)
+  ratingsCount?: number; // إجمالي عدد التقييمات
+  ratingTierLabel?: string; // الدرجة اللفظية: ممتاز / جيد جداً / جيد / عادي / سيء
   notes?: string;
   createdAt: string;
 }

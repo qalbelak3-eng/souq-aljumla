@@ -291,10 +291,21 @@ export default function DriverDashboardPage() {
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.2 rounded-md">
                   نشط 🟢
                 </span>
+                {driver.averageRating && (
+                  <span className="bg-amber-100 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.2 rounded-md flex items-center gap-1">
+                    <span>⭐ {driver.averageRating}</span>
+                    <span>({driver.ratingTierLabel || 'ممتاز 🌟'})</span>
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                {driver.vehicleInfo || 'مندوب التوصيل المعتمد'}
-              </p>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 font-bold mt-0.5 flex-wrap">
+                <span>{driver.vehicleInfo || 'مندوب التوصيل المعتمد'}</span>
+                {driver.ratingsCount && driver.ratingsCount > 0 ? (
+                  <span className="text-[10px] text-slate-400 font-medium font-mono">
+                    • ({driver.ratingsCount} تقييم من الزبائن)
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 

@@ -2946,6 +2946,85 @@ export function deleteComplaint(id: string): boolean {
 }
 
 // ==========================================
+// ⭐ DRIVER RATINGS & PERFORMANCE ENGINE
+// ==========================================
+
+export function calculateRatingTierLabel(score: number): string {
+  if (score >= 4.8) return 'ممتاز 🌟';
+  if (score >= 4.0) return 'جيد جداً 🟢';
+  if (score >= 3.0) return 'جيد 🟡';
+  if (score >= 2.0) return 'عادي 🟠';
+  return 'ضعيف 🔴';
+}
+
+export function addDriverRating(data: {
+  driverId: string;
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  rating: number; // 1 to 5
+  tag?: string;
+  comment?: string;
+}): DriverRating {
+  const db = ensureDbExists();
+  if (!db.driverRatings) db.driverRatings = [];
+
+  const ratingLabelMap: Record<number, string> = {
+    5: 'ممتاز 🌟',
+    4: 'جيد جداً 🟢',
+    3: 'جيد 🟡',
+    2: 'عادي 🟠',
+    1: 'سيء 🔴',
+  };
+
+  const driver = (db.drivers || []).find((d) => d.id === data.driverId);
+
+  const newRating: DriverRating = {
+    id: 'rate_' + Date.now(),
+    driverId: data.driverId,
+    driverName: driver?.name || 'مندوب التوصيل',
+    orderId: data.orderId,
+    orderNumber: data.orderNumber,
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    rating: Math.max(1, Math.min(5, data.rating)),
+    ratingLabel: ratingLabelMap[data.rating] || 'ممتاز 🌟',
+    tag: data.tag,
+    comment: data.comment?.trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  db.driverRatings.unshift(newRating);
+
+  // Recalculate Driver Average Rating
+  if (db.drivers) {
+    const driverIdx = db.drivers.findIndex((d) => d.id === data.driverId);
+    if (driverIdx !== -1) {
+      const driverRatings = db.driverRatings.filter((r) => r.driverId === data.driverId);
+      const totalScore = driverRatings.reduce((sum, r) => sum + r.rating, 0);
+      const avg = Number((totalScore / driverRatings.length).toFixed(1));
+      
+      db.drivers[driverIdx].averageRating = avg;
+      db.drivers[driverIdx].ratingsCount = driverRatings.length;
+      db.drivers[driverIdx].ratingTierLabel = calculateRatingTierLabel(avg);
+    }
+  }
+
+  saveDb(db);
+  return newRating;
+}
+
+export function getDriverRatings(driverId?: string): DriverRating[] {
+  const db = ensureDbExists();
+  const list = db.driverRatings || [];
+  if (driverId && driverId !== 'all') {
+    return list.filter((r) => r.driverId === driverId);
+  }
+  return list;
+}
+
+// ==========================================
 // Web Push Notifications & Subscriptions Management
 // ==========================================
 
