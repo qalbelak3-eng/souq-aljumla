@@ -44,6 +44,9 @@ export default function AdminNotificationsPage() {
   const [image, setImage] = useState('');
   const [url, setUrl] = useState('/products?filter=offers');
   const [expiryHours, setExpiryHours] = useState<number>(24); // افتراضياً 24 ساعة للعروض اليومية
+  const [expiryMode, setExpiryMode] = useState<'preset' | 'custom_hours' | 'custom_date'>('preset');
+  const [customHours, setCustomHours] = useState<string>('12');
+  const [customDate, setCustomDate] = useState<string>('');
   const [isSending, setIsSending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -111,6 +114,26 @@ export default function AdminNotificationsPage() {
 
     setIsSending(true);
     try {
+      let finalExpiryHours = 0;
+      let finalExpiresAt: string | undefined = undefined;
+
+      if (expiryMode === 'preset') {
+        finalExpiryHours = Number(expiryHours) || 0;
+      } else if (expiryMode === 'custom_hours') {
+        finalExpiryHours = Math.max(1, Number(customHours) || 1);
+      } else if (expiryMode === 'custom_date' && customDate) {
+        const targetDate = new Date(customDate);
+        const diffMs = targetDate.getTime() - Date.now();
+        if (diffMs > 0) {
+          finalExpiryHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
+          finalExpiresAt = targetDate.toISOString();
+        } else {
+          toast.showToast('يرجى اختيار تاريخ ووقت مستقبلي لانتهاء العرض', 'error');
+          setIsSending(false);
+          return;
+        }
+      }
+
       const res = await fetch('/api/notifications/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,7 +144,8 @@ export default function AdminNotificationsPage() {
           url: url.trim() || '/',
           targetAudience,
           sentBy: 'المدير العام',
-          expiryHours: Number(expiryHours) || 0,
+          expiryHours: finalExpiryHours,
+          expiresAt: finalExpiresAt,
         }),
       });
 
@@ -448,8 +472,8 @@ export default function AdminNotificationsPage() {
             </div>
 
             {/* Notification Expiry / Duration Options */}
-            <div className="space-y-1.5 pt-1 border-t border-slate-100">
-              <div className="flex items-center justify-between">
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between flex-wrap gap-1">
                 <label className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                   <Hourglass className="w-4 h-4 text-amber-600" />
                   <span>مدة صلاحية الإشعار / وقت انتهاء العرض ⏳</span>
@@ -459,28 +483,128 @@ export default function AdminNotificationsPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
-                  { value: 24, label: 'يوم واحد (24 ساعة) 🔥', desc: 'مناسب للعروض اليومية' },
-                  { value: 48, label: 'يومان (48 ساعة) ⚡', desc: 'عروض نهاية الأسبوع' },
-                  { value: 168, label: 'أسبوع كامل (7 أيام) 📅', desc: 'تخفيضات أسبوعية' },
-                  { value: 0, label: 'دائم بدون انتهاء ♾️', desc: 'إعلانات وتحديثات عامة' },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setExpiryHours(opt.value)}
-                    className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
-                      expiryHours === opt.value
-                        ? 'border-amber-500 bg-amber-50/80 text-amber-950 font-black ring-2 ring-amber-400/30'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-slate-700 font-medium'
-                    }`}
-                  >
-                    <span className="text-xs block leading-tight">{opt.label}</span>
-                    <span className="text-[9px] text-slate-500 mt-1">{opt.desc}</span>
-                  </button>
-                ))}
+              {/* Tabs for Expiry Mode: Presets / Custom Hours / Custom Date */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setExpiryMode('preset')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition ${
+                    expiryMode === 'preset'
+                      ? 'bg-white text-slate-900 shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ⚡ فترات سريعة جاهزة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryMode('custom_hours')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition ${
+                    expiryMode === 'custom_hours'
+                      ? 'bg-white text-slate-900 shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ⏱️ كتابة عدد الساعات يدوياً
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpiryMode('custom_date')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition ${
+                    expiryMode === 'custom_date'
+                      ? 'bg-white text-slate-900 shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  📅 تحديد تاريخ وساعة معينة
+                </button>
               </div>
+
+              {/* Option 1: Fast Presets */}
+              {expiryMode === 'preset' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 animate-fadeIn">
+                  {[
+                    { value: 24, label: 'يوم واحد (24 ساعة) 🔥', desc: 'مناسب للعروض اليومية' },
+                    { value: 48, label: 'يومان (48 ساعة) ⚡', desc: 'عروض نهاية الأسبوع' },
+                    { value: 168, label: 'أسبوع كامل (7 أيام) 📅', desc: 'تخفيضات أسبوعية' },
+                    { value: 0, label: 'دائم بدون انتهاء ♾️', desc: 'إعلانات وتحديثات عامة' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setExpiryHours(opt.value)}
+                      className={`p-2.5 rounded-xl border text-right transition cursor-pointer flex flex-col justify-between ${
+                        expiryHours === opt.value
+                          ? 'border-amber-500 bg-amber-50/80 text-amber-950 font-black ring-2 ring-amber-400/30'
+                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <span className="text-xs block leading-tight">{opt.label}</span>
+                      <span className="text-[9px] text-slate-500 mt-1">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Option 2: Custom Hours Input */}
+              {expiryMode === 'custom_hours' && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3.5 space-y-2 animate-fadeIn">
+                  <label className="text-xs font-black text-amber-950 block">
+                    ✍️ أدخل عدد الساعات المطلوبة لانتهاء العرض والإشعار:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="8760"
+                        step="1"
+                        value={customHours}
+                        onChange={(e) => setCustomHours(e.target.value)}
+                        placeholder="مثال: 12 أو 36 أو 72"
+                        className="w-full bg-white border-2 border-amber-300 rounded-xl py-2 px-3 text-sm font-mono font-black text-slate-900 focus:border-amber-500 focus:outline-none"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-amber-800">
+                        ساعة
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {[6, 12, 36, 72].map((quick) => (
+                        <button
+                          key={quick}
+                          type="button"
+                          onClick={() => setCustomHours(String(quick))}
+                          className="bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold px-2.5 py-2 rounded-xl transition"
+                        >
+                          {quick} س
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-800 font-bold">
+                    💡 ينتهي الإشعار ويختفي من جرس الزبائن تلقائياً بعد مرور <strong>{customHours || 0} ساعة</strong> من الآن.
+                  </p>
+                </div>
+              )}
+
+              {/* Option 3: Custom Date & Time Picker */}
+              {expiryMode === 'custom_date' && (
+                <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-3.5 space-y-2 animate-fadeIn">
+                  <label className="text-xs font-black text-blue-950 block">
+                    📅 اختر التاريخ والوقت الدقيق لانتهاء العرض والإشعار:
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-full bg-white border-2 border-blue-300 rounded-xl py-2 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-blue-800 font-bold">
+                    💡 سيتم إخفاء الإشعار فور حلول هذا التاريخ والوقت المحدد.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}
