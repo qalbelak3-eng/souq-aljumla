@@ -329,6 +329,26 @@ export default function AdminProductsPage() {
     return true;
   });
 
+  const formatStockDisplay = (stockVal: number, p: Product) => {
+    if (stockVal <= 0) return '0';
+    const fullCartons = Math.floor(stockVal);
+    const remainder = stockVal - fullCartons;
+    const piecesPerCarton = p.itemsPerWholesaleUnit || ((p.boxesPerCarton || 1) * (p.itemsPerBox || 1)) || 1;
+    
+    if (remainder <= 0.001) {
+      return `${fullCartons} ${p.wholesaleUnit || 'كرتون'}`;
+    }
+    
+    const remainingPieces = Math.round(remainder * piecesPerCarton);
+    if (remainingPieces === 0) {
+      return `${fullCartons} ${p.wholesaleUnit || 'كرتون'}`;
+    }
+    if (fullCartons === 0) {
+      return `${remainingPieces} ${p.retailUnit || 'قطعة'}`;
+    }
+    return `${fullCartons} كرتون + ${remainingPieces} ${p.retailUnit || 'قطعة'}`;
+  };
+
   return (
     <div className="space-y-6 text-xs">
 
@@ -586,11 +606,11 @@ export default function AdminProductsPage() {
                       {p.stock <= (p.minStockAlert ?? 15) ? (
                         <span className="font-mono font-black px-2 py-1 rounded-xl text-[10px] bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1 animate-pulse whitespace-nowrap">
                           <AlertTriangle className="w-3 h-3 text-red-600" />
-                          <span>{p.stock} (نفاذ ⚠️)</span>
+                          <span>{formatStockDisplay(p.stock, p)} (نفاذ ⚠️)</span>
                         </span>
                       ) : (
-                        <span className="font-mono font-bold px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                          {p.stock} وحدة
+                        <span className="font-mono font-bold px-2.5 py-1 rounded-xl text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap inline-block">
+                          {formatStockDisplay(p.stock, p)}
                         </span>
                       )}
                     </td>
