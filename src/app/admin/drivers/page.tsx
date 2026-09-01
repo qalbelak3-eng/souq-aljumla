@@ -921,6 +921,9 @@ export default function AdminDriversPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
       {/* TAB 3: CUSTOMER REVIEWS & DRIVER RATINGS */}
       {activeTab === 'ratings' && (
         <div className="space-y-6">

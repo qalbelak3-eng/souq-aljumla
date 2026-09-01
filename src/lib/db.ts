@@ -35,7 +35,8 @@ import {
   AuditActionType,
   CustomerComplaint,
   PushSubscriptionRecord,
-  PushNotificationLog
+  PushNotificationLog,
+  DriverRating
 } from '@/types';
 import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners } from '@/data/initialData';
 
@@ -69,6 +70,7 @@ interface DatabaseSchema {
   complaints?: CustomerComplaint[];
   pushSubscriptions?: PushSubscriptionRecord[];
   pushNotificationLogs?: PushNotificationLog[];
+  driverRatings?: DriverRating[];
   adminAuth: {
     username: string;
     password: string;

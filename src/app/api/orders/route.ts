@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getOrders, createOrder, getSettings, getUsers, getProducts, validateCoupon } from '@/lib/db';
 import { getProductPriceForUser } from '@/lib/pricing';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
+import { sendDirectCustomerAlert } from '@/lib/pushService';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
