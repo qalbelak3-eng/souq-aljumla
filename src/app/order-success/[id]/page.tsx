@@ -17,7 +17,11 @@ import {
   CheckCircle,
   Radio,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  Star,
+  Sparkles,
+  ThumbsUp,
+  Send
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, OrderStatus } from '@/types';
@@ -38,6 +42,13 @@ export default function OrderSuccessPage() {
   const [whatsappUrl, setWhatsappUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
+
+  // Rating & Feedback State
+  const [rating, setRating] = useState<number>(5);
+  const [feedbackText, setFeedbackText] = useState<string>('');
+  const [feedbackTag, setFeedbackTag] = useState<string>('المندوب محترم وسريع ⚡');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
+  const [feedbackSent, setFeedbackSent] = useState<boolean>(false);
 
   const prevStatusRef = useRef<string | null>(null);
 
@@ -346,8 +357,8 @@ export default function OrderSuccessPage() {
           )}
         </div>
 
-        {/* WhatsApp Call to Action - يظهر فقط في المراحل الأولى ويختفي بعد اكتمال التسليم أو الإلغاء */}
-        {whatsappUrl && order.status !== 'delivered' && order.status !== 'cancelled' && (
+        {/* WhatsApp Call to Action - يظهر فقط في مرحلة استلام الطلبية الأولى (pending) ويختفي تلقائياً بمجرد تأكيد وتجهيز الطلب */}
+        {whatsappUrl && order.status === 'pending' && (
           <div className="pt-2 max-w-md mx-auto">
             <a
               href={whatsappUrl}
@@ -359,6 +370,142 @@ export default function OrderSuccessPage() {
               <span>إرسال تفاصيل الفاتورة إلى واتساب الإدارة</span>
               <ExternalLink className="w-4 h-4 opacity-75" />
             </a>
+          </div>
+        )}
+
+        {/* 🌟 بطاقة تقييم التجربة والمندوب وحل المشاكل عند اكتمال التسليم */}
+        {order.status === 'delivered' && (
+          <div className="pt-4 max-w-xl mx-auto border-t border-slate-100 animate-fadeIn">
+            {feedbackSent ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-5 text-center space-y-2">
+                <div className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h4 className="font-black text-sm text-emerald-950">شكراً جزيلاً لتقييمك ومشاركتنا رأيك! 🌹</h4>
+                <p className="text-xs text-emerald-700 font-medium">
+                  رأيك يهمنا دائماً لتطوير خدماتنا وسرعة التوصيل في سوق الجملة.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-gradient-to-br from-amber-50/70 via-white to-sky-50/70 border-2 border-amber-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-xs sm:text-sm text-slate-900">
+                        أخبرنا عن تجربتك معنا • تقييم المندوب والخدمة
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        المندوب: <strong className="text-slate-800">{order.driverName || 'مندوب التوصيل'}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* النجوم */}
+                  <div className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-2xl border border-amber-200 shadow-2xs">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        className="p-1 hover:scale-125 transition transform cursor-pointer"
+                        title={`${star} نجوم`}
+                      >
+                        <Star
+                          className={`w-5 h-5 ${
+                            star <= rating
+                              ? 'text-amber-400 fill-amber-400'
+                              : 'text-slate-200'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* خيارات وسوم سريعة */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    'المندوب محترم وسريع ⚡',
+                    'البضاعة والتغليف ممتاز 📦',
+                    'خدمة راقية وسلسة 🌟',
+                    'لدي ملاحظة أو استفسار 💬',
+                  ].map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setFeedbackTag(tag)}
+                      className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+                        feedbackTag === tag
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                {/* حقل الملاحظة أو المشكلة */}
+                <div className="space-y-1.5">
+                  <textarea
+                    rows={2}
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder="اكتب رأيك هنا، أو إذا واجهت أي مشكلة لنقوم بحلها لك فوراً..."
+                    className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 transition resize-none"
+                  />
+                </div>
+
+                {/* أزرار الإجراء */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={isSubmittingFeedback}
+                    onClick={async () => {
+                      setIsSubmittingFeedback(true);
+                      try {
+                        const fullText = `[تقييم طلبية #${order.orderNumber} - السائق: ${order.driverName || 'غير محدد'}] [التقييم: ${rating}/5 ⭐] [الوسم: ${feedbackTag}] ${feedbackText ? `\nالملاحظة: ${feedbackText}` : ''}`;
+                        await fetch('/api/complaints', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            customerName: order.customer.name,
+                            customerPhone: order.customer.phone,
+                            businessName: order.customer.businessName,
+                            city: order.customer.city,
+                            userId: order.customer.userId,
+                            text: fullText,
+                          }),
+                        });
+                        setFeedbackSent(true);
+                      } catch (e) {
+                        setFeedbackSent(true);
+                      } finally {
+                        setIsSubmittingFeedback(false);
+                      }
+                    }}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-black py-2.5 px-4 rounded-xl shadow-xs transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{isSubmittingFeedback ? 'جاري الإرسال...' : 'إرسال التقييم ✨'}</span>
+                  </button>
+
+                  <a
+                    href={`https://api.whatsapp.com/send?phone=9647700000000&text=${encodeURIComponent(`مرحباً إدارة سوق الجملة، بخصوص طلبيتي #${order.orderNumber}، أود الاستفسار والتواصل معكم.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold py-2.5 px-3.5 rounded-xl transition flex items-center gap-1.5 text-xs"
+                    title="تواصل مع الإدارة عبر الواتساب لحل أي مشكلة"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>تواصل معنا لحل مشكلة 💬</span>
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
