@@ -43,6 +43,8 @@ export default function DriverDashboardPage() {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [startingDeliveryId, setStartingDeliveryId] = useState<string | null>(null);
+  const [notifyingArrivedId, setNotifyingArrivedId] = useState<string | null>(null);
+  const [arrivedNotifiedOrders, setArrivedNotifiedOrders] = useState<Record<string, boolean>>({});
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
@@ -146,6 +148,33 @@ export default function DriverDashboardPage() {
       alert('حدث خطأ في الاتصال');
     }
     setStartingDeliveryId(null);
+  };
+
+  const handleNotifyArrived = async (orderId: string) => {
+    if (!driver) return;
+    setNotifyingArrivedId(orderId);
+    try {
+      const res = await fetch('/api/driver/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'notify_arrived',
+          orderId,
+          driverId: driver.id,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setArrivedNotifiedOrders((prev) => ({ ...prev, [orderId]: true }));
+        alert(data.message || 'تم إرسال إشعار وصول المندوب لهاتف الزبون بنجاح 🔔🛵');
+      } else {
+        alert(data.error || 'فشل إرسال الإشعار');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('حدث خطأ في الاتصال');
+    }
+    setNotifyingArrivedId(null);
   };
 
   const openDeliveryModal = (order: Order) => {
@@ -510,6 +539,27 @@ export default function DriverDashboardPage() {
                             </span>
                           )}
                         </div>
+
+                        {/* زر إشعار الزبون بأن المندوب وصل لموقعه */}
+                        <button
+                          type="button"
+                          onClick={() => handleNotifyArrived(order.id)}
+                          disabled={notifyingArrivedId === order.id || arrivedNotifiedOrders[order.id]}
+                          className={`w-full py-3 px-4 rounded-2xl font-black text-xs border transition flex items-center justify-center gap-2 cursor-pointer ${
+                            arrivedNotifiedOrders[order.id]
+                              ? 'bg-amber-50 text-amber-900 border-amber-300'
+                              : 'bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 border-amber-600 shadow-sm'
+                          }`}
+                        >
+                          <span className="text-base">🛵</span>
+                          <span>
+                            {arrivedNotifiedOrders[order.id]
+                              ? '✓ تم إرسال إشعار (المندوب وصل) لهاتف الزبون'
+                              : notifyingArrivedId === order.id
+                              ? 'جاري إرسال التنبيه لهاتف الزبون...'
+                              : '📢 تنبيه الزبون: وصلت لموقعك بالخارج! (إشعار فوري)'}
+                          </span>
+                        </button>
 
                         <button
                           onClick={() => openDeliveryModal(order)}

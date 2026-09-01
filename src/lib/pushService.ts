@@ -136,3 +136,69 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
     log,
   };
 }
+
+/**
+ * إرسال تنبيه فوري مباشر لزبون معين (مثل: وصول المندوب لموقع التوصيل)
+ * هذا الإشعار يظهر كـ Push Alert عاجل على هاتف الزبون فقط ولا يتم حفظه في سجل جرس التنبيهات الدائم
+ */
+export async function sendDirectCustomerAlert(params: {
+  userId?: string;
+  phone?: string;
+  title: string;
+  body: string;
+  url?: string;
+}): Promise<{ success: boolean; delivered: boolean }> {
+  const db = getPushSubscriptions('all');
+  if (!db || db.length === 0) return { success: true, delivered: false };
+
+  const cleanPhone = (params.phone || '').replace(/\D/g, '');
+
+  const targets = db.filter((sub) => {
+    if (params.userId && sub.userId === params.userId) return true;
+    if (cleanPhone && sub.userPhone && sub.userPhone.replace(/\D/g, '') === cleanPhone) return true;
+    return false;
+  });
+
+  if (targets.length === 0) return { success: true, delivered: false };
+
+  const notificationData = JSON.stringify({
+    title: params.title,
+    body: params.body,
+    icon: '/app-icon.png',
+    badge: '/app-icon.png',
+    data: {
+      url: params.url || '/',
+      timestamp: Date.now(),
+      isInstantAlertOnly: true, // علامة لتمييز الإشعار اللحظي
+    },
+  });
+
+  let delivered = false;
+
+  const promises = targets.map(async (sub) => {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.keys.p256dh,
+            auth: sub.keys.auth,
+          },
+        },
+        notificationData,
+        {
+          TTL: 3600, // صلاحية ساعة واحدة فقط للتنبيه العاجل
+          urgency: 'high',
+        }
+      );
+      delivered = true;
+    } catch (err: any) {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        deletePushSubscription(sub.endpoint);
+      }
+    }
+  });
+
+  await Promise.allSettled(promises);
+  return { success: true, delivered };
+}

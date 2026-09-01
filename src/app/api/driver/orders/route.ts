@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getOrders, completeDriverDelivery, startDriverDelivery, getDriverById } from '@/lib/db';
+import { getOrders, completeDriverDelivery, startDriverDelivery, getDriverById, getOrderById } from '@/lib/db';
+import { sendDirectCustomerAlert } from '@/lib/pushService';
 
 export async function GET(req: Request) {
   try {
@@ -69,6 +70,29 @@ export async function POST(req: Request) {
         success: true,
         order: result.order,
         message: 'تم تحديث حالة الطلبية: خرج مع المندوب للتوصيل 🚚',
+      });
+    }
+
+    // Action 2: Driver arrived at customer location (إشعار فوري بأن المندوب وصل)
+    if (action === 'notify_arrived') {
+      const order = getOrderById(orderId);
+      const driver = getDriverById(driverId);
+      if (!order) {
+        return NextResponse.json({ success: false, error: 'الطلبية غير موجودة' }, { status: 404 });
+      }
+
+      // إرسال تنبيه Push لحظي لهاتف الزبون
+      await sendDirectCustomerAlert({
+        userId: order.customer.userId,
+        phone: order.customer.phone,
+        title: '🛵 المندوب وصل إلى موقعك الآن!',
+        body: `مرحباً ${order.customer.name}، مندوب سوق الجملة (${driver?.name || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+        url: `/order-success/${order.id}`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'تم إرسال إشعار وصول المندوب لهاتف الزبون بنجاح 🔔🛵',
       });
     }
 

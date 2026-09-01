@@ -25,7 +25,7 @@ import { useAuth } from '@/context/AuthContext';
 import { PaymentMethod, StoreSettings } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
 import { getUserCashbackRate } from '@/lib/pricing';
-import { calculateDeliveryFeeByDistance } from '@/lib/delivery';
+import { calculateDeliveryFeeByDistance, calculateDistanceKm } from '@/lib/delivery';
 
 interface KarbalaAreaOption {
   name: string;
@@ -89,6 +89,11 @@ export default function CheckoutPage() {
 
   // GPS & Locations
   const [coords, setCoords] = useState<{ lat?: number; lng?: number; mapsUrl?: string }>({});
+  const [liveGps, setLiveGps] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationMismatch, setLocationMismatch] = useState<{
+    distanceKm: number;
+    savedTitle: string;
+  } | null>(null);
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<string>('');
   const [savedLocations, setSavedLocations] = useState<any[]>([]);
@@ -233,18 +238,32 @@ export default function CheckoutPage() {
       }
     }
 
-    // Auto-request GPS in background if not already present
-    if (navigator.geolocation && !user?.lat) {
+    // Auto-detect live GPS in background to check if user is at the selected address
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          setCoords({
-            lat,
-            lng,
-            mapsUrl: `https://www.google.com/maps?q=${lat},${lng}`,
-          });
-          setGpsStatus('تم تحديد موقعك الجغرافي تلقائياً عبر GPS 📍');
+          setLiveGps({ lat, lng });
+
+          // If no coords set yet, use live GPS
+          if (!user?.lat && !coords.lat) {
+            setCoords({
+              lat,
+              lng,
+              mapsUrl: `https://www.google.com/maps?q=${lat},${lng}`,
+            });
+            setGpsStatus('تم تحديد موقعك الجغرافي تلقائياً عبر GPS 📍');
+          } else if (user?.lat && user?.lng) {
+            // Check distance between saved address and live position
+            const diffKm = calculateDistanceKm(lat, lng, user.lat, user.lng);
+            if (diffKm > 0.5) { // إذا كان الفرق أكثر من 500 متر
+              setLocationMismatch({
+                distanceKm: Math.round(diffKm * 10) / 10,
+                savedTitle: user.businessName || 'موقع البيت 🏠',
+              });
+            }
+          }
         },
         () => {}
       );
@@ -259,7 +278,32 @@ export default function CheckoutPage() {
     if (loc.lat && loc.lng) {
       setCoords({ lat: loc.lat, lng: loc.lng, mapsUrl: loc.mapsUrl || `https://www.google.com/maps?q=${loc.lat},${loc.lng}` });
       setGpsStatus(`تم تفعيل موقع: ${loc.title}`);
+
+      // Check mismatch if live GPS is available
+      if (liveGps) {
+        const diffKm = calculateDistanceKm(liveGps.lat, liveGps.lng, loc.lat, loc.lng);
+        if (diffKm > 0.5) {
+          setLocationMismatch({
+            distanceKm: Math.round(diffKm * 10) / 10,
+            savedTitle: loc.title,
+          });
+        } else {
+          setLocationMismatch(null);
+        }
+      }
+    } else {
+      setLocationMismatch(null);
     }
+  };
+
+  const handleApplyCurrentLiveLocation = () => {
+    if (!liveGps) return;
+    const url = `https://www.google.com/maps?q=${liveGps.lat},${liveGps.lng}`;
+    setCoords({ lat: liveGps.lat, lng: liveGps.lng, mapsUrl: url });
+    setLocationTitle('موقعي الحالي الآن 📍');
+    setSelectedLocationId('custom');
+    setLocationMismatch(null);
+    setGpsStatus('تم تحديث موقع التوصيل إلى موقعك الجغرافي الحالي بنجاح ✓');
   };
 
   const handleDetectGps = () => {
@@ -514,6 +558,43 @@ export default function CheckoutPage() {
                 <span>{isDetectingGps ? 'جاري تحديد GPS...' : '📍 تحديث موقعي عبر GPS'}</span>
               </button>
             </div>
+
+            {/* تنبيه ذكي عند اختلاف الموقع الجغرافي الفعلي عن العنوان المختار */}
+            {locationMismatch && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-3 animate-fadeIn">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg shrink-0">
+                    ⚠️
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-black text-xs text-amber-950">
+                      تنبيه: أنت لست في ({locationMismatch.savedTitle}) حالياً!
+                    </h4>
+                    <p className="text-[11px] text-amber-900 leading-relaxed font-bold">
+                      أنت اخترت <span className="underline">({locationMismatch.savedTitle})</span>، ولكن موقعك الجغرافي الحالي يبعد مسافة <span className="text-rose-700 font-black">({locationMismatch.distanceKm} كم)</span> عن هذا المكان.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-amber-200/80">
+                  <button
+                    type="button"
+                    onClick={handleApplyCurrentLiveLocation}
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-black text-xs py-2 px-3 rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>📍 إرسال الطلبية لموقعي الحالي الآن</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLocationMismatch(null)}
+                    className="bg-white hover:bg-amber-100 text-amber-900 font-bold text-xs py-2 px-3 rounded-xl border border-amber-300 transition cursor-pointer"
+                  >
+                    <span>إبقاء ({locationMismatch.savedTitle})</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Multiple Saved Locations Chips */}
             <div className="space-y-2 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
