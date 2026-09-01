@@ -109,8 +109,16 @@ body {
   }
 
   .no-print,
-  .print\:hidden {
+  .print\:hidden,
+  header,
+  nav,
+  aside,
+  footer {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* When printing statement sheet or order invoice, hide any backdrop or container artifacts */
@@ -134,15 +142,6 @@ body {
     margin: 0 !important;
     width: 100% !important;
     background: transparent !important;
-  }
-
-  /* Hide main admin layout and non-printable elements when order print is open */
-  body:has(#printable-order-sheet) > *:not(:has(#printable-order-sheet)) {
-    display: none !important;
-  }
-
-  body:has(#printable-statement-sheet) > *:not(:has(#printable-statement-sheet)) {
-    display: none !important;
   }
 
   #printable-order-sheet,

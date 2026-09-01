@@ -478,7 +478,8 @@ export default function AdminOrdersPage() {
   ];
 
   return (
-    <div className="space-y-6 text-xs">
+    <>
+      <div className={`space-y-6 text-xs ${printOrder ? 'no-print print:hidden' : ''}`}>
 
       {/* Top Action & Alert Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
@@ -1714,6 +1715,8 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
+      </div>
+
       {/* MODAL 4: CLEAN A4 OFFICIAL INVOICE & DELIVERY MANIFEST (الطباعة الرسمية النظيفة) */}
       {printOrder && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:p-0 print:m-0 print:bg-transparent order-print-modal-overlay">
@@ -1936,7 +1939,7 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-    </div>
+    </>
   );
 }
 
