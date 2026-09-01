@@ -26,9 +26,11 @@ import {
 import { Order, Driver, DeliveryCollectionStatus, StoreSettings } from '@/types';
 import { generateDeliveryCustomerWhatsAppLink, generateDeliveryAccountantWhatsAppLink } from '@/lib/whatsapp';
 import EtihadLogo from '@/components/EtihadLogo';
+import { useToast } from '@/context/ToastContext';
 
 export default function DriverDashboardPage() {
   const router = useRouter();
+  const toast = useToast();
   const [driver, setDriver] = useState<Driver | null>(null);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
@@ -139,13 +141,14 @@ export default function DriverDashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
+        toast.showToast('تم تحديث حالة الطلبية: خرج مع المندوب للتوصيل 🚚', 'success');
         fetchOrders(driver.id);
       } else {
-        alert(data.error || 'حدث خطأ أثناء التحديث');
+        toast.showToast(data.error || 'حدث خطأ أثناء التحديث', 'error');
       }
     } catch (e) {
       console.error(e);
-      alert('حدث خطأ في الاتصال');
+      toast.showToast('حدث خطأ في الاتصال بالخادم', 'error');
     }
     setStartingDeliveryId(null);
   };
@@ -166,13 +169,13 @@ export default function DriverDashboardPage() {
       const data = await res.json();
       if (data.success) {
         setArrivedNotifiedOrders((prev) => ({ ...prev, [orderId]: true }));
-        alert(data.message || 'تم إرسال إشعار وصول المندوب لهاتف الزبون بنجاح 🔔🛵');
+        toast.showToast(data.message || 'تم إرسال إشعار وصول المندوب لهاتف الزبون بنجاح 🔔🛵', 'success');
       } else {
-        alert(data.error || 'فشل إرسال الإشعار');
+        toast.showToast(data.error || 'فشل إرسال الإشعار', 'error');
       }
     } catch (e) {
       console.error(e);
-      alert('حدث خطأ في الاتصال');
+      toast.showToast('حدث خطأ في الاتصال بالخادم', 'error');
     }
     setNotifyingArrivedId(null);
   };
@@ -193,7 +196,7 @@ export default function DriverDashboardPage() {
     } else if (collectionStatus === 'partial') {
       collectedAmount = Number(partialAmount) || 0;
       if (collectedAmount <= 0 || collectedAmount >= selectedOrder.total) {
-        alert('يرجى إدخال مبلغ جزئي صحيح أقل من إجمالي الفاتورة');
+        toast.showToast('يرجى إدخال مبلغ جزئي صحيح أقل من إجمالي الفاتورة', 'error');
         return;
       }
     } else if (collectionStatus === 'debt_unpaid') {
@@ -216,6 +219,7 @@ export default function DriverDashboardPage() {
 
       const data = await res.json();
       if (data.success) {
+        toast.showToast('تم إتمام تسليم الطلبية وحفظ التحصيل بنجاح 🎉', 'success');
         const finishedOrder = data.order || {
           ...selectedOrder,
           collectionStatus,
@@ -245,11 +249,11 @@ export default function DriverDashboardPage() {
         setSelectedOrder(null);
         fetchOrders(driver.id);
       } else {
-        alert(data.error || 'حدث خطأ أثناء حفظ التسليم');
+        toast.showToast(data.error || 'حدث خطأ أثناء حفظ التسليم', 'error');
       }
     } catch (e) {
       console.error(e);
-      alert('حدث خطأ في الاتصال بالخادم');
+      toast.showToast('حدث خطأ في الاتصال بالخادم', 'error');
     }
     setIsSubmitting(false);
   };
