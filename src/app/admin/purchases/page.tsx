@@ -52,7 +52,7 @@ export default function AdminPurchasesPage() {
     boxesPerCarton: number;
     itemsPerBox: number;
   }>>([
-    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 7000, boxesPerCarton: 6, itemsPerBox: 24 }
+    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 1, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
   ]);
 
   // View Invoice Modal
@@ -584,28 +584,19 @@ export default function AdminPurchasesPage() {
 
                 <div className="space-y-3">
                   {invItems.map((item, idx) => {
-                    const boxes = Number(item.boxesPerCarton) || 6;
-                    const piecesPerBox = Number(item.itemsPerBox) || 24;
-                    const totalPiecesPerCarton = boxes * piecesPerBox;
                     const totalCartons = Number(item.quantity) || 0;
                     const costPerCarton = Number(item.costPrice) || 0;
                     const rowTotal = totalCartons * costPerCarton;
-                    const pieceCost = totalPiecesPerCarton > 0 ? (costPerCarton / totalPiecesPerCarton).toFixed(1) : '0';
 
                     return (
                       <div
                         key={idx}
                         className="bg-slate-50/90 border border-slate-200 p-3 rounded-2xl space-y-2"
                       >
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
                           {/* Product Selector */}
-                          <div className="sm:col-span-4 space-y-0.5">
-                            <div className="flex items-center justify-between pb-0.5">
-                              <label className="text-[10px] font-bold text-slate-700">اسم الصنف:</label>
-                              <span className="text-[9px] bg-blue-100 text-brand-blue font-bold px-1.5 py-0.5 rounded">
-                                أصناف {invCompany || 'الشركة'} 🏢
-                              </span>
-                            </div>
+                          <div className="sm:col-span-6 space-y-0.5">
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف:</label>
                             <SearchableProductSelect
                               companyProducts={products.filter(p => p.company === invCompany)}
                               allProducts={products}
@@ -619,21 +610,21 @@ export default function AdminPurchasesPage() {
 
                           {/* Cartons Quantity */}
                           <div className="sm:col-span-2 space-y-0.5">
-                            <label className="text-[10px] font-bold text-slate-700">عدد الكراتين:</label>
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">عدد الكراتين:</label>
                             <input
                               type="number"
                               min="1"
                               required
                               value={item.quantity}
                               onChange={(e) => updateItemRow(idx, 'quantity', Number(e.target.value))}
-                              placeholder="مثال: 700"
-                              className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-2 text-xs font-black text-slate-900 text-center font-mono"
+                              placeholder="1"
+                              className="w-full bg-white border border-slate-300 rounded-xl py-2 px-2 text-xs font-black text-slate-900 text-center font-mono focus:border-brand-blue"
                             />
                           </div>
 
                           {/* Carton Cost Price */}
                           <div className="sm:col-span-2 space-y-0.5">
-                            <label className="text-[10px] font-bold text-slate-700">سعر شراء الكرتون (د.ع):</label>
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">سعر شراء الكرتون (د.ع):</label>
                             <input
                               type="number"
                               min="0"
@@ -641,72 +632,31 @@ export default function AdminPurchasesPage() {
                               required
                               value={item.costPrice}
                               onChange={(e) => updateItemRow(idx, 'costPrice', Number(e.target.value))}
-                              placeholder="مثال: 20000"
-                              className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-2 text-xs font-black text-slate-900 font-mono text-center"
-                            />
-                          </div>
-
-                          {/* Boxes per Carton */}
-                          <div className="sm:col-span-1 space-y-0.5">
-                            <label className="text-[10px] font-bold text-blue-800" title="علب في الكرتون">علب/كرتون:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              required
-                              value={item.boxesPerCarton}
-                              onChange={(e) => updateItemRow(idx, 'boxesPerCarton', Math.max(1, Number(e.target.value)))}
-                              className="w-full bg-blue-50 border border-blue-200 rounded-xl py-1.5 px-1 text-xs font-bold text-blue-950 text-center font-mono"
-                            />
-                          </div>
-
-                          {/* Pieces per Box */}
-                          <div className="sm:col-span-1 space-y-0.5">
-                            <label className="text-[10px] font-bold text-blue-800" title="قطع في العلبة">قطع/علبة:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              required
-                              value={item.itemsPerBox}
-                              onChange={(e) => updateItemRow(idx, 'itemsPerBox', Math.max(1, Number(e.target.value)))}
-                              className="w-full bg-blue-50 border border-blue-200 rounded-xl py-1.5 px-1 text-xs font-bold text-blue-950 text-center font-mono"
+                              placeholder="0"
+                              className="w-full bg-white border border-slate-300 rounded-xl py-2 px-2 text-xs font-black text-slate-900 font-mono text-center focus:border-brand-blue"
                             />
                           </div>
 
                           {/* Row Total */}
                           <div className="sm:col-span-1 space-y-0.5 text-center">
-                            <label className="text-[10px] font-bold text-slate-600">الإجمالي:</label>
-                            <div className="font-mono font-black text-purple-700 text-xs py-1.5 whitespace-nowrap">
+                            <label className="text-[10px] font-bold text-slate-600 block pb-0.5">الإجمالي:</label>
+                            <div className="font-mono font-black text-purple-700 text-xs py-2 whitespace-nowrap">
                               {rowTotal.toLocaleString()} د.ع
                             </div>
                           </div>
 
                           {/* Delete Row */}
-                          <div className="sm:col-span-1 text-center pt-2 sm:pt-0">
+                          <div className="sm:col-span-1 text-center pt-2 sm:pt-4">
                             <button
                               type="button"
                               disabled={invItems.length <= 1}
                               onClick={() => removeItemRow(idx)}
-                              className="text-red-500 hover:text-red-700 disabled:opacity-30 p-1"
+                              className="text-red-500 hover:text-red-700 disabled:opacity-20 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                              title="حذف هذا السطر"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4 mx-auto" />
                             </button>
                           </div>
-                        </div>
-
-                        {/* Breakdown Sub-badge */}
-                        <div className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-600 flex-wrap gap-2">
-                          <span className="flex items-center gap-1.5 text-brand-blue">
-                            <span>📦 توريد للمستودع:</span>
-                            <span className="font-mono font-black">{totalCartons.toLocaleString()} كرتون</span>
-                            <span>=</span>
-                            <span className="font-mono font-black text-indigo-700">{(totalCartons * boxes).toLocaleString()} علبة</span>
-                            <span>=</span>
-                            <span className="font-mono font-black text-emerald-700">{(totalCartons * totalPiecesPerCarton).toLocaleString()} قطعة إجمالية</span>
-                          </span>
-
-                          <span className="text-slate-700 font-mono">
-                            💰 تكلفة القطعة الواحدة: <strong className="text-emerald-700">{pieceCost} د.ع</strong>
-                          </span>
                         </div>
                       </div>
                     );
