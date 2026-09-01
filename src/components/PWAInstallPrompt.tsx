@@ -25,10 +25,9 @@ export default function PWAInstallPrompt() {
       return;
     }
 
-    // تحقق إذا كان المستخدم رفض أو ثبّت مسبقاً
-    const dismissed = localStorage.getItem('pwa_install_dismissed');
+    // تحقق إذا كان المستخدم ثبّت التطبيق مسبقاً فقط
     const installed = localStorage.getItem('pwa_installed');
-    if (dismissed || installed) return;
+    if (installed) return;
 
     // كشف iOS
     const ua = window.navigator.userAgent;
@@ -75,7 +74,6 @@ export default function PWAInstallPrompt() {
   };
 
   const handleDismiss = () => {
-    localStorage.setItem('pwa_install_dismissed', 'true');
     setShowPrompt(false);
   };
 
