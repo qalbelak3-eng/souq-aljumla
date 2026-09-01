@@ -5,12 +5,12 @@ export function formatWhatsAppOrderMessage(order: Order, settings: StoreSettings
     cod: '💵 الدفع عند الاستلام (كاش بالدينار العراقي)',
     zaincash: '📱 زين كاش (ZainCash العراق)',
     qicard: '💳 بطاقة كي كارد / ماستر كارد (Qi Card)',
-    bank_transfer: '🏦 تحويل مصرفي (الرافدين / الرشيد / TBI)',
+    bank_transfer: '🏦 تحويل مصرفي عراقي',
     online: '💳 دفع إلكتروني مباشر',
   };
 
   const lines: string[] = [
-    `🇮🇶🟣 *طلب جديد - ${settings.storeName}* 🟣🇮🇶`,
+    `*طلب جديد - سوق الجملة*`,
     `━━━━━━━━━━━━━━━━━━`,
     `🔖 *رقم الطلبية:* \`${order.orderNumber}\``,
     `📅 *التاريخ:* ${new Date(order.createdAt).toLocaleDateString('ar-IQ')} - ${new Date(order.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}`,
@@ -19,32 +19,30 @@ export function formatWhatsAppOrderMessage(order: Order, settings: StoreSettings
     `• *الاسم:* ${order.customer.name}`,
     order.customer.businessName ? `• *اسم المحل/المنشأة:* ${order.customer.businessName}` : '',
     `• *رقم الهاتف:* ${order.customer.phone}`,
-    order.customer.email ? `• *البريد:* ${order.customer.email}` : '',
-    order.customer.locationTitle ? `• *الموقع المخصص:* ${order.customer.locationTitle}` : '',
-    `• *المحافظة:* ${order.customer.city}`,
-    `• *العنوان بالتفصيل:* ${order.customer.address}`,
+    order.customer.city ? `• *المحافظة:* ${order.customer.city}` : '',
+    order.customer.address ? `• *العنوان بالتفصيل:* ${order.customer.address}` : '',
     order.customer.mapsUrl ? `• *📍 موقع GPS على الخريطة:* ${order.customer.mapsUrl}` : '',
     order.customer.notes ? `• *ملاحظات التوصيل:* ${order.customer.notes}` : '',
     `• *نوع الحساب:* ${order.customer.isGuest ? 'طلب مباشر (كزائر)' : 'زبون مسجل'}`,
     ``,
-    `📦 *السناكات والمواد المطلوبة:*`,
+    `📦 *تفاصيل الطلبية:*`,
     ...order.items.map((item, index) => {
       const typeTag = item.saleType === 'wholesale' ? ' [📦 جملة / كرتون]' : ' [🛒 مفرد]';
       const unitStr = item.unitLabel ? ` (${item.unitLabel})` : '';
-      return `${index + 1}. *${item.name}*${typeTag}${unitStr}\n   ▫️ الكمية: *${item.quantity}* × ${item.price.toLocaleString()} ${settings.currency} = *${(item.quantity * item.price).toLocaleString()}* ${settings.currency}`;
+      return `${index + 1}. *${item.name}*${typeTag}${unitStr}\n   ▫️ الكمية: *${item.quantity}* × ${item.price.toLocaleString()} ${settings.currency || 'د.ع'} = *${(item.quantity * item.price).toLocaleString()}* ${settings.currency || 'د.ع'}`;
     }),
     ``,
     `━━━━━━━━━━━━━━━━━━`,
     `💰 *ملخص الحساب:*`,
-    `• المجموع الفرعي: *${order.subtotal.toLocaleString()}* ${settings.currency}`,
-    order.discount > 0 ? `• الخصم: *-${order.discount.toLocaleString()}* ${settings.currency}` : '',
-    order.usedCashbackDiscount ? `• خصم رصيد الأرباح (كاش باك 🎁): *-${order.usedCashbackDiscount.toLocaleString()}* ${settings.currency}` : '',
-    `• كروة التوصيل: *${!order.deliveryFee ? 'مجاناً ⚡' : `${(order.deliveryFee || 0).toLocaleString()} ${settings.currency}`}*`,
-    `⭐ *المبلغ الإجمالي:* *${order.total.toLocaleString()}* ${settings.currency}`,
+    `• المجموع الفرعي: *${order.subtotal.toLocaleString()}* ${settings.currency || 'د.ع'}`,
+    order.discount > 0 ? `• الخصم: *-${order.discount.toLocaleString()}* ${settings.currency || 'د.ع'}` : '',
+    order.usedCashbackDiscount ? `• خصم رصيد الأرباح (كاش باك 🎁): *-${order.usedCashbackDiscount.toLocaleString()}* ${settings.currency || 'د.ع'}` : '',
+    `• كروة التوصيل: *${!order.deliveryFee ? 'مجاناً ⚡' : `${(order.deliveryFee || 0).toLocaleString()} ${settings.currency || 'د.ع'}`}*`,
+    `*المبلغ الإجمالي:* *${order.total.toLocaleString()}* ${settings.currency || 'د.ع'}`,
     ``,
     `💳 *طريقة الدفع:* ${paymentLabels[order.paymentMethod] || order.paymentMethod}`,
     `━━━━━━━━━━━━━━━━━━`,
-    `يرجى تأكيد استلام الطلبية والتجهيز للتوصيل. شكراً لتعاملكم مع مؤسسة الاتحاد في العراق! 🇮🇶🌾`,
+    `يرجى تأكيد استلام الطلبية والتجهيز للتوصيل. شكراً لتعاملكم`,
   ].filter(Boolean);
 
   return lines.join('\n');
@@ -68,7 +66,7 @@ export function generateWhatsAppLink(order: Order, settings: StoreSettings): str
   return `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}`;
 }
 
-export function generateDirectWhatsAppSupportLink(settings: StoreSettings, message = "مرحباً مؤسسة الاتحاد / سوق الجملة، أود التواصل مع قسم الدعم الفني وخدمة العملاء"): string {
+export function generateDirectWhatsAppSupportLink(settings: StoreSettings, message = "مرحباً سوق الجملة، أود الاستفسار والتواصل"): string {
   let phone = (settings.supportWhatsappNumber || settings.whatsappNumber || settings.whatsapp || '9647700000000').replace(/\D/g, '');
   if (phone.startsWith('07')) {
     phone = '964' + phone.substring(1);
@@ -100,18 +98,18 @@ export function generateDeliveryCustomerWhatsAppLink(order: Order, driverName: s
   }
 
   const message = [
-    `🌸 *مرحباً ${order.customer.name} المحترم* 🌸`,
-    `تم تسليم طلبيتك بنجاح من *${settings.storeName}* 🚚`,
+    `*تم تسليم طلبيتك بنجاح - سوق الجملة* 🚚`,
     `━━━━━━━━━━━━━━━━━━`,
     `🔖 *رقم الفاتورة:* #${order.orderNumber}`,
-    `📦 *الأصناف:* ${order.items.length} صنف`,
+    `👤 *الزبون:* ${order.customer.name}`,
     `💰 *المبلغ الإجمالي:* ${order.total.toLocaleString()} د.ع`,
-    `💳 *حالة الدفع والتحصيل:* ${paymentText}`,
-    `👤 *مندوب التوصيل:* ${driverName}`,
+    `💳 *حالة التحصيل:* ${paymentText}`,
+    order.driverNotes ? `💬 *ملاحظة السائق:* ${order.driverNotes}` : '',
+    `🛵 *المندوب:* ${driverName}`,
     `📅 *الوقت:* ${new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })} - ${new Date().toLocaleDateString('ar-IQ')}`,
     `━━━━━━━━━━━━━━━━━━`,
-    `شكراً لتعاملكم معنا ونسعد بخدمتكم دائماً! 🌹`,
-  ].join('\n');
+    `شكراً لتعاملكم معنا ونسعد بخدمتكم دائماً!`,
+  ].filter(Boolean).join('\n');
 
   return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
 }
@@ -136,12 +134,12 @@ export function generateDeliveryAccountantWhatsAppLink(order: Order, driverName:
   }
 
   const message = [
-    `💼 *إشعار محاسبي: إتمام تسليم وتحصيل طلبية* 💼`,
+    `💼 *إشعار تسليم وتحصيل طلبية - سوق الجملة* 💼`,
     `━━━━━━━━━━━━━━━━━━`,
     `🔖 *رقم الفاتورة:* #${order.orderNumber}`,
     `👤 *الزبون / المحل:* ${order.customer.name} ${order.customer.businessName ? `(${order.customer.businessName})` : ''}`,
     `📱 *هاتف الزبون:* ${order.customer.phone}`,
-    `📍 *المدينة والعنوان:* ${order.customer.city} - ${order.customer.address}`,
+    `📍 *الموقع:* ${order.customer.city} - ${order.customer.address}`,
     `💰 *إجمالي الفاتورة:* ${order.total.toLocaleString()} د.ع`,
     `💵 *تفاصيل التحصيل:* ${paymentText}`,
     `🚚 *المندوب المسلم:* ${driverName}`,
