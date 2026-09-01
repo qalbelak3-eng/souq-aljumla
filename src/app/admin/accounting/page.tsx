@@ -984,6 +984,294 @@ function AdminAccountingContent() {
         </div>
       )}
 
+      {/* =========================================================================
+          TAB 2: CASH VAULT (صندوق النقدية - حساب 181)
+          ========================================================================= */}
+      {activeMainTab === 'vault' && (
+        <div className="space-y-6 animate-in fade-in-50 duration-200">
+          
+          {/* Vault KPI Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            {/* 1. Current Balance in Safe */}
+            <div className="bg-gradient-to-br from-emerald-600 to-teal-800 text-white p-5 rounded-3xl shadow-sm space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-100">
+                <span>الرصيد الفعلي الحالي بالصندوق (181)</span>
+                <Wallet className="w-5 h-5 text-emerald-200" />
+              </div>
+              <div className="text-2xl sm:text-3xl font-black font-mono">
+                {(vaultSummary?.currentBalance ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans">د.ع</span>
+              </div>
+              <p className="text-[11px] text-emerald-100/90 font-bold">
+                النقدية الحاضرة بالخزينة الرئيسية للمتجر
+              </p>
+            </div>
+
+            {/* 2. Total Inflows / Collections */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-500 font-bold">
+                <span>إجمالي المقبوضات والإيداعات (داخل)</span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <ArrowDownRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black font-mono text-emerald-700">
+                {(vaultSummary?.totalInflow ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-bold">
+                مبيعات نقدية + تحصيلات زبائن + تصفيات سواق
+              </p>
+            </div>
+
+            {/* 3. Total Outflows / Expenses */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-500 font-bold">
+                <span>إجمالي المصروفات والمدفوعات (خارج)</span>
+                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black font-mono text-rose-700">
+                {(vaultSummary?.totalOutflow ?? 0).toLocaleString()} <span className="text-xs font-bold font-sans text-slate-500">د.ع</span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-bold">
+                مصاريف تشغيلية + سداد شركات مجهزة + مسحوبات
+              </p>
+            </div>
+
+          </div>
+
+          {/* Action Bar & Controls */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+            
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => handleOpenVaultModal('inflow')}
+                className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2.5 rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إيداع وتغذية الصندوق 💵</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenVaultModal('outflow')}
+                className="flex-1 sm:flex-initial bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2.5 rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Minus className="w-4 h-4" />
+                <span>صرف / تسجيل مصروف 📤</span>
+              </button>
+            </div>
+
+            <div className="relative w-full sm:w-80">
+              <input
+                type="text"
+                value={vaultSearchQuery}
+                onChange={(e) => setVaultSearchQuery(e.target.value)}
+                placeholder="ابحث برقم السند، الطرف، أو البيان..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pr-9 pl-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand-blue"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            </div>
+
+          </div>
+
+          {/* Vault Movements Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-emerald-600" />
+                <span>سجل وحركات صندوق النقدية (حساب 181)</span>
+              </h3>
+              <span className="text-xs font-mono font-bold text-slate-400">
+                {vaultMovements.length} حركة مسجلة
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
+                  <tr className="divide-x divide-x-reverse divide-slate-100">
+                    <th className="py-3 px-4">رقم الحركة</th>
+                    <th className="py-3 px-4">التاريخ والوقت</th>
+                    <th className="py-3 px-4">نوع الحركة والتصنيف</th>
+                    <th className="py-3 px-4">الطرف المعني</th>
+                    <th className="py-3 px-4">البيان والتفاصيل</th>
+                    <th className="py-3 px-4 text-center">المبلغ (د.ع)</th>
+                    <th className="py-3 px-4 text-center">المسؤول والموثق</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-bold">
+                  {vaultMovements.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400 space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center mx-auto text-xl">
+                          💵
+                        </div>
+                        <p className="font-black text-slate-600">لا توجد حركات مسجلة بالصندوق بعد</p>
+                        <p className="text-[11px] text-slate-400">
+                          استخدم أزرار "إيداع" أو "صرف" أعلاه لتسجيل وتوثيق الحركات النقدية.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    vaultMovements
+                      .filter((m) => {
+                        if (!vaultSearchQuery) return true;
+                        const q = vaultSearchQuery.toLowerCase();
+                        return (
+                          (m.receiptNumber && m.receiptNumber.toLowerCase().includes(q)) ||
+                          (m.partyName && m.partyName.toLowerCase().includes(q)) ||
+                          (m.notes && m.notes.toLowerCase().includes(q)) ||
+                          (m.categoryLabel && m.categoryLabel.toLowerCase().includes(q))
+                        );
+                      })
+                      .map((m) => {
+                        const isInflow = m.type === 'inflow';
+                        return (
+                          <tr key={m.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
+                            <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                              #{m.receiptNumber || m.id.slice(-6)}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                              {new Date(m.date).toLocaleString('ar-IQ')}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <span
+                                className={`px-2.5 py-1 rounded-xl text-[11px] font-black inline-flex items-center gap-1 ${
+                                  isInflow
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                                }`}
+                              >
+                                {isInflow ? '⬇️ إيداع / قبض' : '⬆️ صرف / مدفوعات'} • {m.categoryLabel || m.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-black text-slate-900 whitespace-nowrap">
+                              {m.partyName || '-'}
+                            </td>
+                            <td className="py-3 px-4 max-w-xs text-slate-700">
+                              {m.notes || '-'}
+                            </td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap font-mono font-black">
+                              <span className={isInflow ? 'text-emerald-700' : 'text-rose-700'}>
+                                {isInflow ? '+' : '-'} {m.amount.toLocaleString()} د.ع
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap font-mono text-[11px] text-slate-500">
+                              {m.operator?.name || m.createdByName || 'مدير النظام'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 3: AUDIT LOG (سجل الرقابة وتدقيق الموظفين)
+          ========================================================================= */}
+      {activeMainTab === 'audit' && (
+        <div className="space-y-6 animate-in fade-in-50 duration-200">
+          
+          <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-purple-600" />
+              <h3 className="font-black text-sm text-slate-900">
+                سجل الرقابة والتدقيق المالي الشامل (Audit Trail)
+              </h3>
+              <span className="bg-purple-100 text-purple-800 font-mono text-xs px-2 py-0.5 rounded-lg font-bold">
+                {auditLogs.length} سجل
+              </span>
+            </div>
+
+            <div className="relative w-full sm:w-80">
+              <input
+                type="text"
+                value={auditSearchQuery}
+                onChange={(e) => setAuditSearchQuery(e.target.value)}
+                placeholder="ابحث بالموظف، الإجراء، أو التفاصيل..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pr-9 pl-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-purple-600"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
+                  <tr className="divide-x divide-x-reverse divide-slate-100">
+                    <th className="py-3 px-4">التاريخ والوقت</th>
+                    <th className="py-3 px-4">الموظف / المسؤول</th>
+                    <th className="py-3 px-4">نوع الإجراء</th>
+                    <th className="py-3 px-4">التفاصيل والبيان المالي</th>
+                    <th className="py-3 px-4 text-center">المبلغ المتأثر</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-bold">
+                  {auditLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400 space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto text-xl">
+                          🛡️
+                        </div>
+                        <p className="font-black text-slate-600">لا توجد سجلات تدقيق بعد</p>
+                        <p className="text-[11px] text-slate-400">
+                          كافة عمليات القبض، الصرف، وتعديل الفواتير سيتم توثيقها هنا آلياً وبشكل غير قابل للتلاعب.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    auditLogs
+                      .filter((log) => {
+                        if (!auditSearchQuery) return true;
+                        const q = auditSearchQuery.toLowerCase();
+                        return (
+                          (log.operatorName && log.operatorName.toLowerCase().includes(q)) ||
+                          (log.action && log.action.toLowerCase().includes(q)) ||
+                          (log.details && log.details.toLowerCase().includes(q))
+                        );
+                      })
+                      .map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
+                          <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                            {new Date(log.timestamp).toLocaleString('ar-IQ')}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap font-black text-slate-900">
+                            <span className="bg-slate-100 px-2.5 py-1 rounded-xl text-slate-800 border border-slate-200">
+                              👤 {log.operatorName || 'المحاسب'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-xl text-[11px] font-bold">
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-700">
+                            {log.details}
+                          </td>
+                          <td className="py-3 px-4 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                            {log.amount ? `${log.amount.toLocaleString()} د.ع` : '-'}
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
       {/* MODAL 1: RECORD PAYMENT RECEIPT VOUCHER */}
       {isPaymentModalOpen && paymentTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
