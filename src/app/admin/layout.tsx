@@ -306,7 +306,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         id: 'admin_master',
         name: 'المدير العام',
         username: 'admin',
-        role: 'admin',
+        role: 'admin' as const,
         jobTitle: 'مدير النظام الرئيسي 👑',
         permissions: ['*'],
         token: 'auth_master_' + Date.now(),

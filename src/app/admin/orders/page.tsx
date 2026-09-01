@@ -40,6 +40,7 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [merchants, setMerchants] = useState<UserType[]>([]);
+  const [customerAccounts, setCustomerAccounts] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -62,7 +63,7 @@ export default function AdminOrdersPage() {
   const [manualItems, setManualItems] = useState<OrderItem[]>([]);
   const [manualDeliveryFee, setManualDeliveryFee] = useState<number>(0);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
-  const [manualPaymentMethod, setManualPaymentMethod] = useState<'cod' | 'cash' | 'zaincash' | 'debt'>('cod');
+  const [manualPaymentMethod, setManualPaymentMethod] = useState<'cod' | 'cash' | 'zaincash' | 'debt'>('debt');
   const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
   const [autoPrintOnSave, setAutoPrintOnSave] = useState(false);
@@ -125,6 +126,45 @@ export default function AdminOrdersPage() {
         if (data.success && data.vehicles) setVehicles(data.vehicles);
       })
       .catch(console.error);
+
+    fetch('/api/accounting/accounts', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.accounts) setCustomerAccounts(data.accounts);
+      })
+      .catch(console.error);
+  };
+
+  // 💰 Helper to get previous outstanding balance / pending orders for customer
+  const getCustomerPreviousBalance = (phone: string, name: string, merchantId?: string, excludeOrderId?: string) => {
+    // 1. Search in accounts ledger first
+    if (customerAccounts.length > 0) {
+      const cleanPhone = (phone || '').replace(/\D/g, '');
+      const acc = customerAccounts.find((a: any) => {
+        const aPhone = (a.customerPhone || '').replace(/\D/g, '');
+        return (
+          (cleanPhone && aPhone && (aPhone.endsWith(cleanPhone) || cleanPhone.endsWith(aPhone))) ||
+          (merchantId && a.customerId === merchantId) ||
+          (name && a.customerName && a.customerName.trim().toLowerCase() === name.trim().toLowerCase())
+        );
+      });
+      if (acc && typeof acc.remainingBalance === 'number') {
+        return Math.max(0, acc.remainingBalance);
+      }
+    }
+
+    // 2. Fallback: calculate sum of non-delivered or unpaid/debt orders
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const prevOrders = orders.filter((o) => {
+      if (excludeOrderId && o.id === excludeOrderId) return false;
+      const oPhone = (o.customer.phone || '').replace(/\D/g, '');
+      const matchPhone = cleanPhone && oPhone && (oPhone.endsWith(cleanPhone) || cleanPhone.endsWith(oPhone));
+      const matchName = name && o.customer.name && o.customer.name.trim().toLowerCase() === name.trim().toLowerCase();
+      const isUnpaidOrDebt = o.paymentMethod === 'debt' || (o.status !== 'delivered' && o.status !== 'cancelled');
+      return (matchPhone || matchName) && isUnpaidOrDebt;
+    });
+
+    return prevOrders.reduce((sum, o) => sum + (o.total || 0), 0);
   };
 
   useEffect(() => {
@@ -324,7 +364,7 @@ export default function AdminOrdersPage() {
     setManualItems([]);
     setManualDeliveryFee(0);
     setManualDiscount(0);
-    setManualPaymentMethod('cod');
+    setManualPaymentMethod('debt');
     setSelectedProductToAdd('');
     setIsManualOrderModalOpen(true);
   };
@@ -1644,12 +1684,63 @@ export default function AdminOrdersPage() {
                     onChange={(e: any) => setManualPaymentMethod(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900"
                   >
-                    <option value="cod">💵 دفع عند الاستلام (كاش)</option>
-                    <option value="debt">📝 آجل على الحساب (دين للتاجر)</option>
+                    <option value="debt">📝 آجل على الحساب (دين للتاجر / لم يُستلم بعد)</option>
+                    <option value="cod">💵 دفع عند الاستلام (كاش مع السائق)</option>
                     <option value="zaincash">📱 زين كاش (Zain Cash)</option>
                   </select>
                 </div>
               </div>
+
+              {/* 📊 Customer Previous Balance & Grand Total Card */}
+              {(() => {
+                const currentOrderTotal = Math.max(
+                  0,
+                  manualItems.reduce((sum, i) => sum + i.price * i.quantity, 0) + manualDeliveryFee - manualDiscount
+                );
+                const prevBalance = getCustomerPreviousBalance(manualCustomerPhone, manualCustomerName, manualSelectedMerchantId);
+                const grandTotal = currentOrderTotal + prevBalance;
+
+                return (
+                  <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-2xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between font-bold text-amber-950">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>كشف حساب ورصيد الزبون ({manualCustomerName || 'الزبون المختار'}):</span>
+                      </div>
+                      {prevBalance > 0 ? (
+                        <span className="bg-amber-200/70 text-amber-900 px-2.5 py-0.5 rounded-full font-black text-[11px]">
+                          يوجد رصيد سابق بذمته ⚠️
+                        </span>
+                      ) : (
+                        <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                          لا توجد ديون سابقة ✓
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-mono font-bold">
+                      <div className="bg-white p-2.5 rounded-xl border border-amber-200/70">
+                        <span className="text-[10px] text-slate-500 block font-sans">الرصيد / الطلبات السابقة:</span>
+                        <span className={`text-sm font-black ${prevBalance > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+                          {prevBalance.toLocaleString()} د.ع
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-amber-200/70">
+                        <span className="text-[10px] text-slate-500 block font-sans">مجموع هذه الفاتورة:</span>
+                        <span className="text-sm font-black text-blue-700">
+                          {currentOrderTotal.toLocaleString()} د.ع
+                        </span>
+                      </div>
+                      <div className="bg-gradient-to-r from-amber-600 to-red-600 text-white p-2.5 rounded-xl shadow-xs">
+                        <span className="text-[10px] text-amber-100 block font-sans">المجموع الكلي المطلوب (السابق + الحالي):</span>
+                        <span className="text-sm font-black">
+                          {grandTotal.toLocaleString()} د.ع
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Print Options Strip */}
               <div className="bg-purple-50/70 border border-purple-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
@@ -1681,7 +1772,7 @@ export default function AdminOrdersPage() {
               {/* Final Footer Strip */}
               <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between font-bold">
                 <div>
-                  <span className="text-slate-400 text-xs block">إجمالي الفاتورة النهائي:</span>
+                  <span className="text-slate-400 text-xs block">مجموع هذه الفاتورة:</span>
                   <span className="text-xl font-black font-mono text-emerald-400">
                     {Math.max(
                       0,
@@ -1862,49 +1953,82 @@ export default function AdminOrdersPage() {
 
                 {/* Totals & Notes Section */}
                 {!printWithoutPrices ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    {/* Left: Notes & Payment Method */}
-                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">طريقة الدفع:</span>
-                        <span className="font-black text-slate-900">
-                          {printOrder.paymentMethod === 'debt' ? '📝 آجل على الحساب (دين)' : '💵 دفع عند الاستلام (كاش)'}
-                        </span>
-                      </div>
-                      {printOrder.customer.notes && (
-                        <div>
-                          <span className="text-[10px] text-slate-400 font-bold block">ملاحظات:</span>
-                          <span className="text-slate-700 font-bold">{printOrder.customer.notes}</span>
-                        </div>
-                      )}
-                    </div>
+                  (() => {
+                    const prevBalance = getCustomerPreviousBalance(
+                      printOrder.customer.phone,
+                      printOrder.customer.name,
+                      printOrder.customer.userId,
+                      printOrder.id
+                    );
+                    const grandTotal = printOrder.total + prevBalance;
 
-                    {/* Right: Financial Totals */}
-                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1 text-xs">
-                      <div className="flex justify-between text-slate-600 font-bold">
-                        <span>المجموع الفرعي:</span>
-                        <span className="font-mono">{printOrder.subtotal.toLocaleString()} د.ع</span>
-                      </div>
-                      {(printOrder.deliveryFee ?? 0) > 0 && (
-                        <div className="flex justify-between text-slate-600 font-bold">
-                          <span>أجور التوصيل:</span>
-                          <span className="font-mono">{printOrder.deliveryFee?.toLocaleString()} د.ع</span>
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        {/* Left: Notes & Payment Method & Balance Alert */}
+                        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block">طريقة الدفع:</span>
+                            <span className="font-black text-slate-900">
+                              {printOrder.paymentMethod === 'debt' ? '📝 آجل على الحساب (دين للتاجر)' : '💵 دفع عند الاستلام (كاش)'}
+                            </span>
+                          </div>
+                          {printOrder.customer.notes && (
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-bold block">ملاحظات:</span>
+                              <span className="text-slate-700 font-bold">{printOrder.customer.notes}</span>
+                            </div>
+                          )}
+                          {prevBalance > 0 && (
+                            <div className="pt-1 text-[11px] text-amber-800 font-bold bg-amber-50 p-2 rounded-xl border border-amber-200">
+                              ⚠️ ملاحظة حسابية: تم إضافة رصيد الحساب والطلبات السابقة غير المسددة للإجمالي الكلي.
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {(printOrder.discount ?? 0) > 0 && (
-                        <div className="flex justify-between text-emerald-700 font-bold">
-                          <span>الخصم:</span>
-                          <span className="font-mono">-{printOrder.discount?.toLocaleString()} د.ع</span>
+
+                        {/* Right: Financial Totals Breakdown */}
+                        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1 text-xs">
+                          <div className="flex justify-between text-slate-600 font-bold">
+                            <span>المجموع الفرعي:</span>
+                            <span className="font-mono">{printOrder.subtotal.toLocaleString()} د.ع</span>
+                          </div>
+                          {(printOrder.deliveryFee ?? 0) > 0 && (
+                            <div className="flex justify-between text-slate-600 font-bold">
+                              <span>أجور التوصيل:</span>
+                              <span className="font-mono">{printOrder.deliveryFee?.toLocaleString()} د.ع</span>
+                            </div>
+                          )}
+                          {(printOrder.discount ?? 0) > 0 && (
+                            <div className="flex justify-between text-emerald-700 font-bold">
+                              <span>الخصم:</span>
+                              <span className="font-mono">-{printOrder.discount?.toLocaleString()} د.ع</span>
+                            </div>
+                          )}
+                          <div className="border-t border-slate-300 pt-1.5 flex justify-between items-center text-xs font-black text-slate-900">
+                            <span>مجموع هذه الفاتورة:</span>
+                            <span className="font-bold font-mono text-blue-700">
+                              {printOrder.total.toLocaleString()} د.ع
+                            </span>
+                          </div>
+
+                          {prevBalance > 0 && (
+                            <div className="flex justify-between items-center text-xs font-bold text-amber-800 bg-amber-50/60 px-2 py-1 rounded-lg">
+                              <span>الرصيد / الطلبات السابقة:</span>
+                              <span className="font-black font-mono">
+                                +{prevBalance.toLocaleString()} د.ع
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="border-t-2 border-slate-900 pt-1.5 flex justify-between items-center text-sm font-black text-slate-900">
+                            <span>المجموع الكلي المطلوب:</span>
+                            <span className="text-base text-[#e0452c] font-black font-mono">
+                              {grandTotal.toLocaleString()} د.ع
+                            </span>
+                          </div>
                         </div>
-                      )}
-                      <div className="border-t border-slate-300 pt-1.5 flex justify-between items-center text-sm font-black text-slate-900">
-                        <span>المجموع النهائي المطلوب:</span>
-                        <span className="text-base text-[#e0452c] font-black font-mono">
-                          {printOrder.total.toLocaleString()} د.ع
-                        </span>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()
                 ) : (
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
                     <div>
