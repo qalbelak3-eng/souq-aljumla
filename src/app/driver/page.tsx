@@ -21,9 +21,10 @@ import {
   FileText,
   RefreshCw,
   Wallet,
-  Check
+  Check,
+  Star
 } from 'lucide-react';
-import { Order, Driver, DeliveryCollectionStatus, StoreSettings } from '@/types';
+import { Order, Driver, DeliveryCollectionStatus, StoreSettings, DriverRating } from '@/types';
 import { generateDeliveryCustomerWhatsAppLink, generateDeliveryAccountantWhatsAppLink } from '@/lib/whatsapp';
 import EtihadLogo from '@/components/EtihadLogo';
 import { useToast } from '@/context/ToastContext';
@@ -35,8 +36,9 @@ export default function DriverDashboardPage() {
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [driverRatings, setDriverRatings] = useState<DriverRating[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'history' | 'ratings'>('active');
 
   // Delivery Modal State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -112,6 +114,9 @@ export default function DriverDashboardPage() {
       if (data.success) {
         setActiveOrders(data.activeOrders || []);
         setHistoryOrders(data.historyOrders || []);
+        if (data.ratings) {
+          setDriverRatings(data.ratings || []);
+        }
         if (data.driver) {
           setDriver((prev) => (prev ? { ...prev, ...data.driver } : data.driver));
         }
@@ -355,28 +360,39 @@ export default function DriverDashboardPage() {
         </div>
 
         {/* Navigation Tabs (Light Theme) */}
-        <div className="grid grid-cols-2 gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="grid grid-cols-3 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs">
           <button
             onClick={() => setActiveTab('active')}
-            className={`py-2.5 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 ${
+            className={`py-2 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ${
               activeTab === 'active'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <Clock className="w-4 h-4" />
-            <span>الطلبيات النشطة ({activeOrders.length})</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span>النشطة ({activeOrders.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-2.5 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 ${
+            className={`py-2 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ${
               activeTab === 'history'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <CheckCircle className="w-4 h-4" />
-            <span>سجل المكتمل ({historyOrders.length})</span>
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>المكتمل ({historyOrders.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('ratings')}
+            className={`py-2 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ${
+              activeTab === 'ratings'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Star className="w-3.5 h-3.5" />
+            <span>تقييماتي ({driverRatings.length})</span>
           </button>
         </div>
 
@@ -649,6 +665,74 @@ export default function DriverDashboardPage() {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: DRIVER RATINGS & CUSTOMER REVIEWS */}
+        {activeTab === 'ratings' && (
+          <div className="space-y-4">
+            {/* Rating Summary Card */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-xs text-slate-500 font-bold">معدل تقييمك العام من الزبائن:</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-black text-slate-900 font-mono">
+                    ⭐ {driver?.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}
+                  </span>
+                  <span className="bg-amber-100 text-amber-900 font-black text-xs px-2.5 py-1 rounded-xl border border-amber-200">
+                    {driver?.ratingTierLabel || (driverRatings.length > 0 ? 'ممتاز 🌟' : 'سائق معتمد 🌟')}
+                  </span>
+                </div>
+              </div>
+              <div className="text-center bg-slate-50 border border-slate-200 p-3 rounded-2xl shrink-0">
+                <span className="text-[11px] font-bold text-slate-500 block">إجمالي التقييمات</span>
+                <span className="text-xl font-black text-slate-900 font-mono block">
+                  {driverRatings.length}
+                </span>
+                <span className="text-[10px] text-amber-700 font-bold block">تقييم زبون</span>
+              </div>
+            </div>
+
+            {/* List of Reviews */}
+            {driverRatings.length === 0 ? (
+              <div className="bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-xs space-y-2 text-slate-500">
+                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto text-xl">⭐</div>
+                <h4 className="font-black text-slate-800 text-sm">لا توجد تقييمات مسجلة بعد</h4>
+                <p className="text-xs">عندما يقوم الزبائن بتقييم خدمتك وسرعة التوصيل، ستظهر تقييماتهم وملاحظاتهم هنا فوراً.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {driverRatings.map((rate) => (
+                  <div key={rate.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div>
+                        <span className="font-bold text-slate-900 text-xs block">{rate.customerName}</span>
+                        <span className="text-[10px] text-slate-400 font-mono block">فاتورة #{rate.orderNumber}</span>
+                      </div>
+                      <div className="text-left">
+                        <div className="flex items-center gap-0.5 justify-end">
+                          <span className="text-amber-500 font-bold">{'⭐'.repeat(rate.rating)}</span>
+                        </div>
+                        <span className="text-[10px] font-black text-slate-600 block">{rate.ratingLabel}</span>
+                      </div>
+                    </div>
+                    {rate.tag && (
+                      <span className="inline-block bg-slate-100 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                        {rate.tag}
+                      </span>
+                    )}
+                    {rate.comment && (
+                      <p className="text-xs text-slate-700 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100 font-medium">
+                        "{rate.comment}"
+                      </p>
+                    )}
+                    <span className="text-[10px] text-slate-400 font-mono block text-left">
+                      {new Date(rate.createdAt).toLocaleDateString('ar-IQ')} {new Date(rate.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

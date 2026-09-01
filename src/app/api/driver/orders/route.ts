@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getOrders, completeDriverDelivery, startDriverDelivery, getDriverById, getOrderById } from '@/lib/db';
+import { getOrders, completeDriverDelivery, startDriverDelivery, getDriverById, getOrderById, getDriverRatings } from '@/lib/db';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
 
 export async function GET(req: Request) {
@@ -29,6 +29,8 @@ export async function GET(req: Request) {
       (o) => o.status === 'delivered' || o.status === 'cancelled'
     );
 
+    const ratings = getDriverRatings(driverId);
+
     return NextResponse.json({
       success: true,
       driver: {
@@ -37,7 +39,11 @@ export async function GET(req: Request) {
         phone: driver.phone,
         vehicleInfo: driver.vehicleInfo,
         currentCashInHand: driver.currentCashInHand || 0,
+        averageRating: driver.averageRating,
+        ratingsCount: driver.ratingsCount,
+        ratingTierLabel: driver.ratingTierLabel,
       },
+      ratings,
       activeOrders: activeOrders.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ),

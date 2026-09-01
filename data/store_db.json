@@ -1299,7 +1299,7 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "w-lead-1-1788278394595",
+            "id": "w-lead-1-1788279110610",
             "rank": 1,
             "name": "علي الجبوري (تجربة داخلية)",
             "city": "كربلاء المقدسة - حي العامل",
@@ -1318,7 +1318,7 @@
         "isActive": true,
         "leaders": [
           {
-            "id": "c-lead-1-1788278394595",
+            "id": "c-lead-1-1788279110610",
             "rank": 1,
             "name": "جملة الجبوري",
             "city": "كربلاء المقدسة",
@@ -1327,7 +1327,7 @@
             "badge": "🥇"
           },
           {
-            "id": "c-lead-2-1788278394595",
+            "id": "c-lead-2-1788279110610",
             "rank": 2,
             "name": "مرتضى عادي",
             "city": "كربلاء المقدسة",
@@ -1844,7 +1844,7 @@
       "notes": "",
       "createdAt": "2026-08-27T15:38:50.699Z",
       "averageRating": 5,
-      "ratingsCount": 1,
+      "ratingsCount": 2,
       "ratingTierLabel": "ممتاز 🌟"
     }
   ],
@@ -1970,6 +1970,20 @@
     }
   ],
   "driverRatings": [
+    {
+      "id": "rate_1788279110804",
+      "driverId": "drv-1787845130699",
+      "driverName": "غيث الجنابي",
+      "orderId": "ord-1788278323673",
+      "orderNumber": "INV-1013",
+      "customerName": "علي الجبوري",
+      "customerPhone": "07733333333",
+      "rating": 5,
+      "ratingLabel": "ممتاز 🌟",
+      "tag": "المندوب محترم وسريع ⚡",
+      "comment": "",
+      "createdAt": "2026-09-01T16:11:50.804Z"
+    },
     {
       "id": "rate_1788278382552",
       "driverId": "drv-1787845130699",
