@@ -467,6 +467,23 @@ export function createOrder(orderData: Omit<Order, 'id' | 'orderNumber' | 'creat
     updatedAt: now.toISOString(),
   };
 
+  // 📦 AUTOMATIC REAL-TIME STOCK DEDUCTION UPON SALE
+  for (const item of enrichedItems) {
+    const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+    if (prodIdx > -1) {
+      const prod = db.products[prodIdx];
+      const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
+      let deductedStock = 0;
+      if (item.saleType === 'wholesale') {
+        deductedStock = Number(item.quantity) || 1;
+      } else {
+        const qtyPieces = Number(item.quantity) || 1;
+        deductedStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
+      }
+      db.products[prodIdx].stock = Math.max(0, Number(((db.products[prodIdx].stock || 0) - deductedStock).toFixed(2)));
+    }
+  }
+
   db.orders.unshift(newOrder);
   saveDb(db);
   return newOrder;
@@ -477,8 +494,46 @@ export function updateOrderStatus(id: string, status: Order['status']): Order | 
   const index = db.orders.findIndex(o => o.id === id || o.orderNumber === id);
   if (index === -1) return null;
 
+  const oldStatus = db.orders[index].status;
   db.orders[index].status = status;
   db.orders[index].updatedAt = new Date().toISOString();
+
+  // If order was cancelled, restore inventory
+  if (status === 'cancelled' && oldStatus !== 'cancelled') {
+    for (const item of db.orders[index].items || []) {
+      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+      if (prodIdx > -1) {
+        const prod = db.products[prodIdx];
+        const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
+        let restoredStock = 0;
+        if (item.saleType === 'wholesale') {
+          restoredStock = Number(item.quantity) || 1;
+        } else {
+          const qtyPieces = Number(item.quantity) || 1;
+          restoredStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
+        }
+        db.products[prodIdx].stock = Number(((db.products[prodIdx].stock || 0) + restoredStock).toFixed(2));
+      }
+    }
+  } else if (oldStatus === 'cancelled' && status !== 'cancelled') {
+    // If uncancelled, re-deduct inventory
+    for (const item of db.orders[index].items || []) {
+      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name) || (item.productName && p.name === item.productName));
+      if (prodIdx > -1) {
+        const prod = db.products[prodIdx];
+        const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
+        let deductedStock = 0;
+        if (item.saleType === 'wholesale') {
+          deductedStock = Number(item.quantity) || 1;
+        } else {
+          const qtyPieces = Number(item.quantity) || 1;
+          deductedStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
+        }
+        db.products[prodIdx].stock = Math.max(0, Number(((db.products[prodIdx].stock || 0) - deductedStock).toFixed(2)));
+      }
+    }
+  }
+
   saveDb(db);
   return db.orders[index];
 }
