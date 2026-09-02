@@ -52,17 +52,6 @@ export default function AdminNotificationsPage() {
 
   const fetchStatsAndLogs = () => {
     setIsLoadingStats(true);
-    if (typeof window !== 'undefined') {
-      try {
-        const cachedLogs = localStorage.getItem('souq_admin_push_logs');
-        if (cachedLogs) {
-          const parsed = JSON.parse(cachedLogs);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setLogs(parsed);
-          }
-        }
-      } catch {}
-    }
 
     Promise.all([
       fetch('/api/notifications/subscribe').then((r) => r.json()),
@@ -78,18 +67,11 @@ export default function AdminNotificationsPage() {
           });
         }
         if (sendData.success && Array.isArray(sendData.logs)) {
-          setLogs((prev) => {
-            const merged = [...sendData.logs];
-            prev.forEach((p) => {
-              if (!merged.some((m) => m.id === p.id)) {
-                merged.push(p);
-              }
-            });
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('souq_admin_push_logs', JSON.stringify(merged));
-            }
-            return merged;
-          });
+          setLogs(sendData.logs);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_admin_push_logs', JSON.stringify(sendData.logs));
+            localStorage.setItem('souq_saved_notifications', JSON.stringify(sendData.logs));
+          }
         }
         setIsLoadingStats(false);
       })
@@ -188,6 +170,8 @@ export default function AdminNotificationsPage() {
     }
   };
 
+  const [isClearingAll, setIsClearingAll] = useState(false);
+
   const handleDeleteNotification = async (id: string) => {
     if (!window.confirm('هل أنت متأكد من رغبتك بحذف هذا الإشعار من السجل؟')) {
       return;
@@ -195,29 +179,48 @@ export default function AdminNotificationsPage() {
 
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/notifications/send?id=${id}`, {
+      await fetch(`/api/notifications/send?id=${id}`, {
         method: 'DELETE',
       });
-      const data = await res.json();
-
-      if (data.success) {
-        toast.showToast('تم حذف الإشعار من السجل بنجاح 🗑️', 'success');
-        setLogs((prev) => {
-          const updated = prev.filter((item) => item.id !== id);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('souq_admin_push_logs', JSON.stringify(updated));
-            localStorage.setItem('souq_saved_notifications', JSON.stringify(updated));
-          }
-          return updated;
-        });
-      } else {
-        toast.showToast(data.error || 'فشل حذف الإشعار', 'error');
-      }
+      
+      toast.showToast('تم حذف الإشعار من السجل بنجاح 🗑️', 'success');
+      setLogs((prev) => {
+        const updated = prev.filter((item) => item.id !== id);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_push_logs', JSON.stringify(updated));
+          localStorage.setItem('souq_saved_notifications', JSON.stringify(updated));
+        }
+        return updated;
+      });
     } catch (err) {
       console.error(err);
       toast.showToast('حدث خطأ أثناء الاتصال بالخادم', 'error');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    if (!window.confirm('هل أنت متأكد من مسح وتنظيف سجل الإشعارات بالكامل؟ لا يمكن التراجع عن هذه العملية.')) {
+      return;
+    }
+
+    setIsClearingAll(true);
+    try {
+      await fetch('/api/notifications/send?clearAll=true', {
+        method: 'DELETE',
+      });
+      toast.showToast('تم مسح سجل الإشعارات بالكامل بنجاح 🗑️✨', 'success');
+      setLogs([]);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('souq_admin_push_logs');
+        localStorage.removeItem('souq_saved_notifications');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.showToast('حدث خطأ أثناء مسح السجل', 'error');
+    } finally {
+      setIsClearingAll(false);
     }
   };
 
@@ -719,14 +722,36 @@ export default function AdminNotificationsPage() {
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xs space-y-4">
         
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
-          <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
-            <span>📜 سجل الإشعارات والتنبيهات المرسلة سابقاً</span>
-            <span className="text-xs text-slate-400 font-bold">({logs.length})</span>
-          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+              <span>📜 سجل الإشعارات والتنبيهات المرسلة سابقاً</span>
+              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">({logs.length})</span>
+            </h3>
+            
+            <button
+              type="button"
+              onClick={fetchStatsAndLogs}
+              className="text-xs text-slate-600 hover:text-brand-blue flex items-center gap-1 font-bold bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 transition cursor-pointer"
+              title="تحديث السجل"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoadingStats ? 'animate-spin' : ''}`} />
+              <span>تحديث</span>
+            </button>
+          </div>
 
-          <span className="text-[11px] text-slate-500 font-medium">
-            💡 يمكنك حذف أي إشعار يدوياً أو تركه لينتهي تلقائياً حسب مدة العرض
-          </span>
+          <div className="flex items-center gap-2">
+            {logs.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllNotifications}
+                disabled={isClearingAll}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isClearingAll ? 'جاري المسح...' : 'مسح السجل بالكامل 🗑️'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {logs.length === 0 ? (

@@ -51,16 +51,21 @@ export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const clearAll = searchParams.get('clearAll');
+
+    if (clearAll === 'true') {
+      const { ensureDbExists, saveDb } = await import('@/lib/db');
+      const db = ensureDbExists();
+      db.pushNotificationLogs = [];
+      saveDb(db);
+      return NextResponse.json({ success: true, message: 'تم مسح سجل الإشعارات بالكامل بنجاح' });
+    }
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'معرف الإشعار مطلوب للحذف' }, { status: 400 });
     }
 
-    const deleted = deletePushNotificationLog(id);
-    if (!deleted) {
-      return NextResponse.json({ success: false, error: 'لم يتم العثور على الإشعار' }, { status: 404 });
-    }
-
+    deletePushNotificationLog(id);
     return NextResponse.json({ success: true, message: 'تم حذف الإشعار بنجاح' });
   } catch (error: any) {
     console.error('Error in DELETE /api/notifications/send:', error);
