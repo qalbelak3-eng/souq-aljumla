@@ -3194,4 +3194,11 @@ export function deletePushNotificationLog(id: string): boolean {
   return false;
 }
 
+export function clearAllPushNotificationLogs(): boolean {
+  const db = ensureDbExists();
+  db.pushNotificationLogs = [];
+  saveDb(db);
+  return true;
+}
+
 

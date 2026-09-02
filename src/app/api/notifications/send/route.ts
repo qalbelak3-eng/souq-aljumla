@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendWebPushNotification } from '@/lib/pushService';
-import { getPushNotificationLogs, deletePushNotificationLog } from '@/lib/db';
+import { getPushNotificationLogs, deletePushNotificationLog, clearAllPushNotificationLogs } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -54,10 +54,7 @@ export async function DELETE(request: Request) {
     const clearAll = searchParams.get('clearAll');
 
     if (clearAll === 'true') {
-      const { ensureDbExists, saveDb } = await import('@/lib/db');
-      const db = ensureDbExists();
-      db.pushNotificationLogs = [];
-      saveDb(db);
+      clearAllPushNotificationLogs();
       return NextResponse.json({ success: true, message: 'تم مسح سجل الإشعارات بالكامل بنجاح' });
     }
 
