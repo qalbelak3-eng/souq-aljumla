@@ -176,7 +176,15 @@ function saveDb(data: DatabaseSchema) {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const jsonStr = JSON.stringify(data, null, 2);
+    fs.writeFileSync(DB_FILE, jsonStr, 'utf-8');
+
+    // 🛡️ Automatic Backup: حفظ نسخة احتياطية حية دائمة
+    const backupDir = path.join(DATA_DIR, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(backupDir, 'store_db_latest.backup.json'), jsonStr, 'utf-8');
   } catch (e) {
     console.error('saveDb serverless disk write error (using in-memory):', e);
   }

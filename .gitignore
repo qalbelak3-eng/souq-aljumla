@@ -29,9 +29,12 @@ yarn-error.log*
 # vercel
 .vercel
 
-# backups
+# backups & production database protection
 data/backups/
 data/*.backup.json
+data/store_db.json
+data/*.json
+!data/store_db.template.json
 
 # typescript
 *.tsbuildinfo
