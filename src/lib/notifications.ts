@@ -212,14 +212,11 @@ export async function subscribeCustomerForOrderTracking(customerData?: {
     if (permission !== 'granted') return false;
 
     // Register / ready SW
-    let registration = await navigator.serviceWorker.getRegistration();
-    if (!registration) {
-      registration = await navigator.serviceWorker.register('/sw.js');
-    }
+    let registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     await navigator.serviceWorker.ready;
 
     // Get VAPID public key
-    const res = await fetch('/api/notifications/subscribe');
+    const res = await fetch('/api/notifications/subscribe', { cache: 'no-store' });
     const data = await res.json();
     if (!data.success || !data.vapidPublicKey) return false;
 
