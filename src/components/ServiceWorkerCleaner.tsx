@@ -9,8 +9,9 @@ export default function ServiceWorkerCleaner() {
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           for (const registration of registrations) {
-            if (registration.active && registration.active.scriptURL && registration.active.scriptURL.endsWith('/sw.js')) {
-              // Keep our official Web Push service worker active
+            const scriptUrl = registration.active?.scriptURL || registration.installing?.scriptURL || registration.waiting?.scriptURL || '';
+            if (scriptUrl.includes('sw.js')) {
+              // هذا هو الـ Service Worker الرسمي للإشعارات، نتركه نشطاً دائماً
               continue;
             }
             registration.unregister().then((success) => {
