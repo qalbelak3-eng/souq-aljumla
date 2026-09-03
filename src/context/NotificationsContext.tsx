@@ -158,13 +158,17 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const subJson = await subRes.json();
       if (subJson.success) {
         setPermission('granted');
-        alert('🎉 تم ربط هاتفك بالكامل بنظام إشعارات سوق الجملة! ستصلك التنبيهات حتى عند غلق الشاشة 🔔');
+        if (showToastAlert) {
+          toast.showToast('تم تفعيل إشعارات المتجر على هاتفك بنجاح! 🔔📱', 'success');
+        }
       } else {
         throw new Error(subJson.error || 'فشل حفظ الاشتراك');
       }
     } catch (err: any) {
       console.error('Error subscribing to push:', err);
-      alert('⚠️ تنبيه: ' + (err.message || 'تعذر ربط الإشعار بالخادم'));
+      if (showToastAlert) {
+        toast.showToast(err.message || 'تعذر ربط الإشعار بالخادم', 'error');
+      }
     } finally {
       setIsSubscribing(false);
     }
@@ -255,6 +259,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (supported && 'serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then((reg) => {
           reg.update().catch(() => {});
+          if (Notification.permission === 'granted') {
+            subscribeUserToPush(reg, false).catch(() => {});
+          }
         }).catch((e) => console.log('SW reg:', e));
       }
 
