@@ -174,6 +174,7 @@ export async function sendDirectCustomerAlert(params: {
 
   const targetCorePhone = normalizePhone(params.phone);
 
+  // البحث عن اشتراكات الزبون بدقة (حسب رقم الهاتف، معرف الزبون، أو أحدث الأجهزة المسجلة)
   let targets = db.filter((sub) => {
     if (params.userId && sub.userId === params.userId) return true;
     if (targetCorePhone && sub.userPhone) {
@@ -185,7 +186,7 @@ export async function sendDirectCustomerAlert(params: {
     return false;
   });
 
-  // إذا لم نجد تطابقاً محدداً بالرقم (مثلاً اشترك كزائر قبل إدخال هاتفه في الفاتورة)، نرسل لجميع الأجهزة النشطة لضمان وصوله للموبايل
+  // إذا لم نجد تطابقاً محدداً بالرقم، نرسل لجميع الأجهزة النشطة لضمان تسليم الإشعار للموبايل
   if (targets.length === 0) {
     targets = db;
   }
@@ -220,12 +221,17 @@ export async function sendDirectCustomerAlert(params: {
         },
         notificationData,
         {
-          TTL: 86400, // صلاحية 24 ساعة لضمان استلامه فور فتح الموبايل
+          TTL: 86400,
           urgency: 'high',
+          headers: {
+            Urgency: 'high',
+            Topic: 'order-status-update',
+          },
         }
       );
       delivered = true;
     } catch (err: any) {
+      console.warn('Push delivery to mobile endpoint failed:', err?.statusCode, err?.message);
       if (err.statusCode === 410 || err.statusCode === 404) {
         deletePushSubscription(sub.endpoint);
       }
