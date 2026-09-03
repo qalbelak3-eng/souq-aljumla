@@ -16,12 +16,14 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   const isDriverRoute = pathname.startsWith('/driver');
   const isAuthRoute = pathname === '/register' || pathname === '/login';
   const isStatementRoute = pathname === '/statement';
+  const isCheckoutRoute = pathname === '/checkout';
+  const isOrderSuccessRoute = pathname.startsWith('/order-success');
   
   // Hide main home header on dedicated sub-pages like /products catalog where category header takes over
   const isProductsCatalog = pathname === '/products' || pathname.startsWith('/products/');
 
-  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute) {
-    // Isolated Admin, Driver Portal, Statement, or Auth View: No customer header, no announcement bar, no floating widgets, no footer
+  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isCheckoutRoute || isOrderSuccessRoute) {
+    // Isolated Dedicated View: No customer header, no announcement bar, no floating widgets, no footer
     return (
       <main className="flex-1 min-h-screen flex flex-col justify-center bg-[#f3f8fc]">
         {children}

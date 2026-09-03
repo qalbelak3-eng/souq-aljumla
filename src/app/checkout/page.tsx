@@ -452,10 +452,30 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 text-xs">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6 text-xs">
       
+      {/* Checkout Clean Distraction-Free Header */}
+      <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-2xl border border-slate-200/80 shadow-xs">
+        <Link href="/" className="flex items-center gap-2">
+          <EtihadLogo size="sm" />
+        </Link>
+        
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>طلب آمن وتوصيل مباشر 100% 🔒</span>
+          </div>
+          <Link
+            href="/cart"
+            className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>← العودة للسلة</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Title */}
-      <div className="border-b border-slate-200 pb-4">
+      <div className="border-b border-slate-200 pb-3">
         <h1 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
           <Truck className="w-6 h-6 text-brand-blue" />
           <span>تأكيد الطلبية وتفاصيل التوصيل</span>
