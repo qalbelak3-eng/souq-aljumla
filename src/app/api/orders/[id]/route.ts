@@ -23,11 +23,15 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const body = await request.json();
     const { status, driverId, vehicleId, cancellationReason, driverNotes } = body;
 
+    const prevOrder = getOrderById(params.id);
+    if (!prevOrder) {
+      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
     let updated = null;
 
     if (driverId !== undefined || vehicleId !== undefined) {
-      const existing = getOrderById(params.id);
-      const targetDriverId = driverId !== undefined ? driverId : (existing?.driverId || '');
+      const targetDriverId = driverId !== undefined ? driverId : (prevOrder.driverId || '');
       updated = assignDriverToOrder(params.id, targetDriverId, vehicleId);
     }
 
@@ -42,43 +46,48 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     if (!updated) {
-      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'فشل تحديث الطلب' }, { status: 400 });
     }
 
     // إرسال تنبيه فوري لهاتف الزبون بناءً على تغير حالة الطلبية 🔔
     try {
-      if (status === 'processing') {
-        await sendDirectCustomerAlert({
-          userId: updated.customer.userId,
-          phone: updated.customer.phone,
-          title: '📦 طلبيتك قيد التجهيز الآن!',
-          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
-          url: `/order-success/${updated.id}`,
-        });
-      } else if (status === 'shipped') {
-        await sendDirectCustomerAlert({
-          userId: updated.customer.userId,
-          phone: updated.customer.phone,
-          title: '🚚 طلبيتك في الطريق إليك الآن!',
-          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
-          url: `/order-success/${updated.id}`,
-        });
-      } else if (status === 'delivered') {
-        await sendDirectCustomerAlert({
-          userId: updated.customer.userId,
-          phone: updated.customer.phone,
-          title: '🎉 تم تسليم طلبيتك بنجاح!',
-          body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
-          url: `/order-success/${updated.id}`,
-        });
-      } else if (status === 'cancelled') {
-        await sendDirectCustomerAlert({
-          userId: updated.customer.userId,
-          phone: updated.customer.phone,
-          title: '❌ تم إلغاء الطلبية',
-          body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
-          url: `/order-success/${updated.id}`,
-        });
+      const effectiveStatus = updated.status;
+      const statusChanged = prevOrder.status !== effectiveStatus;
+
+      if (statusChanged || status !== undefined) {
+        if (effectiveStatus === 'processing' && prevOrder.status === 'pending') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '📦 طلبيتك قيد التجهيز والتعليب الآن!',
+            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
+            url: `/order-success/${updated.id}`,
+          });
+        } else if (effectiveStatus === 'shipped') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '🚚 طلبيتك في الطريق إليك الآن!',
+            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
+            url: `/order-success/${updated.id}`,
+          });
+        } else if (effectiveStatus === 'delivered') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '🎉 تم تسليم طلبيتك بنجاح!',
+            body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+            url: `/order-success/${updated.id}`,
+          });
+        } else if (effectiveStatus === 'cancelled') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '❌ تم إلغاء الطلبية',
+            body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
+            url: `/order-success/${updated.id}`,
+          });
+        }
       }
     } catch (e) {}
 
