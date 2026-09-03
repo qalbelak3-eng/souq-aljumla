@@ -122,15 +122,6 @@ export default function OrderSuccessPage() {
 
     // 1. Play immediate audio chime
     playNotificationSound(soundType);
-
-    // 2. Send Native Device / OS Notification
-    sendSystemNotification({
-      title: alertTitle,
-      body: alertMessage,
-      url: `/order-success/${newOrder.id}`,
-      soundType,
-      tag: `order-status-${newOrder.id}-${newOrder.status}`,
-    });
   };
 
   const fetchOrderLive = async () => {
@@ -146,20 +137,14 @@ export default function OrderSuccessPage() {
       if (data.success && data.order) {
         const newOrder: Order = data.order;
         
-        // 1. If status changed in real-time, trigger full sound and visual alert
+        // 1. If status changed in real-time, trigger sound
         if (prevStatusRef.current !== null && prevStatusRef.current !== newOrder.status) {
           triggerLiveNotification(newOrder);
         }
 
-        // 2. If driver arrived alert triggered by driver, play loud sound and send notification
+        // 2. If driver arrived alert triggered by driver, play loud sound
         if (prevDriverArrivedRef.current === null && newOrder.driverArrivedAt && prevStatusRef.current !== null) {
           playNotificationSound('delivered');
-          sendSystemNotification({
-            title: '🛵 المندوب وصل إلى موقعك الآن!',
-            body: `مرحباً ${newOrder.customer?.name || 'عزيزنا الزبون'}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
-            url: `/order-success/${newOrder.id}`,
-            soundType: 'delivered',
-          });
         }
 
         prevDriverArrivedRef.current = newOrder.driverArrivedAt || null;
