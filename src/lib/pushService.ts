@@ -116,7 +116,6 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
       if (isApple) {
         customHeaders['apns-push-type'] = 'alert';
         customHeaders['apns-priority'] = '10';
-        customHeaders['apns-expiration'] = Math.floor((Date.now() + 86400000) / 1000).toString();
       }
 
       await webpush.sendNotification(pushSubscription, notificationData, {
@@ -226,13 +225,11 @@ export async function sendDirectCustomerAlert(params: {
       const isApple = sub.endpoint.includes('push.apple.com') || sub.endpoint.includes('apple.com');
       const customHeaders: Record<string, string> = {
         'Urgency': 'high',
-        'Topic': 'order-status-update',
       };
 
       if (isApple) {
         customHeaders['apns-push-type'] = 'alert';
-        customHeaders['apns-priority'] = '10'; // Immediate wake-up on iOS Lock Screen
-        customHeaders['apns-expiration'] = Math.floor((Date.now() + 86400000) / 1000).toString();
+        customHeaders['apns-priority'] = '10'; // أعلى أولوية لإيقاظ شاشة الآيفون ورنين التنبيه
       }
 
       await webpush.sendNotification(
