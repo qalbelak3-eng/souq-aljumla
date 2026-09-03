@@ -691,7 +691,7 @@ export default function AdminMerchantsPage() {
                               type="button"
                               onClick={() => {
                                 setPasswordModalCustomer(customer);
-                                setNewCustomerPassword('');
+                                setResetCustomerPassword('');
                               }}
                               className="text-amber-700 hover:text-amber-900 font-bold text-[9px] inline-flex items-center gap-0.5 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 transition cursor-pointer"
                               title="استعادة / تعيين كلمة سر جديدة للعميل"
