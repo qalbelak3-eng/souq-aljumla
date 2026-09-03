@@ -36,18 +36,24 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'لم يتم العثور على حساب مسجل بهذا الرقم أو البريد' }, { status: 404 });
       }
 
+      const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+      const normalizePass = (p?: string) => (p || '').trim().replace(/[٠-٩]/g, (w) => arabicDigits.indexOf(w).toString());
+      
+      const inputPass = normalizePass(password);
+      const userPass = normalizePass(user.password);
+
       // إذا كان للمستخدم كلمة سر مسجلة مسبقاً، نتحقق منها
-      if (user.password) {
-        if (!password || !password.trim()) {
+      if (userPass) {
+        if (!inputPass) {
           return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة السر الخاصة بحسابك' }, { status: 401 });
         }
-        if (user.password !== password.trim()) {
+        if (inputPass !== userPass) {
           return NextResponse.json({ success: false, error: 'كلمة السر غير صحيحة، يرجى المحاولة مجدداً أو استعادة الحساب' }, { status: 401 });
         }
-      } else if (password && password.trim()) {
+      } else if (inputPass) {
         // إذا كان حساباً قديماً بدون كلمة سر وقام بإدخال كلمة سر الآن، نحفظها له تلقائياً
-        user.password = password.trim();
-        updateUserProfile(user.id, { password: password.trim() });
+        user.password = inputPass;
+        updateUserProfile(user.id, { password: inputPass });
       }
 
       return NextResponse.json({

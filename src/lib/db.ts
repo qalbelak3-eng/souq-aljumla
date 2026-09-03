@@ -989,11 +989,35 @@ export function updateUserAccountType(userId: string, accountType: AccountType, 
 
 export function findUserByEmailOrPhone(identifier: string): User | undefined {
   const db = ensureDbExists();
-  const clean = identifier.trim().toLowerCase();
-  const cleanPhone = identifier.replace(/\D/g, '');
-  return db.users.find(
-    u => (u.email && u.email.toLowerCase() === clean) || (u.phone && u.phone.replace(/\D/g, '') === cleanPhone)
-  );
+  if (!identifier) return undefined;
+
+  // Convert Arabic numerals to Latin digits
+  const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+  const normalized = identifier.trim().replace(/[٠-٩]/g, (w) => arabicDigits.indexOf(w).toString());
+  const cleanEmail = normalized.toLowerCase();
+  
+  // Extract pure digits
+  let cleanPhone = normalized.replace(/\D/g, '');
+  // Normalize Iraqi phone formats (96477... -> 077..., 77... -> 077...)
+  if (cleanPhone.startsWith('964') && cleanPhone.length >= 12) {
+    cleanPhone = '0' + cleanPhone.substring(3);
+  } else if (cleanPhone.length === 10 && (cleanPhone.startsWith('7') || cleanPhone.startsWith('8'))) {
+    cleanPhone = '0' + cleanPhone;
+  }
+
+  return db.users.find(u => {
+    if (u.email && u.email.toLowerCase() === cleanEmail) return true;
+    if (u.phone) {
+      let uPhone = u.phone.replace(/[٠-٩]/g, (w) => arabicDigits.indexOf(w).toString()).replace(/\D/g, '');
+      if (uPhone.startsWith('964') && uPhone.length >= 12) {
+        uPhone = '0' + uPhone.substring(3);
+      } else if (uPhone.length === 10 && (uPhone.startsWith('7') || uPhone.startsWith('8'))) {
+        uPhone = '0' + uPhone;
+      }
+      if (uPhone === cleanPhone) return true;
+    }
+    return false;
+  });
 }
 
 export function createUser(userData: {
