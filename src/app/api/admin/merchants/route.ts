@@ -87,7 +87,6 @@ export async function POST(request: Request) {
       phone: phone.trim(),
       email: email ? email.trim() : undefined,
       password: password ? password.trim() : '123456',
-      role: 'customer',
       accountType: type,
       merchantStatus: isMerchant || isMarket ? 'approved' : undefined,
       merchantTier: isMerchant ? 'gold' : isMarket ? 'silver' : undefined,
