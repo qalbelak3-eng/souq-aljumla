@@ -16,12 +16,17 @@ self.addEventListener('push', function (event) {
     }
   }
 
-  // iOS Safari requires standard title and body
+  // High-priority interactive mobile push options
   const options = {
     body: body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: { url: url },
+    tag: 'souq-order-alert-' + Date.now(),
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [300, 150, 300, 150, 400],
+    silent: false,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
