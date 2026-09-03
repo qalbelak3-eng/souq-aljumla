@@ -207,6 +207,48 @@ export default function OrderSuccessPage() {
     }
   };
 
+  // Customer Cancel Modal State
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState<boolean>(false);
+  const [cancelReason, setCancelReason] = useState<string>('طلب تجريبي / للتجربة فقط 🎯');
+  const [customCancelReason, setCustomCancelReason] = useState<string>('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    setIsSubmittingCancel(true);
+    const finalReason = customCancelReason.trim() ? customCancelReason.trim() : cancelReason;
+
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'cancelled',
+          cancellationReason: `إلغاء من قبل الزبون (${order.customer.name}): ${finalReason}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.order) {
+        setOrder(data.order);
+        setIsCancelModalOpen(false);
+        playNotificationSound('order');
+        setLiveAlert({
+          title: '❌ تم إلغاء الطلبية بنجاح',
+          message: 'تم إلغاء الطلبية واسترجاع المواد للمخزن بناءً على طلبك.',
+          type: 'cancelled',
+          icon: AlertCircle,
+        });
+      } else {
+        alert(data.error || 'تعذر إلغاء الطلبية');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -320,9 +362,24 @@ export default function OrderSuccessPage() {
 
         {/* Order Number & Stepper */}
         <div className="space-y-4">
-          <div className="text-center sm:text-right">
-            <span className="text-xs text-slate-500">رقم الفاتورة والطلبية:</span>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono">#{order.orderNumber}</h1>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-center sm:text-right">
+              <span className="text-xs text-slate-500">رقم الفاتورة والطلبية:</span>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono">#{order.orderNumber}</h1>
+            </div>
+
+            {/* زر إلغاء الطلبية للزبون متاح في مرحلة قيد المراجعة أو قيد التجهيز */}
+            {(order.status === 'pending' || order.status === 'processing') && (
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="إلغاء هذه الطلبية واسترجاع المخزون"
+              >
+                <X className="w-3.5 h-3.5 text-rose-600" />
+                <span>إلغاء الطلبية ❌</span>
+              </button>
+            )}
           </div>
 
           {order.status === 'cancelled' ? (
@@ -816,7 +873,7 @@ export default function OrderSuccessPage() {
         {order.driverNotes && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-black text-slate-800">💬 ملاحظة السائق:</span>
+              <span className="font-black text-slate-800">💬 ملاحظة السائق / حالة الإلغاء:</span>
               <span className="font-bold text-slate-700 font-sans">"{order.driverNotes}"</span>
             </div>
             {order.deliveredAt && (
@@ -828,6 +885,98 @@ export default function OrderSuccessPage() {
         )}
 
       </div>
+
+      {/* 🛑 نافذة تأكيد إلغاء الطلبية للزبون (Cancel Order Modal) */}
+      {isCancelModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-rose-100 text-xs text-right">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">إلغاء الطلبية #{order.orderNumber}</h3>
+                  <p className="text-[11px] text-slate-500 font-bold">هل أنت متأكد من رغبتك بإلغاء هذه الطلبية؟</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCancelModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="font-black text-slate-800 block text-xs">
+                يرجى اختيار سبب الإلغاء لمساعدتنا في تحسين الخدمة:
+              </label>
+
+              <div className="space-y-2">
+                {[
+                  'طلب تجريبي / للتجربة فقط 🎯',
+                  'أرغب بتعديل الأصناف أو إضافة طلب جديد 🛒',
+                  'غيرت رأيي / تأخر الوقت ⏱️',
+                  'طلب مكرر بالخطأ ⚠️',
+                  'سبب آخر...'
+                ].map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setCancelReason(reason)}
+                    className={`w-full text-right p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer flex items-center justify-between ${
+                      cancelReason === reason
+                        ? 'border-rose-500 bg-rose-50/80 text-rose-950 ring-2 ring-rose-300/40'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span>{reason}</span>
+                    {cancelReason === reason && <CheckCircle2 className="w-4 h-4 text-rose-600" />}
+                  </button>
+                ))}
+              </div>
+
+              {cancelReason === 'سبب آخر...' && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    value={customCancelReason}
+                    onChange={(e) => setCustomCancelReason(e.target.value)}
+                    placeholder="اكتب سبب الإلغاء هنا..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-[11px] text-amber-900 font-bold leading-relaxed">
+              💡 عند التأكيد، سيتم إلغاء الطلبية فوراً وإعادة المواد والكميات للمستودع وإلغاء أي حساب مالي مترتب عليها.
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(false)}
+                className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
+              >
+                تراجع
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelOrder}
+                disabled={isSubmittingCancel}
+                className="w-1/2 bg-rose-600 hover:bg-rose-700 text-white font-black py-2.5 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+                <span>{isSubmittingCancel ? 'جاري الإلغاء...' : 'تأكيد الإلغاء ❌'}</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

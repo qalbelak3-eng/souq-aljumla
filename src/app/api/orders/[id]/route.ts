@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
     const body = await request.json();
-    const { status, driverId, vehicleId } = body;
+    const { status, driverId, vehicleId, cancellationReason, driverNotes } = body;
 
     let updated = null;
 
@@ -33,6 +33,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     if (status !== undefined) {
       updated = updateOrderStatus(params.id, status);
+      if (updated && (cancellationReason || driverNotes)) {
+        const { updateOrder } = await import('@/lib/db');
+        updated = updateOrder(params.id, {
+          driverNotes: driverNotes || cancellationReason || 'تم الإلغاء بناءً على رغبة الزبون'
+        }, false) || updated;
+      }
     }
 
     if (!updated) {
