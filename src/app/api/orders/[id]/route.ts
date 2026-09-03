@@ -52,10 +52,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     // إرسال تنبيه فوري لهاتف الزبون بناءً على تغير حالة الطلبية 🔔
     try {
       const effectiveStatus = updated.status;
-      const isDriverAssigned = driverId !== undefined && driverId !== '' && driverId !== 'none';
-      const isProcessing = effectiveStatus === 'processing' || status === 'processing';
+      const isNewDriverAssigned = driverId !== undefined && driverId !== '' && driverId !== 'none' && driverId !== prevOrder.driverId;
+      const isNewlyProcessing = (status === 'processing' || effectiveStatus === 'processing') && prevOrder.status === 'pending';
 
-      if (isDriverAssigned || (isProcessing && prevOrder.status !== 'shipped' && prevOrder.status !== 'delivered')) {
+      if (isNewDriverAssigned || isNewlyProcessing) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
@@ -63,7 +63,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
           url: `/order-success/${updated.id}`,
         });
-      } else if (effectiveStatus === 'shipped' || status === 'shipped') {
+      } else if (status === 'shipped' || (effectiveStatus === 'shipped' && prevOrder.status !== 'shipped')) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
