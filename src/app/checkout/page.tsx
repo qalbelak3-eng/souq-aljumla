@@ -233,11 +233,18 @@ export default function CheckoutPage() {
       setPhone(user.phone || '');
       if (user.businessName) setBusinessName(user.businessName);
       if (user.city) setCity(user.city);
-      if (user.address) setAddress(user.address);
+      if (user.address) {
+        setAddress(user.address);
+        setIsEditingAddress(false);
+      } else {
+        setIsEditingAddress(true);
+      }
       if (user.lat && user.lng) {
         setCoords({ lat: user.lat, lng: user.lng, mapsUrl: user.mapsUrl || `https://www.google.com/maps?q=${user.lat},${user.lng}` });
         setGpsStatus('تم تحميل إحداثيات موقعك الجغرافي');
       }
+    } else {
+      setIsEditingAddress(true);
     }
 
     // Auto-detect live GPS in background with High Accuracy to check if user is at the selected address
@@ -713,7 +720,7 @@ export default function CheckoutPage() {
             ) : (
               /* وضع إدخال وتعديل العنوان (عند الحاجة أو للزائر) */
               <div className="space-y-4 animate-fadeIn">
-                {user && (
+                {user && address.trim().length > 3 && (
                   <div className="flex items-center justify-between bg-blue-50/60 p-2.5 rounded-xl border border-blue-200 text-xs">
                     <span className="font-bold text-blue-900">✏️ تعديل تفاصيل وموقع التوصيل:</span>
                     <button
@@ -721,7 +728,7 @@ export default function CheckoutPage() {
                       onClick={() => setIsEditingAddress(false)}
                       className="text-blue-700 hover:text-blue-900 font-black px-2.5 py-1 bg-white rounded-lg border border-blue-300 transition cursor-pointer"
                     >
-                      إغلاق التعديل ✓
+                      اعتماد العنوان المكتوب ✓
                     </button>
                   </div>
                 )}
