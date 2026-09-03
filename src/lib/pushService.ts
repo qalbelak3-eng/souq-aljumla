@@ -108,9 +108,21 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
         },
       };
 
+      const isApple = sub.endpoint.includes('push.apple.com') || sub.endpoint.includes('apple.com');
+      const customHeaders: Record<string, string> = {
+        'Urgency': 'high',
+      };
+
+      if (isApple) {
+        customHeaders['apns-push-type'] = 'alert';
+        customHeaders['apns-priority'] = '10';
+        customHeaders['apns-expiration'] = Math.floor((Date.now() + 86400000) / 1000).toString();
+      }
+
       await webpush.sendNotification(pushSubscription, notificationData, {
         TTL: 86400,
         urgency: 'high',
+        headers: customHeaders,
       });
       successCount++;
     } catch (err: any) {
@@ -211,6 +223,18 @@ export async function sendDirectCustomerAlert(params: {
 
   const promises = targets.map(async (sub) => {
     try {
+      const isApple = sub.endpoint.includes('push.apple.com') || sub.endpoint.includes('apple.com');
+      const customHeaders: Record<string, string> = {
+        'Urgency': 'high',
+        'Topic': 'order-status-update',
+      };
+
+      if (isApple) {
+        customHeaders['apns-push-type'] = 'alert';
+        customHeaders['apns-priority'] = '10'; // Immediate wake-up on iOS Lock Screen
+        customHeaders['apns-expiration'] = Math.floor((Date.now() + 86400000) / 1000).toString();
+      }
+
       await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
@@ -223,15 +247,12 @@ export async function sendDirectCustomerAlert(params: {
         {
           TTL: 86400,
           urgency: 'high',
-          headers: {
-            Urgency: 'high',
-            Topic: 'order-status-update',
-          },
+          headers: customHeaders,
         }
       );
       delivered = true;
     } catch (err: any) {
-      console.warn('Push delivery to mobile endpoint failed:', err?.statusCode, err?.message);
+      console.warn('Push delivery to endpoint failed:', err?.statusCode, err?.message);
       if (err.statusCode === 410 || err.statusCode === 404) {
         deletePushSubscription(sub.endpoint);
       }
