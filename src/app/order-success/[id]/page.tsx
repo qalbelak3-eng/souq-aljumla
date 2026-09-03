@@ -129,15 +129,6 @@ export default function OrderSuccessPage() {
       icon: AlertIcon,
     });
 
-    // 3. Send Native Browser / OS Push Notification
-    sendSystemNotification({
-      title: alertTitle,
-      body: alertMessage,
-      url: `/order-success/${newOrder.id}`,
-      soundType,
-      tag: `order-status-${newOrder.id}-${newOrder.status}`,
-    });
-
     // Auto-dismiss in-app banner after 7 seconds
     setTimeout(() => {
       setLiveAlert(null);
@@ -167,15 +158,9 @@ export default function OrderSuccessPage() {
           playNotificationSound('delivered');
           setLiveAlert({
             title: '🛵 المندوب وصل إلى موقعك الآن!',
-            message: `مرحباً ${newOrder.customer?.name || 'عزيزنا الزبون'}، مندوب سوق الجملة (${newOrder.driverName || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
+            message: `مرحباً ${newOrder.customer?.name || 'عزيزنا الزبون'}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
             type: 'shipped',
             icon: Truck,
-          });
-          sendSystemNotification({
-            title: '🛵 المندوب وصل إلى موقعك الآن!',
-            body: `مندوب سوق الجملة بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
-            url: `/order-success/${newOrder.id}`,
-            soundType: 'delivered',
           });
         }
 

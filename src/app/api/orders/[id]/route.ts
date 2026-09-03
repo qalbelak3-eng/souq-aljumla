@@ -60,7 +60,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           userId: updated.customer.userId,
           phone: updated.customer.phone,
           title: '🚚 طلبيتك في الطريق إليك الآن!',
-          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع المندوب (${updated.driverName || 'مندوب التوصيل'}) وهي في الطريق إليك 🚀.`,
+          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
           url: `/order-success/${updated.id}`,
         });
       } else if (status === 'delivered') {

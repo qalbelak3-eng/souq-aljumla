@@ -82,7 +82,7 @@ export async function POST(req: Request) {
             userId: result.order.customer.userId,
             phone: result.order.customer.phone,
             title: '🚚 طلبيتك في الطريق إليك الآن!',
-            body: `مرحباً ${result.order.customer.name}، طلبيتك #${result.order.orderNumber} خرجت مع المندوب (${driver?.name || 'مندوب التوصيل'}) وهي في الطريق إلى موقعك 🚀.`,
+            body: `مرحباً ${result.order.customer.name}، طلبيتك #${result.order.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
             url: `/order-success/${result.order.id}`,
           });
         } catch (e) {}
@@ -98,7 +98,6 @@ export async function POST(req: Request) {
     // Action 2: Driver arrived at customer location (إشعار فوري بأن المندوب وصل)
     if (action === 'notify_arrived') {
       const order = getOrderById(orderId);
-      const driver = getDriverById(driverId);
       if (!order) {
         return NextResponse.json({ success: false, error: 'الطلبية غير موجودة' }, { status: 404 });
       }
@@ -113,7 +112,7 @@ export async function POST(req: Request) {
           userId: order.customer.userId,
           phone: order.customer.phone,
           title: '🛵 المندوب وصل إلى موقعك الآن!',
-          body: `مرحباً ${order.customer.name}، مندوب سوق الجملة (${driver?.name || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+          body: `مرحباً ${order.customer.name}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
           url: `/order-success/${order.id}`,
         });
       } catch (e) {}
