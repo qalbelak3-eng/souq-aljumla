@@ -560,14 +560,14 @@ export default function OrderSuccessPage() {
           )}
         </div>
 
-        {/* WhatsApp Call to Action - يبقى ظاهراً دائماً لتمكين العميل من التواصل مع الإدارة في أي وقت */}
-        {whatsappUrl && (
+        {/* WhatsApp Call to Action - يظهر فقط في المرحلة الأولى (الطلبية بانتظار المراجعة) */}
+        {whatsappUrl && order.status === 'pending' && (
           <div className="pt-2 max-w-md mx-auto">
             <a
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 px-6 rounded-2xl shadow-md transition flex items-center justify-center gap-3 text-xs sm:text-sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 px-6 rounded-2xl shadow-md transition flex items-center justify-center gap-3 text-xs sm:text-sm cursor-pointer"
             >
               <MessageCircle className="w-5 h-5" />
               <span>إرسال تفاصيل الفاتورة إلى واتساب المؤسسة 💬</span>
