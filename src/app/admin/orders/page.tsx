@@ -768,6 +768,17 @@ export default function AdminOrdersPage() {
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                         </div>
+
+                        {/* ملاحظة الزبون للإدارة ومندوب التوصيل إن وجدت */}
+                        {(order.notes || order.customer.notes) && (
+                          <div
+                            className="mt-1.5 bg-amber-50 border border-amber-300 text-amber-950 text-[10px] p-1.5 rounded-lg font-bold flex items-start gap-1 max-w-[220px]"
+                            title={order.notes || order.customer.notes}
+                          >
+                            <span className="shrink-0 text-amber-600">📝 ملاحظة:</span>
+                            <span className="truncate">{order.notes || order.customer.notes}</span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3 px-3 max-w-[180px]">

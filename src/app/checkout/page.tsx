@@ -845,14 +845,17 @@ export default function CheckoutPage() {
                 </label>
               </div>
 
-              <div className="sm:col-span-2 space-y-1">
-                <label className="text-xs font-bold text-slate-700">ملاحظات إضافية للتوصيل (اختياري)</label>
+              <div className="sm:col-span-2 space-y-1.5 pt-1">
+                <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-amber-600" />
+                  <span>ملاحظات وتعليمات خاصة بالطلبية والتوصيل (اختياري):</span>
+                </label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="مثال: يرجى الاتصال قبل الوصول بنصف ساعة..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-slate-900 focus:outline-none focus:border-brand-blue resize-none"
+                  placeholder="مثال: يرجى التوصيل بعد العصر، الاتصال قبل الوصول بـ 15 دقيقة، ترك الطلبية عند الاستقبال..."
+                  className="w-full bg-amber-50/40 border border-amber-200/90 rounded-2xl p-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-400 resize-none transition"
                 />
               </div>
             </div>

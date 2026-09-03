@@ -25,7 +25,8 @@ import {
   Bell,
   Volume2,
   VolumeX,
-  X
+  X,
+  ShoppingBag
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, OrderStatus } from '@/types';
@@ -407,18 +408,29 @@ export default function OrderSuccessPage() {
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-mono">#{order.orderNumber}</h1>
             </div>
 
-            {/* زر إلغاء الطلبية للزبون متاح في مرحلة قيد المراجعة أو قيد التجهيز */}
-            {(order.status === 'pending' || order.status === 'processing') && (
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(true)}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                title="إلغاء هذه الطلبية واسترجاع المخزون"
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* زر العودة للمتجر للتسوق */}
+              <Link
+                href="/"
+                className="bg-brand-blue hover:bg-brand-blueDark text-white font-black text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
-                <X className="w-3.5 h-3.5 text-rose-600" />
-                <span>إلغاء الطلبية ❌</span>
-              </button>
-            )}
+                <ShoppingBag className="w-4 h-4" />
+                <span>العودة للتسوق 🛒</span>
+              </Link>
+
+              {/* زر إلغاء الطلبية للزبون متاح في مرحلة قيد المراجعة أو قيد التجهيز */}
+              {(order.status === 'pending' || order.status === 'processing') && (
+                <button
+                  type="button"
+                  onClick={() => setIsCancelModalOpen(true)}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="إلغاء هذه الطلبية واسترجاع المخزون"
+                >
+                  <X className="w-3.5 h-3.5 text-rose-600" />
+                  <span>إلغاء الطلبية ❌</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {order.status === 'cancelled' ? (
@@ -838,21 +850,11 @@ export default function OrderSuccessPage() {
             <div className="sm:col-span-2"><strong>العنوان:</strong> {order.customer.address}</div>
           </div>
 
-          {order.customer.mapsUrl && (
-            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between flex-wrap gap-2">
-              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>إحداثيات الموقع الجغرافي مرفقة مع الطلبية</span>
-              </span>
-              <a
-                href={order.customer.mapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-white hover:bg-emerald-50 text-emerald-800 font-black text-[11px] py-1.5 px-3 rounded-xl border border-emerald-300 transition shadow-2xs inline-flex items-center gap-1"
-              >
-                <span>فتح الموقع في خرائط Google 🗺️</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+          {/* ملاحظات الزبون للتوصيل إن وجدت */}
+          {order.notes && (
+            <div className="pt-2 border-t border-slate-200/60 flex items-start gap-2 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80">
+              <span className="font-black text-amber-950 text-[11px] shrink-0">📝 ملاحظتك للتوصيل:</span>
+              <span className="text-[11px] font-bold text-amber-900">{order.notes}</span>
             </div>
           )}
 

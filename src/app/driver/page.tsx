@@ -548,11 +548,15 @@ export default function DriverDashboardPage() {
                         <span>{order.customer.city} - {order.customer.address}</span>
                       </div>
 
-                      {/* Notes if any */}
-                      {order.customer.notes && (
-                        <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs p-2.5 rounded-xl font-medium">
-                          <span className="font-black block text-[11px] mb-0.5">ملاحظات الزبون:</span>
-                          {order.customer.notes}
+                      {/* ملاحظات الزبون للسائق */}
+                      {(order.notes || order.customer.notes) && (
+                        <div className="bg-amber-100/90 border-2 border-amber-300 text-amber-950 text-xs p-3 rounded-2xl font-bold space-y-1 shadow-2xs">
+                          <span className="font-black text-xs text-amber-900 flex items-center gap-1.5">
+                            <span>📝 ملاحظة الزبون للسائق:</span>
+                          </span>
+                          <p className="text-slate-900 bg-white/90 p-2 rounded-xl border border-amber-200">
+                            {order.notes || order.customer.notes}
+                          </p>
                         </div>
                       )}
                     </div>
