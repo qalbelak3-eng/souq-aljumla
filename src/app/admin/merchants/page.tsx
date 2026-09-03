@@ -50,8 +50,66 @@ export default function AdminMerchantsPage() {
 
   // Customer Password Reset Modal
   const [passwordModalCustomer, setPasswordModalCustomer] = useState<CustomerWithStats | null>(null);
-  const [newCustomerPassword, setNewCustomerPassword] = useState('');
+  const [resetCustomerPassword, setResetCustomerPassword] = useState('');
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  // Add New Customer / Merchant Modal State
+  const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerAccountType, setNewCustomerAccountType] = useState<AccountType>('market');
+  const [newCustomerBusinessName, setNewCustomerBusinessName] = useState('');
+  const [newCustomerBusinessType, setNewCustomerBusinessType] = useState('ميني ماركت وبقالة');
+  const [newCustomerCity, setNewCustomerCity] = useState('كربلاء المقدسة');
+  const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [newCustomerPasswordVal, setNewCustomerPasswordVal] = useState('123456');
+  const [isSubmittingNewCustomer, setIsSubmittingNewCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState('');
+
+  const handleCreateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
+      setAddCustomerError('يرجى إدخال اسم الزبون ورقم الهاتف');
+      return;
+    }
+
+    setAddCustomerError('');
+    setIsSubmittingNewCustomer(true);
+    try {
+      const res = await fetch('/api/admin/merchants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCustomerName.trim(),
+          phone: newCustomerPhone.trim(),
+          accountType: newCustomerAccountType,
+          businessName: newCustomerBusinessName.trim() || undefined,
+          businessType: newCustomerBusinessType.trim() || undefined,
+          city: newCustomerCity.trim() || 'كربلاء المقدسة',
+          address: newCustomerAddress.trim() || 'مركز المدينة',
+          password: newCustomerPasswordVal.trim() || '123456',
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        fetchCustomers();
+        setIsAddCustomerModalOpen(false);
+        // Reset form
+        setNewCustomerName('');
+        setNewCustomerPhone('');
+        setNewCustomerBusinessName('');
+        setNewCustomerAddress('');
+        setNewCustomerPasswordVal('123456');
+      } else {
+        setAddCustomerError(data.error || 'حدث خطأ أثناء إضافة الزبون');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAddCustomerError('حدث خطأ في الاتصال بالخادم');
+    } finally {
+      setIsSubmittingNewCustomer(false);
+    }
+  };
 
   const fetchCustomers = () => {
     setIsLoading(true);
@@ -140,7 +198,7 @@ export default function AdminMerchantsPage() {
 
   const handleResetCustomerPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passwordModalCustomer || !newCustomerPassword.trim()) return;
+    if (!passwordModalCustomer || !resetCustomerPassword.trim()) return;
 
     setIsResettingPassword(true);
     try {
@@ -149,7 +207,7 @@ export default function AdminMerchantsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: passwordModalCustomer.id,
-          password: newCustomerPassword.trim(),
+          password: resetCustomerPassword.trim(),
         }),
       });
       const data = await res.json();
@@ -159,11 +217,11 @@ export default function AdminMerchantsPage() {
         // Open WhatsApp to send the new password to customer
         const targetPhone = passwordModalCustomer.phone.replace(/\D/g, '');
         const waPhone = targetPhone.startsWith('07') ? '964' + targetPhone.substring(1) : targetPhone;
-        const msg = `مرحباً ${passwordModalCustomer.name} 🌸، تم تعيين كلمة مرور جديدة لحسابك في متجر سوق الجملة بنجاح:\n\n🔐 كلمة المرور الجديدة: ${newCustomerPassword.trim()}\n📱 رقم الهاتف: ${passwordModalCustomer.phone}\n\nيمكنك الآن تسجيل الدخول مباشرة عبر: https://souq-aljumla.iq/login`;
+        const msg = `مرحباً ${passwordModalCustomer.name} 🌸، تم تعيين كلمة مرور جديدة لحسابك في متجر سوق الجملة بنجاح:\n\n🔐 كلمة المرور الجديدة: ${resetCustomerPassword.trim()}\n📱 رقم الهاتف: ${passwordModalCustomer.phone}\n\nيمكنك الآن تسجيل الدخول مباشرة عبر: https://souq-aljumla.iq/login`;
         window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`, '_blank');
         
         setPasswordModalCustomer(null);
-        setNewCustomerPassword('');
+        setResetCustomerPassword('');
       }
     } catch (err) {
       console.error(err);
@@ -464,10 +522,21 @@ export default function AdminMerchantsPage() {
             </select>
           )}
 
+          {/* Add Customer Button */}
+          <button
+            type="button"
+            onClick={() => setIsAddCustomerModalOpen(true)}
+            className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-black py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md shrink-0"
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>+ إضافة زبون / تاجر جديد 👤</span>
+          </button>
+
           {/* Refresh Button */}
           <button
+            type="button"
             onClick={fetchCustomers}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer shrink-0"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer shrink-0"
             title="تحديث البيانات"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -968,8 +1037,8 @@ export default function AdminMerchantsPage() {
                   <input
                     type="text"
                     required
-                    value={newCustomerPassword}
-                    onChange={(e) => setNewCustomerPassword(e.target.value)}
+                    value={resetCustomerPassword}
+                    onChange={(e) => setResetCustomerPassword(e.target.value)}
                     placeholder="مثال: 123456 أو كلمة سر من اختيارك"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pr-4 pl-10 text-xs font-bold text-slate-900 font-mono focus:bg-white focus:border-amber-600 focus:outline-none"
                   />
@@ -993,6 +1062,202 @@ export default function AdminMerchantsPage() {
                 >
                   <MessageCircle className="w-4 h-4" />
                   <span>{isResettingPassword ? 'جاري الحفظ...' : 'حفظ وإرسال كلمة السر عبر واتساب 💬'}</span>
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* 👤 نافذة إضافة زبون / تاجر / ماركت جديد يدوياً (Add New Customer Modal) */}
+      {isAddCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 text-xs">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">إضافة وتثبيت زبون / تاجر جديد</h3>
+                  <p className="text-[11px] text-slate-500 font-bold">تسجيل زبائن الهاتف والطلبات الخارجية في الدليل الدائم</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddCustomerModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {addCustomerError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-2xl font-bold flex items-center gap-2">
+                <span>⚠️ {addCustomerError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateCustomer} className="space-y-3.5">
+              
+              {/* Account Type Selector */}
+              <div>
+                <label className="font-black text-slate-800 block mb-1.5">تصنيف الحساب ونوع التعامل *:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewCustomerAccountType('market')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition cursor-pointer ${
+                      newCustomerAccountType === 'market'
+                        ? 'bg-[#1b4332] text-white border-[#1b4332] shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="block text-base mb-0.5">🏪</span>
+                    <span className="text-[11px] block font-black">صاحب ماركت</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCustomerAccountType('wholesale')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition cursor-pointer ${
+                      newCustomerAccountType === 'wholesale'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="block text-base mb-0.5">👑</span>
+                    <span className="text-[11px] block font-black">تاجر جملة وموزع</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCustomerAccountType('individual')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition cursor-pointer ${
+                      newCustomerAccountType === 'individual'
+                        ? 'bg-sky-700 text-white border-sky-700 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="block text-base mb-0.5">👤</span>
+                    <span className="text-[11px] block font-black">زبون مفرد</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Name & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-black text-slate-800 block mb-1">الاسم الكامل *:</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="مثال: عباس الشمري"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-black text-slate-800 block mb-1">رقم الهاتف (الواتساب) *:</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                    placeholder="077XXXXXXXX"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 font-mono focus:bg-white focus:border-emerald-600 focus:outline-none text-left"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              {/* Business Name & Type */}
+              {newCustomerAccountType !== 'individual' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div>
+                    <label className="font-black text-slate-800 block mb-1">اسم المحل / الماركت / النشاط:</label>
+                    <input
+                      type="text"
+                      value={newCustomerBusinessName}
+                      onChange={(e) => setNewCustomerBusinessName(e.target.value)}
+                      placeholder="مثال: أسواق الكوثر المركزية"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 focus:border-emerald-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-black text-slate-800 block mb-1">نوع التجارة / النشاط:</label>
+                    <input
+                      type="text"
+                      value={newCustomerBusinessType}
+                      onChange={(e) => setNewCustomerBusinessType(e.target.value)}
+                      placeholder="مثال: ميني ماركت وبقالة"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 focus:border-emerald-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* City & Address */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-black text-slate-800 block mb-1">المحافظة / المدينة:</label>
+                  <input
+                    type="text"
+                    value={newCustomerCity}
+                    onChange={(e) => setNewCustomerCity(e.target.value)}
+                    placeholder="كربلاء المقدسة"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-black text-slate-800 block mb-1">العنوان التفصيلي / نقطة دالة:</label>
+                  <input
+                    type="text"
+                    value={newCustomerAddress}
+                    onChange={(e) => setNewCustomerAddress(e.target.value)}
+                    placeholder="مثال: حي الحسين - قرب جامع الإمام علي"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Default Password */}
+              <div className="bg-emerald-50/70 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between gap-3">
+                <div>
+                  <span className="font-black text-emerald-950 block text-[11px]">كلمة المرور الافتراضية للحساب:</span>
+                  <span className="text-[10px] text-emerald-800">يمكن للزبون استخدامها لتسجيل الدخول للتطبيق في أي وقت</span>
+                </div>
+                <input
+                  type="text"
+                  value={newCustomerPasswordVal}
+                  onChange={(e) => setNewCustomerPasswordVal(e.target.value)}
+                  className="w-24 bg-white border border-emerald-300 rounded-xl px-2 py-1 text-xs font-mono font-bold text-center text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCustomerModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 transition cursor-pointer text-xs"
+                >
+                  إلغاء
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingNewCustomer}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-6 py-2.5 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer text-xs disabled:opacity-50"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>{isSubmittingNewCustomer ? 'جاري الحفظ...' : 'حفظ وإضافة الزبون للدليل ✅'}</span>
                 </button>
               </div>
 

@@ -58,3 +58,52 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { name, phone, email, accountType, businessName, businessType, city, address, password, notes } = body;
+
+    if (!name || !name.trim()) {
+      return NextResponse.json({ success: false, error: 'يرجى إدخال اسم الزبون / التاجر' }, { status: 400 });
+    }
+
+    if (!phone || !phone.trim()) {
+      return NextResponse.json({ success: false, error: 'يرجى إدخال رقم الهاتف' }, { status: 400 });
+    }
+
+    const { findUserByEmailOrPhone, createUser } = await import('@/lib/db');
+    const existing = findUserByEmailOrPhone(phone.trim());
+    if (existing) {
+      return NextResponse.json({ success: false, error: 'يوجد زبون / تاجر مسجل مسبقاً برقم الهاتف هذا' }, { status: 400 });
+    }
+
+    const type = (accountType || 'market') as AccountType;
+    const isMerchant = type === 'wholesale' || type === 'merchant';
+    const isMarket = type === 'market';
+
+    const newUser = createUser({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email ? email.trim() : undefined,
+      password: password ? password.trim() : '123456',
+      role: 'customer',
+      accountType: type,
+      merchantStatus: isMerchant || isMarket ? 'approved' : undefined,
+      merchantTier: isMerchant ? 'gold' : isMarket ? 'silver' : undefined,
+      businessName: businessName ? businessName.trim() : (isMarket ? `ماركت ${name.trim()}` : isMerchant ? `تجارة ${name.trim()}` : undefined),
+      businessType: businessType ? businessType.trim() : (isMarket ? 'ميني ماركت وبقالة' : isMerchant ? 'تجارة مواد غذائية جملة' : undefined),
+      city: city ? city.trim() : 'كربلاء المقدسة',
+      address: address ? address.trim() : 'مركز المدينة',
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'تمت إضافة الزبون / التاجر بنجاح وتفعيل حسابه مباشرة! 👤✅',
+      user: newUser,
+    });
+  } catch (error: any) {
+    console.error('Error in POST /api/admin/merchants:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
