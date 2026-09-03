@@ -74,6 +74,7 @@ export default function OrderSuccessPage() {
   const [feedbackSent, setFeedbackSent] = useState<boolean>(false);
 
   const prevStatusRef = useRef<string | null>(null);
+  const prevDriverArrivedRef = useRef<string | null>(null);
 
   const triggerLiveNotification = (newOrder: Order) => {
     let alertTitle = '';
@@ -155,10 +156,29 @@ export default function OrderSuccessPage() {
       if (data.success && data.order) {
         const newOrder: Order = data.order;
         
-        // If status changed in real-time, trigger full sound and visual alert
+        // 1. If status changed in real-time, trigger full sound and visual alert
         if (prevStatusRef.current !== null && prevStatusRef.current !== newOrder.status) {
           triggerLiveNotification(newOrder);
         }
+
+        // 2. If driver arrived alert triggered by driver, play loud sound and popup
+        if (prevDriverArrivedRef.current === null && newOrder.driverArrivedAt && prevStatusRef.current !== null) {
+          playNotificationSound('delivered');
+          setLiveAlert({
+            title: '🛵 المندوب وصل إلى موقعك الآن!',
+            message: `مرحباً ${newOrder.customer?.name || 'عزيزنا الزبون'}، مندوب سوق الجملة (${newOrder.driverName || 'المندوب'}) وصل بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
+            type: 'shipped',
+            icon: Truck,
+          });
+          sendSystemNotification({
+            title: '🛵 المندوب وصل إلى موقعك الآن!',
+            body: `مندوب سوق الجملة بانتظارك في الخارج لتسليم طلبيتك #${newOrder.orderNumber}.`,
+            url: `/order-success/${newOrder.id}`,
+            soundType: 'delivered',
+          });
+        }
+
+        prevDriverArrivedRef.current = newOrder.driverArrivedAt || null;
 
         if (prevStatusRef.current === null && typeof window !== 'undefined' && Notification.permission === 'granted') {
           subscribeCustomerForOrderTracking({

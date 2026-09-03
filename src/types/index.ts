@@ -223,6 +223,7 @@ export interface Order {
   vehicleName?: string; // اسم وموديل السيارة
   vehiclePlate?: string; // رقم لوحة السيارة
   outForDeliveryAt?: string; // وقت خروج المندوب بالطريق للزبون
+  driverArrivedAt?: string; // وقت ضغط السائق على تنبيه "وصلت للموقع"
   collectionStatus?: DeliveryCollectionStatus; // حالة التحصيل: كاش / دين آجل / جزئي
   collectedAmount?: number; // المبلغ المحصل نقداً من السائق
   remainingDebtAmount?: number; // المبلغ المتبقي كدين على الزبون

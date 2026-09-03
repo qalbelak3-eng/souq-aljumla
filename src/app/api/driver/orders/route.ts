@@ -103,6 +103,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'الطلبية غير موجودة' }, { status: 404 });
       }
 
+      // حفظ وقت وصول المندوب في الطلبية لتلتقطه صفحة التتبع الحية فوراً
+      const { updateOrder } = await import('@/lib/db');
+      updateOrder(orderId, { driverArrivedAt: new Date().toISOString() }, false);
+
       // إرسال تنبيه Push لحظي لهاتف الزبون
       try {
         await sendDirectCustomerAlert({
