@@ -22,7 +22,8 @@ import {
   RefreshCw,
   Wallet,
   Check,
-  Star
+  Star,
+  Edit3
 } from 'lucide-react';
 import { Order, Driver, DeliveryCollectionStatus, StoreSettings, DriverRating } from '@/types';
 import { generateDeliveryCustomerWhatsAppLink, generateDeliveryAccountantWhatsAppLink } from '@/lib/whatsapp';
@@ -60,6 +61,13 @@ export default function DriverDashboardPage() {
   } | null>(null);
   const [customerWhatsAppSent, setCustomerWhatsAppSent] = useState<boolean>(false);
   const [accountantWhatsAppSent, setAccountantWhatsAppSent] = useState<boolean>(false);
+
+  // Edit Collection Modal State (قبل التصفية)
+  const [editingCollectionOrder, setEditingCollectionOrder] = useState<Order | null>(null);
+  const [editCollectionStatus, setEditCollectionStatus] = useState<DeliveryCollectionStatus>('collected_cash');
+  const [editPartialAmount, setEditPartialAmount] = useState<string>('');
+  const [editDeliveryNotes, setEditDeliveryNotes] = useState('');
+  const [isSavingEditCollection, setIsSavingEditCollection] = useState(false);
 
   // Load Driver Session & Store Settings
   useEffect(() => {
@@ -192,6 +200,67 @@ export default function DriverDashboardPage() {
     setCollectionStatus('collected_cash');
     setPartialAmount('');
     setDeliveryNotes('');
+  };
+
+  const openEditCollectionModal = (order: Order) => {
+    if (order.driverCashSettled) {
+      toast.showToast('تمت تصفية العهدة لهذه الطلبية مع الإدارة مسبقاً ولا يمكن التعديل 🔒', 'error');
+      return;
+    }
+    setEditingCollectionOrder(order);
+    setEditCollectionStatus(order.collectionStatus || 'collected_cash');
+    setEditPartialAmount(order.collectionStatus === 'partial' ? (order.collectedAmount || 0).toString() : '');
+    setEditDeliveryNotes(order.driverNotes || '');
+  };
+
+  const handleSaveEditCollection = async () => {
+    if (!editingCollectionOrder || !driver) return;
+
+    let collectedAmount = 0;
+    if (editCollectionStatus === 'collected_cash') {
+      collectedAmount = editingCollectionOrder.total;
+    } else if (editCollectionStatus === 'partial') {
+      collectedAmount = Number(editPartialAmount) || 0;
+      if (collectedAmount <= 0 || collectedAmount >= editingCollectionOrder.total) {
+        toast.showToast('يرجى إدخال مبلغ دفع جزئي صحيح أقل من إجمالي الفاتورة', 'error');
+        return;
+      }
+    } else if (editCollectionStatus === 'debt_unpaid' || editCollectionStatus === 'returned') {
+      collectedAmount = 0;
+    }
+
+    setIsSavingEditCollection(true);
+    try {
+      const res = await fetch('/api/driver/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_collection',
+          orderId: editingCollectionOrder.id,
+          driverId: driver.id,
+          collectionStatus: editCollectionStatus,
+          collectedAmount,
+          notes: editDeliveryNotes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.showToast(data.message || 'تم تحديث مبلغ التحصيل بنجاح ✓', 'success');
+        setEditingCollectionOrder(null);
+        if (data.driver) {
+          setDriver(data.driver);
+          localStorage.setItem('driver_session', JSON.stringify(data.driver));
+        }
+        fetchOrders(driver.id);
+      } else {
+        toast.showToast(data.error || 'فشل تعديل التحصيل', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.showToast('حدث خطأ في الاتصال بالخادم', 'error');
+    }
+    setIsSavingEditCollection(false);
   };
 
   const handleCompleteDelivery = async () => {
@@ -659,9 +728,29 @@ export default function DriverDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold border-t border-slate-100 pt-2 flex-wrap gap-2">
                     <span>{order.customer.city} - {order.customer.address}</span>
-                    <span className="font-mono">{order.deliveredAt ? new Date(order.deliveredAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">{order.deliveredAt ? new Date(order.deliveredAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                      
+                      {order.driverCashSettled ? (
+                        <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                          <span>🔒</span>
+                          <span>تمت التصفية مع الإدارة</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openEditCollectionModal(order)}
+                          className="bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 text-[10px] font-black px-2.5 py-1 rounded-lg border border-amber-300 transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                          title="تعديل المبلغ المحصل في حال حدوث خطأ قبل تصفية العهدة مع الإدارة"
+                        >
+                          <Edit3 className="w-3 h-3 text-amber-700" />
+                          <span>تعديل المبلغ ✏️</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
@@ -1013,6 +1102,154 @@ export default function DriverDashboardPage() {
                 className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs py-3 rounded-2xl transition text-center cursor-pointer"
               >
                 العودة للطلبيات والمتابعة 🚀
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* EDIT COLLECTION MODAL (BEFORE CASH SETTLEMENT) */}
+      {editingCollectionOrder && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs" dir="rtl">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-fadeIn">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-black text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+                <span>تعديل المبلغ المحصل للطلبية ✏️</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingCollectionOrder(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200 p-3 rounded-2xl text-xs space-y-1 text-amber-950">
+              <div className="flex justify-between font-bold">
+                <span>رقم الطلبية:</span>
+                <span className="font-mono font-black">#{editingCollectionOrder.orderNumber}</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>الزبون / المحل:</span>
+                <span className="font-black">{editingCollectionOrder.customer.businessName || editingCollectionOrder.customer.name}</span>
+              </div>
+              <div className="flex justify-between font-bold pt-1 border-t border-amber-200/60">
+                <span>إجمالي الفاتورة:</span>
+                <span className="font-mono font-black text-amber-900">{editingCollectionOrder.total.toLocaleString()} د.ع</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <label className="font-black text-slate-800 block">اختر نوع وحالة التحصيل الصحيحة:</label>
+              
+              <div className="grid grid-cols-1 gap-2">
+                <label className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition ${
+                  editCollectionStatus === 'collected_cash'
+                    ? 'border-emerald-500 bg-emerald-50/60 text-emerald-950 font-black'
+                    : 'border-slate-200 bg-white text-slate-700 font-bold'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="editCollectionStatus"
+                      value="collected_cash"
+                      checked={editCollectionStatus === 'collected_cash'}
+                      onChange={() => setEditCollectionStatus('collected_cash')}
+                      className="accent-emerald-600"
+                    />
+                    <span>💵 استلام كاش كامل من الزبون</span>
+                  </div>
+                  <span className="font-mono">{editingCollectionOrder.total.toLocaleString()} د.ع</span>
+                </label>
+
+                <label className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition ${
+                  editCollectionStatus === 'partial'
+                    ? 'border-sky-500 bg-sky-50/60 text-sky-950 font-black'
+                    : 'border-slate-200 bg-white text-slate-700 font-bold'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="editCollectionStatus"
+                      value="partial"
+                      checked={editCollectionStatus === 'partial'}
+                      onChange={() => setEditCollectionStatus('partial')}
+                      className="accent-sky-600"
+                    />
+                    <span>💳 دفع كاش جزئي (والباقي دين)</span>
+                  </div>
+                </label>
+
+                {editCollectionStatus === 'partial' && (
+                  <div className="bg-sky-50/80 p-3 rounded-2xl border border-sky-200 space-y-1.5 animate-fadeIn">
+                    <label className="font-black text-sky-950 block">المبلغ المستلم كاش نقداً (د.ع):</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={editingCollectionOrder.total - 1}
+                      value={editPartialAmount}
+                      onChange={(e) => setEditPartialAmount(e.target.value)}
+                      placeholder="اكتب المبلغ الفعلي المستلم..."
+                      className="w-full bg-white border-2 border-sky-400 rounded-xl p-2.5 font-mono font-black text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                    />
+                    {Number(editPartialAmount) > 0 && Number(editPartialAmount) < editingCollectionOrder.total && (
+                      <span className="text-[11px] font-bold text-sky-800 block">
+                        المتبقي كدين بذمة الزبون: {(editingCollectionOrder.total - Number(editPartialAmount)).toLocaleString()} د.ع
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <label className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition ${
+                  editCollectionStatus === 'debt_unpaid'
+                    ? 'border-amber-500 bg-amber-50/60 text-amber-950 font-black'
+                    : 'border-slate-200 bg-white text-slate-700 font-bold'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="editCollectionStatus"
+                      value="debt_unpaid"
+                      checked={editCollectionStatus === 'debt_unpaid'}
+                      onChange={() => setEditCollectionStatus('debt_unpaid')}
+                      className="accent-amber-600"
+                    />
+                    <span>📝 تسليم بالآجل (دين كامل 0 كاش)</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <label className="font-black text-slate-800">سبب التعديل / ملاحظة المندوب:</label>
+                <input
+                  type="text"
+                  value={editDeliveryNotes}
+                  onChange={(e) => setEditDeliveryNotes(e.target.value)}
+                  placeholder="مثال: تصحيح خطأ في كتابة المبلغ المستلم..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingCollectionOrder(null)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl transition text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                disabled={isSavingEditCollection}
+                onClick={handleSaveEditCollection}
+                className="bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black py-2.5 px-5 rounded-xl shadow-md transition flex items-center gap-1.5 text-xs cursor-pointer"
+              >
+                {isSavingEditCollection ? 'جاري الحفظ...' : 'حفظ وتحديث التحصيل 💵✓'}
               </button>
             </div>
 

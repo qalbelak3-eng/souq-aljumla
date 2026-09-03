@@ -5,6 +5,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   try {
     let customAmount: number | undefined;
     let notes: string | undefined;
+    let orderAdjustments: Record<string, { collectedAmount: number; collectionStatus?: any }> | undefined;
 
     try {
       const body = await req.json();
@@ -14,6 +15,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       if (body.notes) {
         notes = body.notes;
       }
+      if (body.orderAdjustments) {
+        orderAdjustments = body.orderAdjustments;
+      }
     } catch (e) {
       // Body might be empty
     }
@@ -21,6 +25,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const { driver, settledAmount, createdReceiptsCount } = settleDriverCash(params.id, {
       customAmount,
       notes,
+      orderAdjustments,
     });
 
     if (!driver) {

@@ -36,7 +36,7 @@ import {
   Sparkles,
   ThumbsUp
 } from 'lucide-react';
-import { Driver, Vehicle, Order, DriverRating } from '@/types';
+import { Driver, Vehicle, Order, DriverRating, DeliveryCollectionStatus } from '@/types';
 import { useConfirm } from '@/context/ConfirmModalContext';
 
 interface DriverWithStats extends Driver {
@@ -102,6 +102,7 @@ export default function AdminDriversPage() {
   const [settleNotes, setSettleNotes] = useState('');
   const [isSettling, setIsSettling] = useState(false);
   const [settleDriverOrders, setSettleDriverOrders] = useState<Order[]>([]);
+  const [settleOrderAdjustments, setSettleOrderAdjustments] = useState<Record<string, { collectedAmount: number; collectionStatus: DeliveryCollectionStatus }>>({});
   const [isLoadingSettleOrders, setIsLoadingSettleOrders] = useState(false);
   const [showSettleOrdersBreakdown, setShowSettleOrdersBreakdown] = useState(true);
 
@@ -211,17 +212,54 @@ export default function AdminDriversPage() {
         const unsettled = data.orders.filter(
           (o: Order) => (o.collectedAmount || 0) > 0 && !o.driverCashSettled
         );
-        setSettleDriverOrders(
-          unsettled.length > 0
-            ? unsettled
-            : data.orders.filter((o: Order) => (o.collectedAmount || 0) > 0).slice(0, 10)
-        );
+        const targetOrders: Order[] = unsettled.length > 0
+          ? unsettled
+          : data.orders.filter((o: Order) => (o.collectedAmount || 0) > 0).slice(0, 10);
+
+        setSettleDriverOrders(targetOrders);
+
+        // Initialize adjustments for each order
+        const initialAdj: Record<string, { collectedAmount: number; collectionStatus: DeliveryCollectionStatus }> = {};
+        let totalInit = 0;
+        targetOrders.forEach((o) => {
+          const val = o.collectedAmount !== undefined ? o.collectedAmount : o.total;
+          initialAdj[o.id] = {
+            collectedAmount: val,
+            collectionStatus: o.collectionStatus || 'collected_cash',
+          };
+          totalInit += val;
+        });
+        setSettleOrderAdjustments(initialAdj);
+        if (totalInit > 0) {
+          setSettleAmount(totalInit.toString());
+        }
       }
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoadingSettleOrders(false);
     }
+  };
+
+  const handleOrderAdjustmentChange = (orderId: string, orderTotal: number, newAmountStr: string, newStatus?: DeliveryCollectionStatus) => {
+    const newAmount = Math.max(0, Number(newAmountStr) || 0);
+    const resolvedStatus: DeliveryCollectionStatus = newStatus || (
+      newAmount >= orderTotal ? 'collected_cash' : newAmount > 0 ? 'partial' : 'debt_unpaid'
+    );
+
+    const updated = {
+      ...settleOrderAdjustments,
+      [orderId]: {
+        collectedAmount: newAmount,
+        collectionStatus: resolvedStatus,
+      },
+    };
+
+    setSettleOrderAdjustments(updated);
+
+    // Automatically recalculate total settlement sum
+    const totalSum = Object.values(updated).reduce((sum, item) => sum + (item.collectedAmount || 0), 0);
+    setSettleAmount(totalSum.toString());
   };
 
   const handleSaveDriver = async (e: React.FormEvent) => {
@@ -317,6 +355,7 @@ export default function AdminDriversPage() {
         body: JSON.stringify({
           customAmount: amountNum,
           notes: settleNotes,
+          orderAdjustments: settleOrderAdjustments,
         }),
       });
       const data = await res.json();
@@ -1467,52 +1506,108 @@ export default function AdminDriversPage() {
                   لا توجد فواتير معلقة حالياً مسجلة بعهدة هذا السائق.
                 </div>
               ) : showSettleOrdersBreakdown && (
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                   {settleDriverOrders.map((ord) => {
                     const isMerchant =
                       (ord.customer?.businessName && ord.customer.businessName.includes('جملة')) ||
                       ord.items?.some((i) => i.saleType === 'wholesale');
                     const isMarket = !isMerchant && Boolean(ord.customer?.businessName);
-                    const collectedVal = ord.collectedAmount !== undefined ? ord.collectedAmount : ord.total;
+                    
+                    const currentAdj = settleOrderAdjustments[ord.id] || {
+                      collectedAmount: ord.collectedAmount !== undefined ? ord.collectedAmount : ord.total,
+                      collectionStatus: ord.collectionStatus || 'collected_cash',
+                    };
+                    const currentCollected = currentAdj.collectedAmount;
+                    const remainingDebt = Math.max(0, ord.total - currentCollected);
 
                     return (
                       <div
                         key={ord.id}
-                        className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between gap-2 hover:border-emerald-400 transition"
+                        className="bg-white p-3 rounded-2xl border border-slate-200/90 shadow-2xs space-y-2 hover:border-emerald-400 transition"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-lg shrink-0">
-                            {isMerchant ? '👑' : isMarket ? '🏪' : '👤'}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <strong className="text-xs font-black text-slate-900 truncate">
-                                {ord.customer?.businessName || ord.customer?.name}
-                              </strong>
-                              <span className="text-[10px] text-slate-600 font-mono font-black bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                                #{ord.orderNumber}
-                              </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base shrink-0">
+                              {isMerchant ? '👑' : isMarket ? '🏪' : '👤'}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <strong className="text-xs font-black text-slate-900 truncate">
+                                  {ord.customer?.businessName || ord.customer?.name}
+                                </strong>
+                                <span className="text-[10px] text-slate-600 font-mono font-black bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                  #{ord.orderNumber}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span>الزبون: {ord.customer?.name}</span>
+                                {ord.customer?.phone && (
+                                  <span className="font-mono" dir="ltr">({ord.customer.phone})</span>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium flex-wrap mt-0.5">
-                              <span>الزبون: {ord.customer?.name}</span>
-                              {ord.customer?.phone && (
-                                <span className="font-mono" dir="ltr">({ord.customer.phone})</span>
-                              )}
-                              {ord.customer?.city && <span>• {ord.customer.city}</span>}
-                            </div>
+                          </div>
+
+                          <div className="text-left shrink-0">
+                            <span className="text-[10px] font-bold text-slate-400 block">إجمالي الفاتورة:</span>
+                            <span className="font-mono font-black text-xs text-slate-700 block">
+                              {ord.total.toLocaleString()} د.ع
+                            </span>
                           </div>
                         </div>
 
-                        <div className="text-left shrink-0">
-                          <span className="font-mono font-black text-xs text-emerald-700 block">
-                            {collectedVal.toLocaleString()} د.ع
-                          </span>
-                          <span className={`text-[9px] font-bold block ${
-                            ord.collectionStatus === 'partial' ? 'text-amber-600' : 'text-emerald-600'
-                          }`}>
-                            {ord.collectionStatus === 'partial' ? 'دفعة كاش جزئية' : 'كاش كامل'}
-                          </span>
+                        {/* إمكانية تعديل المبلغ المستلم من هذا الزبون بالتحديد */}
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-black text-emerald-900 shrink-0">
+                              المستلم من الزبون:
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                max={ord.total * 2}
+                                value={currentCollected}
+                                onChange={(e) => handleOrderAdjustmentChange(ord.id, ord.total, e.target.value)}
+                                className="w-24 bg-white border border-emerald-400 rounded-lg py-1 px-2 font-mono font-black text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-center"
+                              />
+                              <span className="text-[10px] font-bold text-slate-500">د.ع</span>
+                            </div>
+                          </div>
+
+                          {/* أزرار ضبط سريع للمبلغ */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOrderAdjustmentChange(ord.id, ord.total, ord.total.toString(), 'collected_cash')}
+                              className={`text-[10px] font-black px-2 py-0.8 rounded-md border transition cursor-pointer ${
+                                currentCollected === ord.total
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                              }`}
+                            >
+                              كاش كامل
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOrderAdjustmentChange(ord.id, ord.total, '0', 'debt_unpaid')}
+                              className={`text-[10px] font-black px-2 py-0.8 rounded-md border transition cursor-pointer ${
+                                currentCollected === 0
+                                  ? 'bg-amber-600 text-white border-amber-600'
+                                  : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+                              }`}
+                            >
+                              آجل (دين 0)
+                            </button>
+                          </div>
                         </div>
+
+                        {remainingDebt > 0 && (
+                          <div className="text-[10px] font-bold text-amber-700 bg-amber-50/80 px-2 py-0.5 rounded-md border border-amber-200/60 flex items-center justify-between">
+                            <span>دين متبقي بذمة الزبون:</span>
+                            <span className="font-mono font-black">{remainingDebt.toLocaleString()} د.ع</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

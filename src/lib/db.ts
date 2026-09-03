@@ -2539,9 +2539,72 @@ export function deleteDriver(id: string): boolean {
   return false;
 }
 
+export function updateDriverDeliveryCollection(
+  orderId: string,
+  driverId: string,
+  data: {
+    collectionStatus: DeliveryCollectionStatus;
+    collectedAmount: number;
+    notes?: string;
+  }
+): { success: boolean; order?: Order; driver?: Driver; error?: string } {
+  const db = ensureDbExists();
+  const orderIdx = (db.orders || []).findIndex((o) => o.id === orderId);
+  if (orderIdx === -1) {
+    return { success: false, error: 'الطلبية غير موجودة' };
+  }
+
+  const order = db.orders[orderIdx];
+  if (order.driverId !== driverId) {
+    return { success: false, error: 'هذه الطلبية غير مسندة لهذا السائق' };
+  }
+
+  if (order.driverCashSettled) {
+    return { success: false, error: 'لا يمكن تعديل المبلغ، لقد تمت تصفية العهدة لهذه الطلبية مع الإدارة مسبقاً.' };
+  }
+
+  const prevCollected = order.collectedAmount || 0;
+  let newCollected = Number(data.collectedAmount) || 0;
+  if (data.collectionStatus === 'collected_cash') {
+    newCollected = order.total;
+  } else if (data.collectionStatus === 'debt_unpaid' || data.collectionStatus === 'returned') {
+    newCollected = 0;
+  }
+
+  order.collectionStatus = data.collectionStatus;
+  order.collectedAmount = newCollected;
+  order.remainingDebtAmount = Math.max(0, order.total - newCollected);
+  if (data.notes !== undefined) {
+    order.driverNotes = data.notes;
+  }
+  order.updatedAt = new Date().toISOString();
+
+  // Recalculate driver's cash in hand based on all active unsettled orders
+  if (!db.drivers) db.drivers = [];
+  const driverIdx = db.drivers.findIndex((d) => d.id === driverId);
+  if (driverIdx !== -1) {
+    const driverActiveCash = (db.orders || [])
+      .filter((o) => o.driverId === driverId && !o.driverCashSettled && (o.collectedAmount || 0) > 0)
+      .reduce((sum, o) => sum + (o.collectedAmount || 0), 0);
+    
+    db.drivers[driverIdx].currentCashInHand = driverActiveCash;
+  }
+
+  saveDb(db);
+  return {
+    success: true,
+    order,
+    driver: driverIdx !== -1 ? db.drivers[driverIdx] : undefined,
+  };
+}
+
 export function settleDriverCash(
   driverId: string,
-  options?: { customAmount?: number; notes?: string }
+  options?: {
+    customAmount?: number;
+    notes?: string;
+    orderAdjustments?: Record<string, { collectedAmount: number; collectionStatus?: DeliveryCollectionStatus }>;
+  }
 ): { driver: Driver | null; settledAmount: number; createdReceiptsCount: number } {
   const db = ensureDbExists();
   if (!db.drivers) return { driver: null, settledAmount: 0, createdReceiptsCount: 0 };
@@ -2550,8 +2613,6 @@ export function settleDriverCash(
   if (idx === -1) return { driver: null, settledAmount: 0, createdReceiptsCount: 0 };
 
   const driver = db.drivers[idx];
-  let settledAmount = options?.customAmount !== undefined ? Number(options.customAmount) : (driver.currentCashInHand || 0);
-
   const payments = db.payments || [];
 
   // Find all orders assigned to this driver with collected cash not yet settled
@@ -2560,6 +2621,7 @@ export function settleDriverCash(
   );
 
   let createdReceiptsCount = 0;
+  let totalSettledCalculated = 0;
 
   // Calculate highest existing receipt sequence monotonically
   const maxPaymentSeq = payments.reduce((max, p) => {
@@ -2568,12 +2630,23 @@ export function settleDriverCash(
   }, 1000);
 
   unsettledOrders.forEach((order, oIdx) => {
-    // Clean and short sequential receipt number: #REC-1005, #REC-1006
     const nextSeq = maxPaymentSeq + oIdx + 1;
     const receiptNumber = `REC-${nextSeq}`;
     
-    let collected = order.collectedAmount || order.total;
-    if (options?.customAmount !== undefined && unsettledOrders.length === 1) {
+    let collected = order.collectedAmount !== undefined ? order.collectedAmount : order.total;
+
+    // Apply specific order adjustment if provided by admin
+    if (options?.orderAdjustments && options.orderAdjustments[order.id]) {
+      const adj = options.orderAdjustments[order.id];
+      collected = Number(adj.collectedAmount) || 0;
+      order.collectedAmount = collected;
+      order.remainingDebtAmount = Math.max(0, order.total - collected);
+      if (adj.collectionStatus) {
+        order.collectionStatus = adj.collectionStatus;
+      } else {
+        order.collectionStatus = collected >= order.total ? 'collected_cash' : collected > 0 ? 'partial' : 'debt_unpaid';
+      }
+    } else if (options?.customAmount !== undefined && unsettledOrders.length === 1) {
       collected = Number(options.customAmount);
       order.collectedAmount = collected;
       order.remainingDebtAmount = Math.max(0, order.total - collected);
@@ -2582,36 +2655,43 @@ export function settleDriverCash(
       }
     }
 
-    // Create Official Accounting Payment Receipt Voucher (سند قبض رسمي يضاف لكشف حساب الزبون)
-    const paymentRecord: PaymentRecord = {
-      id: `pay-drv-${nextSeq}-${Date.now().toString().slice(-4)}`,
-      receiptNumber,
-      customerPhone: order.customer.phone,
-      customerName: order.customer.name,
-      amount: collected,
-      paymentMethod: 'cash',
-      receivedBy: `تصفية عهدة السائق: ${driver.name}`,
-      notes: options?.notes 
-        ? `${options.notes} (تسديد فاتورة #${order.orderNumber} عبر تصفية عهدة السائق ${driver.name})`
-        : `سند قبض نقدي تلقائي - تسديد فاتورة رقم #${order.orderNumber} عبر تصفية عهدة السائق (${driver.name})`,
-      createdAt: new Date().toISOString(),
-    };
+    totalSettledCalculated += collected;
 
-    payments.unshift(paymentRecord);
+    // Create Official Accounting Payment Receipt Voucher (سند قبض رسمي يضاف لكشف حساب الزبون)
+    if (collected > 0) {
+      const paymentRecord: PaymentRecord = {
+        id: `pay-drv-${nextSeq}-${Date.now().toString().slice(-4)}`,
+        receiptNumber,
+        customerPhone: order.customer.phone,
+        customerName: order.customer.name,
+        amount: collected,
+        paymentMethod: 'cash',
+        receivedBy: `تصفية عهدة السائق: ${driver.name}`,
+        notes: options?.notes 
+          ? `${options.notes} (تسديد فاتورة #${order.orderNumber} عبر تصفية عهدة السائق ${driver.name})`
+          : `سند قبض نقدي تلقائي - تسديد فاتورة رقم #${order.orderNumber} عبر تصفية عهدة السائق (${driver.name})`,
+        createdAt: new Date().toISOString(),
+      };
+
+      payments.unshift(paymentRecord);
+      createdReceiptsCount++;
+    }
 
     // Mark order as settled in accounting
     order.driverCashSettled = true;
     order.driverCashSettledAt = new Date().toISOString();
     order.paymentReceiptNumber = receiptNumber;
     order.updatedAt = new Date().toISOString();
-
-    createdReceiptsCount++;
   });
 
   db.payments = payments;
 
   // Zero out the driver's cash in hand
   db.drivers[idx].currentCashInHand = 0;
+
+  let settledAmount = options?.customAmount !== undefined 
+    ? Number(options.customAmount) 
+    : (totalSettledCalculated > 0 ? totalSettledCalculated : (driver.currentCashInHand || 0));
 
   saveDb(db);
   return { driver: db.drivers[idx], settledAmount, createdReceiptsCount };

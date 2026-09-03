@@ -124,6 +124,27 @@ export async function POST(req: Request) {
       });
     }
 
+    // Action 2.5: Driver updates collection amount before admin cash settlement (تعديل المبلغ قبل التصفية)
+    if (action === 'update_collection') {
+      const { updateDriverDeliveryCollection } = await import('@/lib/db');
+      const result = updateDriverDeliveryCollection(orderId, driverId, {
+        collectionStatus,
+        collectedAmount: Number(collectedAmount) || 0,
+        notes,
+      });
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: result.error || 'فشلت عملية تعديل المبلغ' }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        order: result.order,
+        driver: result.driver,
+        message: 'تم تعديل مبلغ التحصيل وإعادة احتساب العهدة بنجاح 💵✓',
+      });
+    }
+
     // Action 3: Driver completes delivery with cash / debt / partial / return
     if (!collectionStatus) {
       return NextResponse.json({ success: false, error: 'يرجى تحديد حالة التحصيل المالي' }, { status: 400 });
