@@ -18,7 +18,8 @@ import {
   FileText,
   Clock,
   Sparkles,
-  Gift
+  Gift,
+  Edit2
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -98,7 +99,8 @@ export default function CheckoutPage() {
   const [gpsStatus, setGpsStatus] = useState<string>('');
   const [savedLocations, setSavedLocations] = useState<any[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('home');
-  const [saveThisLocation, setSaveThisLocation] = useState(true);
+  const [saveThisLocation, setSaveThisLocation] = useState(false);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -563,21 +565,11 @@ export default function CheckoutPage() {
           {/* Customer & Address Details */}
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-blue" />
-                <span>بيانات المستلم وتحديد موقع التوصيل</span>
+                <span>موقع وعنوان التوصيل 📍</span>
               </h2>
-
-              <button
-                type="button"
-                onClick={handleDetectGps}
-                disabled={isDetectingGps}
-                className="bg-blue-50 hover:bg-blue-100 text-brand-blue font-black text-xs py-1.5 px-3 rounded-xl border border-blue-200 transition flex items-center gap-1.5 shadow-2xs"
-              >
-                <MapPin className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-bounce text-brand-coral' : 'text-brand-blue'}`} />
-                <span>{isDetectingGps ? 'جاري تحديد GPS...' : '📍 تحديث موقعي عبر GPS'}</span>
-              </button>
             </div>
 
             {/* تنبيه ذكي عند اختلاف الموقع الجغرافي الفعلي عن العنوان المختار */}
@@ -617,233 +609,257 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Multiple Saved Locations Chips */}
-            <div className="space-y-2 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
-              <div className="flex items-center justify-between text-slate-700 font-bold text-xs">
-                <span>📍 اختر موقع التوصيل لتذهب إليه الطلبية:</span>
-                <span className="text-[11px] text-slate-500">حفظ مواقع متعددة</span>
-              </div>
+            {/* وضع البطاقة المختصرة والأنيقة للزبون المسجل */}
+            {user && address && !isEditingAddress ? (
+              <div className="bg-slate-50/90 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
+                {/* أزرار التبديل السريع بين المواقع المحفوظة */}
+                {savedLocations.length > 0 && (
+                  <div className="space-y-1.5 pb-3 border-b border-slate-200/70">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                      <span>📍 موقع التوصيل المختار:</span>
+                      <span className="text-[11px] text-slate-400">انقر للتبديل السريع</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {savedLocations.map((loc) => {
+                        const isSelected = selectedLocationId === loc.id;
+                        return (
+                          <button
+                            key={loc.id}
+                            type="button"
+                            onClick={() => handleSelectSavedLocation(loc)}
+                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
+                              isSelected
+                                ? 'bg-brand-blue text-white shadow-2xs'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>{loc.title}</span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                          </button>
+                        );
+                      })}
 
-              <div className="flex items-center gap-2 flex-wrap pt-1">
-                {savedLocations.map((loc) => {
-                  const isSelected = selectedLocationId === loc.id;
-                  return (
-                    <button
-                      key={loc.id}
-                      type="button"
-                      onClick={() => handleSelectSavedLocation(loc)}
-                      className={`py-2 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-brand-blue text-white shadow-xs'
-                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{loc.title}</span>
-                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                    </button>
-                  );
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedLocationId('custom');
-                    setLocationTitle('موقع جديد 📍');
-                    setAddress('');
-                  }}
-                  className={`py-2 px-3 rounded-xl font-bold text-xs border border-dashed transition flex items-center gap-1 ${
-                    selectedLocationId === 'custom'
-                      ? 'border-brand-coral bg-coral-50/30 text-brand-coral'
-                      : 'border-slate-300 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span>+ تسمية موقع جديد</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              {/* Location Title Name */}
-              <div className="space-y-1 sm:col-span-2">
-                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>تسمية هذا الموقع (مثال: موقع البيت 🏠، العمل 🏢، الماركت 🏪) *</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={locationTitle}
-                  onChange={(e) => setLocationTitle(e.target.value)}
-                  placeholder="مثال: موقع البيت 🏠 أو موقع الدوام 🏢"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">الاسم الكامل *</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="مثال: حيدر علي"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">اسم الماركت / المحل (اختياري)</label>
-                <input
-                  type="text"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="مثال: أسواق بغداد"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">رقم الهاتف (الواتساب) *</label>
-                <input
-                  type="tel"
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="077XXXXXXXX"
-                  dir="ltr"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-right text-slate-900 focus:outline-none focus:border-brand-blue"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>منطقة التوصيل والحي في كربلاء *</span>
-                  <span className="text-[10px] text-emerald-700 font-bold">
-                    {isFreeDeliveryQualified ? '🎉 مؤهل للتوصيل المجاني' : `كروة التوصيل: ${calculatedDeliveryFee.toLocaleString()} د.ع`}
-                  </span>
-                </label>
-                <select
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand-blue"
-                >
-                  <optgroup label="🟢 مناطق قريبة والمركز (أقل من 5 كم)">
-                    {KARBALA_AREAS.filter(a => a.tier === 'close').map((p) => {
-                      const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
-                      return (
-                        <option key={p.name} value={p.name}>
-                          {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                  <optgroup label="🟡 مناطق متوسطة (5 - 12 كم)">
-                    {KARBALA_AREAS.filter(a => a.tier === 'medium').map((p) => {
-                      const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
-                      return (
-                        <option key={p.name} value={p.name}>
-                          {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                  <optgroup label="🔴 أطراف ومناطق بعيدة (أكثر من 12 كم)">
-                    {KARBALA_AREAS.filter(a => a.tier === 'far').map((p) => {
-                      const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
-                      return (
-                        <option key={p.name} value={p.name}>
-                          {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                </select>
-              </div>
-
-              <div className="sm:col-span-2 space-y-1">
-                <label className="text-xs font-bold text-slate-700">العنوان التفصيلي (المنطقة، الشارع، أقرب نقطة دالة) *</label>
-                <input
-                  type="text"
-                  required
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="مثال: المنصور، شارع 14 رمضان، قرب جامع الرحمن"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
-                />
-              </div>
-
-              {/* Automatic GPS Status Banner */}
-              <div className="sm:col-span-2 bg-emerald-50/70 border border-emerald-300 rounded-2xl p-3.5 flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                    <MapPin className="w-4 h-4" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedLocationId('custom');
+                          setLocationTitle('موقع جديد 📍');
+                          setIsEditingAddress(true);
+                        }}
+                        className="py-1.5 px-3 rounded-xl font-bold text-xs border border-dashed border-slate-300 text-slate-600 hover:bg-white transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>+ موقع جديد</span>
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-black text-emerald-950 block text-xs">
-                      {gpsStatus || (coords.lat ? 'تم إرفاق إحداثيات GPS تلقائياً مع الطلبية' : 'الموقع الجغرافي المباشر')}
-                    </span>
-                    <span className="text-[10px] text-emerald-700">
-                      {coords.lat ? `إحداثيات: ${coords.lat.toFixed(4)}, ${coords.lng?.toFixed(4)}` : 'يتم إرسال رابط الخريطة تلقائياً مع الفاتورة'}
-                    </span>
-                  </div>
-                </div>
-
-                {coords.mapsUrl ? (
-                  <a
-                    href={coords.mapsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="bg-white hover:bg-emerald-100 text-emerald-800 font-black text-[11px] py-1.5 px-3 rounded-xl border border-emerald-300 transition shadow-2xs"
-                  >
-                    عرض على خرائط Google 🗺️
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleDetectGps}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-1.5 px-3 rounded-xl transition shadow-2xs"
-                  >
-                    تحديد موقعي الآن 📍
-                  </button>
                 )}
-              </div>
 
-              {/* بانر المسافة والكروة المحسوبة بالكيلومتر */}
-              {gpsDeliveryInfo && !isFreeDeliveryQualified && (
-                <div className="sm:col-span-2 bg-blue-50 border border-blue-200 rounded-2xl p-3.5 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 text-base">
-                      📐
-                    </div>
-                    <div>
-                      <span className="font-black text-blue-900 block text-xs">
-                        المسافة من المخزن: {gpsDeliveryInfo.distanceKm} كم
+                {/* تفاصيل العنوان الملخصة والأنيقة */}
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-black text-sm text-slate-900">{locationTitle}</span>
+                      <span className="text-[11px] font-bold text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200">
+                        {city}
                       </span>
-                      <span className="text-[10px] text-blue-700 font-bold">
-                        تم حساب الكروة تلقائياً بناءً على موقعك الجغرافي الفعلي
-                      </span>
+                      {isFreeDeliveryQualified ? (
+                        <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-lg">
+                          توصيل مجاني ⚡
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500">
+                          كروة: {calculatedDeliveryFee.toLocaleString()} د.ع
+                        </span>
+                      )}
                     </div>
+                    
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-brand-coral shrink-0" />
+                      <span>{address}</span>
+                    </p>
+
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      المستلم: <strong className="text-slate-800">{name}</strong> {businessName && `(${businessName})`} • <span dir="ltr">{phone}</span>
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <span className="font-black text-blue-900 text-sm">{gpsDeliveryInfo.fee.toLocaleString()} د.ع</span>
-                    <span className="text-[10px] text-blue-600 font-bold block">كروة التوصيل</span>
+
+                  {/* أزرار الإجراء السريعة بجانب العنوان */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDetectGps}
+                      disabled={isDetectingGps}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-black text-xs py-2 px-3 rounded-xl border border-emerald-300 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      title="تحديث ومطابقة موقعك الحالي عبر GPS"
+                    >
+                      <MapPin className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-bounce text-emerald-600' : 'text-emerald-700'}`} />
+                      <span>{isDetectingGps ? 'جاري التحديد...' : 'تحديث الموقع عبر GPS 📍'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAddress(true)}
+                      className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 px-3 rounded-xl border border-slate-200 transition flex items-center gap-1 cursor-pointer"
+                      title="تعديل تفاصيل العنوان"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                      <span>تعديل ✏️</span>
+                    </button>
                   </div>
                 </div>
-              )}
-
-              {/* Save Address Checkbox */}
-              <div className="sm:col-span-2 flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="saveLocCheck"
-                  checked={saveThisLocation}
-                  onChange={(e) => setSaveThisLocation(e.target.checked)}
-                  className="w-4 h-4 rounded text-brand-blue focus:ring-brand-blue border-slate-300"
-                />
-                <label htmlFor="saveLocCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
-                  حفظ هذا الموقع في حسابي لاستخدامه بسرعة في الطلبيات القادمة 💾
-                </label>
               </div>
+            ) : (
+              /* وضع إدخال وتعديل العنوان (عند الحاجة أو للزائر) */
+              <div className="space-y-4 animate-fadeIn">
+                {user && (
+                  <div className="flex items-center justify-between bg-blue-50/60 p-2.5 rounded-xl border border-blue-200 text-xs">
+                    <span className="font-bold text-blue-900">✏️ تعديل تفاصيل وموقع التوصيل:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAddress(false)}
+                      className="text-blue-700 hover:text-blue-900 font-black px-2.5 py-1 bg-white rounded-lg border border-blue-300 transition cursor-pointer"
+                    >
+                      إغلاق التعديل ✓
+                    </button>
+                  </div>
+                )}
+
+                {/* Multiple Saved Locations Chips */}
+                {savedLocations.length > 0 && (
+                  <div className="space-y-2 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between text-slate-700 font-bold text-xs">
+                      <span>📍 اختر موقع التوصيل لتذهب إليه الطلبية:</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap pt-1">
+                      {savedLocations.map((loc) => {
+                        const isSelected = selectedLocationId === loc.id;
+                        return (
+                          <button
+                            key={loc.id}
+                            type="button"
+                            onClick={() => handleSelectSavedLocation(loc)}
+                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
+                              isSelected
+                                ? 'bg-brand-blue text-white shadow-xs'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>{loc.title}</span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700">تسمية الموقع (مثال: موقع البيت 🏠، العمل 🏢) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={locationTitle}
+                      onChange={(e) => setLocationTitle(e.target.value)}
+                      placeholder="مثال: موقع البيت 🏠 أو موقع الدوام 🏢"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">الاسم الكامل *</label>
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="مثال: حيدر علي"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">رقم الهاتف (الواتساب) *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="077XXXXXXXX"
+                      dir="ltr"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-right text-slate-900 focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">منطقة التوصيل والحي في كربلاء *</label>
+                    <select
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand-blue"
+                    >
+                      <optgroup label="🟢 مناطق قريبة والمركز (أقل من 5 كم)">
+                        {KARBALA_AREAS.filter(a => a.tier === 'close').map((p) => {
+                          const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
+                          return (
+                            <option key={p.name} value={p.name}>
+                              {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                      <optgroup label="🟡 مناطق متوسطة (5 - 12 كم)">
+                        {KARBALA_AREAS.filter(a => a.tier === 'medium').map((p) => {
+                          const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
+                          return (
+                            <option key={p.name} value={p.name}>
+                              {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                      <optgroup label="🔴 أطراف ومناطق بعيدة (أكثر من 12 كم)">
+                        {KARBALA_AREAS.filter(a => a.tier === 'far').map((p) => {
+                          const zoneFee = storeSettings?.deliveryZones?.find(z => z.id === p.zoneId)?.fee ?? p.defaultFee;
+                          return (
+                            <option key={p.name} value={p.name}>
+                              {p.name} — {isFreeDeliveryQualified ? 'مجاني ⚡' : `${zoneFee.toLocaleString()} د.ع`}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">العنوان التفصيلي (الشارع، أقرب نقطة دالة) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="مثال: شارع السناتر، قرب الدامرجي مول"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
+                    />
+                  </div>
+                </div>
+
+                {/* Save Address Checkbox (افتراضي غير محدد) */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="saveLocCheck"
+                    checked={saveThisLocation}
+                    onChange={(e) => setSaveThisLocation(e.target.checked)}
+                    className="w-4 h-4 rounded text-brand-blue focus:ring-brand-blue border-slate-300 cursor-pointer"
+                  />
+                  <label htmlFor="saveLocCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
+                    حفظ هذا العنوان الجديد في حسابي لاستخدامه لاحقاً 💾
+                  </label>
+                </div>
+              </div>
+            )}
 
               <div className="sm:col-span-2 space-y-1.5 pt-1">
                 <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -858,7 +874,6 @@ export default function CheckoutPage() {
                   className="w-full bg-amber-50/40 border border-amber-200/90 rounded-2xl p-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-400 resize-none transition"
                 />
               </div>
-            </div>
           </div>
 
           {/* Payment Method */}
