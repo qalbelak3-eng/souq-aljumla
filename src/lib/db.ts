@@ -1000,7 +1000,10 @@ export function createUser(userData: {
   email?: string;
   phone: string;
   password?: string;
+  role?: UserRole;
   accountType?: AccountType;
+  merchantStatus?: MerchantStatus;
+  merchantTier?: MerchantTier;
   businessName?: string;
   businessType?: string;
   city?: string;
@@ -1022,10 +1025,10 @@ export function createUser(userData: {
     email: userData.email?.trim().toLowerCase() || undefined,
     phone: userData.phone.trim(),
     password: userData.password?.trim() || undefined,
-    role: isWholesale ? 'merchant' : 'customer',
+    role: userData.role || (isWholesale ? 'merchant' : 'customer'),
     accountType: accType,
-    merchantStatus: (isWholesale || isMarket) ? 'pending' : undefined,
-    merchantTier: isWholesale ? 'bronze' : undefined,
+    merchantStatus: userData.merchantStatus !== undefined ? userData.merchantStatus : ((isWholesale || isMarket) ? 'pending' : undefined),
+    merchantTier: userData.merchantTier !== undefined ? userData.merchantTier : (isWholesale ? 'bronze' : undefined),
     businessName: userData.businessName?.trim(),
     businessType: userData.businessType?.trim(),
     city: userData.city?.trim() || 'كربلاء المقدسة',
