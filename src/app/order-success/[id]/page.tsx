@@ -35,7 +35,8 @@ import {
   sendSystemNotification,
   requestNotificationPermission,
   getNotificationPermissionStatus,
-  isNotificationSupported
+  isNotificationSupported,
+  subscribeCustomerForOrderTracking
 } from '@/lib/notifications';
 
 const TRACKING_STEPS: { status: OrderStatus; title: string; subtitle: string; icon: any }[] = [
@@ -159,6 +160,14 @@ export default function OrderSuccessPage() {
           triggerLiveNotification(newOrder);
         }
 
+        if (prevStatusRef.current === null && typeof window !== 'undefined' && Notification.permission === 'granted') {
+          subscribeCustomerForOrderTracking({
+            phone: newOrder.customer?.phone,
+            name: newOrder.customer?.name,
+            userId: newOrder.customer?.userId,
+          }).catch(() => {});
+        }
+
         prevStatusRef.current = newOrder.status;
         setOrder({ ...newOrder });
         if (data.whatsappUrl) setWhatsappUrl(data.whatsappUrl);
@@ -198,6 +207,16 @@ export default function OrderSuccessPage() {
     setNotificationPermission(perm);
     if (perm === 'granted') {
       playNotificationSound('test');
+      
+      // حفظ وتسجيل اشتراك الهاتف الحقيقي في السيرفر وربطه برقم الزبون
+      if (order?.customer) {
+        await subscribeCustomerForOrderTracking({
+          phone: order.customer.phone,
+          name: order.customer.name,
+          userId: order.customer.userId,
+        });
+      }
+
       sendSystemNotification({
         title: '🔔 تم تفعيل إشعارات تتبع الطلبية!',
         body: 'ستصلك تنبيهات صوتية وشاشية فورية عند أي تحديث في حالة طلبيتك.',
