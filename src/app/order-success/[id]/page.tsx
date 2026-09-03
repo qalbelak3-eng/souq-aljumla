@@ -70,7 +70,7 @@ export default function OrderSuccessPage() {
   // Rating & Feedback State
   const [rating, setRating] = useState<number>(5);
   const [feedbackText, setFeedbackText] = useState<string>('');
-  const [feedbackTag, setFeedbackTag] = useState<string>('المندوب محترم وسريع ⚡');
+  const [feedbackTag, setFeedbackTag] = useState<string>('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
   const [feedbackSent, setFeedbackSent] = useState<boolean>(false);
 
@@ -661,10 +661,7 @@ export default function OrderSuccessPage() {
                           type="button"
                           onClick={() => {
                             setRating(star);
-                            // تبديل الوسم المقترح تلقائياً ليتطابق مع عدد النجوم بدون أي تناقض
-                            if (star >= 4) setFeedbackTag('المندوب محترم وسريع ⚡');
-                            else if (star === 3) setFeedbackTag('التوصيل مقبول ولكن تأخر قليلاً ⏳');
-                            else setFeedbackTag('لدي ملاحظة وشكوى على السائق ⚠️');
+                            // لا نجبر الزبون على أي وسم وندع له حرية الاختيار
                           }}
                           className="p-1 hover:scale-110 transition cursor-pointer"
                         >
@@ -688,7 +685,7 @@ export default function OrderSuccessPage() {
                   </div>
                 </div>
 
-                {/* خيارات وسوم سريعة ديناميكية حسب التقييم المختار */}
+                {/* خيارات وسوم سريعة اختيارية للزبون (يمكنه النقر لتحديدها أو إلغاء تحديدها) */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(rating >= 4
                     ? [
@@ -714,7 +711,7 @@ export default function OrderSuccessPage() {
                     <button
                       key={tag}
                       type="button"
-                      onClick={() => setFeedbackTag(tag)}
+                      onClick={() => setFeedbackTag(feedbackTag === tag ? '' : tag)}
                       className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
                         feedbackTag === tag
                           ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
