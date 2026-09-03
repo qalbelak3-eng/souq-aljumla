@@ -350,7 +350,7 @@ export default function AdminOrdersPage() {
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
 
   const handleDeleteOrder = async (orderIdToDelete: string, orderNumberToDelete: string) => {
-    const isConfirmed = await confirmDialog({
+    const isConfirmed = await confirm({
       title: `حذف الفاتورة #${orderNumberToDelete} نهائياً؟`,
       message: 'هل أنت متأكد من رغبتك بحذف هذه الفاتورة؟ سيتم إرجاع كافة المواد والكميات إلى المخزون تلقائياً، وإلغاء مبالغها من كشف الحساب.',
       confirmText: 'نعم، احذف الفاتورة واسترجع المخزون 🗑️',
