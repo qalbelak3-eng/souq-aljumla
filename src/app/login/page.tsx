@@ -115,14 +115,13 @@ function LoginForm() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} noValidate className="space-y-4">
           
           {/* Mobile input */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 block">رقم الموبايل</label>
             <input
               type="text"
-              required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder="07XXXXXXXXX"
