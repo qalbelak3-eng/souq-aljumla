@@ -45,6 +45,7 @@ export default function AdminMerchantsPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [visiblePasswordId, setVisiblePasswordId] = useState<string | null>(null);
   const [notifyCustomer, setNotifyCustomer] = useState<{ customer: CustomerWithStats; status: MerchantStatus } | null>(null);
   const [copiedNotifyMsg, setCopiedNotifyMsg] = useState(false);
 
@@ -652,7 +653,7 @@ export default function AdminMerchantsPage() {
                       {/* Phone & Direct Contact */}
                       <td className="py-3 px-3">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-1 font-mono font-bold text-slate-900 text-[11px]" dir="ltr">
+                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-900 text-[11px]" dir="ltr">
                             <span>{customer.phone}</span>
                             <button
                               type="button"
@@ -666,14 +667,25 @@ export default function AdminMerchantsPage() {
                                 <Copy className="w-3 h-3" />
                               )}
                             </button>
-                          </div>
 
-                          {/* عرض كلمة السر الحالية للمدير */}
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100/90 px-2 py-0.5 rounded-lg border border-slate-200/80 w-fit">
-                            <span className="text-slate-500">الرمز السري:</span>
-                            <span className="font-mono font-black text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                              {customer.password || '123456 (افتراضي)'}
-                            </span>
+                            {/* زر أيقونة المفتاح الصغيرة لإظهار كلمة السر بنقرة واحدة */}
+                            <button
+                              type="button"
+                              onClick={() => setVisiblePasswordId(visiblePasswordId === customer.id ? null : customer.id)}
+                              className={`p-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                visiblePasswordId === customer.id
+                                  ? 'bg-amber-500 text-white shadow-xs'
+                                  : 'text-amber-600 hover:bg-amber-50 bg-amber-50/60 border border-amber-200'
+                              }`}
+                              title="اضغط لمعرفة كلمة السر الخاصة بالزبون"
+                            >
+                              <Key className="w-3 h-3" />
+                              {visiblePasswordId === customer.id && (
+                                <span className="font-mono text-[10px] font-black tracking-wider pr-0.5">
+                                  {customer.password || '123456'}
+                                </span>
+                              )}
+                            </button>
                           </div>
 
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -705,7 +717,7 @@ export default function AdminMerchantsPage() {
                               title="استعادة / تعيين كلمة سر جديدة للعميل"
                             >
                               <Key className="w-2.5 h-2.5 text-amber-600" />
-                              <span>تغيير كلمة السر 🔑</span>
+                              <span>تغيير 🔑</span>
                             </button>
                           </div>
                         </div>
