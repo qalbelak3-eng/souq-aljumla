@@ -223,11 +223,21 @@ export async function subscribeCustomerForOrderTracking(customerData?: {
     const applicationServerKey = urlBase64ToUint8Array(data.vapidPublicKey);
 
     let subscription = await registration.pushManager.getSubscription();
+    
+    // إذا كان هناك اشتراك قديم، نقوم بتجديده لضمان تطابق مفاتيح VAPID
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      } catch (subErr) {
+        console.warn('First subscribe attempt:', subErr);
+      }
+    }
+
+    if (!subscription) {
+      return false;
     }
 
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);

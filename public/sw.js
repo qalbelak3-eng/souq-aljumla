@@ -33,17 +33,12 @@ self.addEventListener('push', function (event) {
     else url = '/products?filter=offers';
   }
 
-  // High-priority interactive mobile push options
   const options = {
     body: body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: { url: url },
-    tag: 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 100000),
-    renotify: true,
-    requireInteraction: true,
-    vibrate: [500, 200, 500, 200, 500],
-    silent: false,
+    tag: 'souq-alert-' + Date.now(),
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
