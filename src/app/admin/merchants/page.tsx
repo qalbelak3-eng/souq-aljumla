@@ -668,6 +668,14 @@ export default function AdminMerchantsPage() {
                             </button>
                           </div>
 
+                          {/* عرض كلمة السر الحالية للمدير */}
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 bg-slate-100/90 px-2 py-0.5 rounded-lg border border-slate-200/80 w-fit">
+                            <span className="text-slate-500">الرمز السري:</span>
+                            <span className="font-mono font-black text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                              {customer.password || '123456 (افتراضي)'}
+                            </span>
+                          </div>
+
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <a
                               href={whatsAppLink}
