@@ -640,16 +640,21 @@ export default function OrderSuccessPage() {
                     </div>
                   </div>
 
-                  {/* النجوم مع الدرجة اللفظية المباشرة */}
-                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-2xl border border-amber-200 shadow-2xs">
+                  {/* النجوم */}
+                  <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
                           key={star}
                           type="button"
-                          onClick={() => setRating(star)}
-                          className="p-1 hover:scale-125 transition transform cursor-pointer"
-                          title={`${star} نجوم`}
+                          onClick={() => {
+                            setRating(star);
+                            // تبديل الوسم المقترح تلقائياً ليتطابق مع عدد النجوم بدون أي تناقض
+                            if (star >= 4) setFeedbackTag('المندوب محترم وسريع ⚡');
+                            else if (star === 3) setFeedbackTag('التوصيل مقبول ولكن تأخر قليلاً ⏳');
+                            else setFeedbackTag('لدي ملاحظة وشكوى على السائق ⚠️');
+                          }}
+                          className="p-1 hover:scale-110 transition cursor-pointer"
                         >
                           <Star
                             className={`w-5 h-5 ${
@@ -671,14 +676,29 @@ export default function OrderSuccessPage() {
                   </div>
                 </div>
 
-                {/* خيارات وسوم سريعة */}
+                {/* خيارات وسوم سريعة ديناميكية حسب التقييم المختار */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {[
-                    'المندوب محترم وسريع ⚡',
-                    'البضاعة والتغليف ممتاز 📦',
-                    'خدمة راقية وسلسة 🌟',
-                    'لدي ملاحظة أو استفسار 💬',
-                  ].map((tag) => (
+                  {(rating >= 4
+                    ? [
+                        'المندوب محترم وسريع ⚡',
+                        'البضاعة والتغليف ممتاز 📦',
+                        'توصيل دقيق وسلس 🌟',
+                        'خدمة ممتازة ومشكورين 🤝',
+                      ]
+                    : rating === 3
+                    ? [
+                        'التوصيل مقبول ولكن تأخر قليلاً ⏳',
+                        'صعوبة في الوصول للموقع 📍',
+                        'الخدمة تحتاج بعض التحسين 🛠️',
+                        'لدي ملاحظة على الطلب 💬',
+                      ]
+                    : [
+                        'لدي ملاحظة وشكوى على السائق ⚠️',
+                        'تأخر شديد في التوصيل ⏳',
+                        'خطأ في الحساب أو المبلغ 💵',
+                        'الكراتين أو البضاعة متضررة 📦',
+                      ]
+                  ).map((tag) => (
                     <button
                       key={tag}
                       type="button"
