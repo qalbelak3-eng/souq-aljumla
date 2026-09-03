@@ -22,10 +22,10 @@ self.addEventListener('push', function (event) {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: { url: url },
-    tag: 'souq-order-alert-' + Date.now(),
+    tag: 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
     renotify: true,
     requireInteraction: true,
-    vibrate: [300, 150, 300, 150, 400],
+    vibrate: [500, 200, 500, 200, 500],
     silent: false,
   };
 

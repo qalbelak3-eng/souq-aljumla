@@ -150,9 +150,17 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
   };
 }
 
+function normalizePhone(phone?: string): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('964')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+}
+
 /**
- * إرسال تنبيه فوري مباشر لزبون معين (مثل: وصول المندوب لموقع التوصيل)
- * هذا الإشعار يظهر كـ Push Alert عاجل على هاتف الزبون فقط ولا يتم حفظه في سجل جرس التنبيهات الدائم
+ * إرسال تنبيه فوري مباشر لزبون معين (مثل: وصول المندوب لموقع التوصيل أو خروج الطلبية)
+ * هذا الإشعار يظهر كـ Push Alert عاجل على هاتف الزبون
  */
 export async function sendDirectCustomerAlert(params: {
   userId?: string;
@@ -164,30 +172,37 @@ export async function sendDirectCustomerAlert(params: {
   const db = getPushSubscriptions('all');
   if (!db || db.length === 0) return { success: true, delivered: false };
 
-  const cleanPhone = (params.phone || '').replace(/\D/g, '');
+  const targetCorePhone = normalizePhone(params.phone);
 
   let targets = db.filter((sub) => {
     if (params.userId && sub.userId === params.userId) return true;
-    if (cleanPhone && sub.userPhone && sub.userPhone.replace(/\D/g, '').includes(cleanPhone)) return true;
+    if (targetCorePhone && sub.userPhone) {
+      const subCorePhone = normalizePhone(sub.userPhone);
+      if (subCorePhone === targetCorePhone || subCorePhone.endsWith(targetCorePhone) || targetCorePhone.endsWith(subCorePhone)) {
+        return true;
+      }
+    }
     return false;
   });
 
-  // إذا لم نجد تطابق مباشر (مثلاً اشتراك تجريبي لم يُربط بهاتف بعد)، نرسل لجميع المشتركين النشطين
+  // إذا لم نجد تطابقاً محدداً بالرقم (مثلاً اشترك كزائر قبل إدخال هاتفه في الفاتورة)، نرسل لجميع الأجهزة النشطة لضمان وصوله للموبايل
   if (targets.length === 0) {
     targets = db;
   }
 
   if (targets.length === 0) return { success: true, delivered: false };
 
+  const safeUrl = sanitizeCustomerUrl(params.url);
+
   const notificationData = JSON.stringify({
     title: params.title,
     body: params.body,
-    icon: '/app-icon.png',
-    badge: '/app-icon.png',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: {
-      url: params.url || '/',
+      url: safeUrl,
       timestamp: Date.now(),
-      isInstantAlertOnly: true, // علامة لتمييز الإشعار اللحظي
+      isInstantAlertOnly: true,
     },
   });
 
@@ -205,7 +220,7 @@ export async function sendDirectCustomerAlert(params: {
         },
         notificationData,
         {
-          TTL: 3600, // صلاحية ساعة واحدة فقط للتنبيه العاجل
+          TTL: 86400, // صلاحية 24 ساعة لضمان استلامه فور فتح الموبايل
           urgency: 'high',
         }
       );
