@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'لم يتم العثور على حساب مسجل بهذا الرقم أو البريد' }, { status: 404 });
       }
 
-      // If user has a set password, verify it
+      // إذا كان للمستخدم كلمة سر مسجلة مسبقاً، نتحقق منها
       if (user.password) {
         if (!password || !password.trim()) {
           return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة السر الخاصة بحسابك' }, { status: 401 });
@@ -44,12 +44,16 @@ export async function POST(request: Request) {
         if (user.password !== password.trim()) {
           return NextResponse.json({ success: false, error: 'كلمة السر غير صحيحة، يرجى المحاولة مجدداً أو استعادة الحساب' }, { status: 401 });
         }
+      } else if (password && password.trim()) {
+        // إذا كان حساباً قديماً بدون كلمة سر وقام بإدخال كلمة سر الآن، نحفظها له تلقائياً
+        user.password = password.trim();
+        updateUserProfile(user.id, { password: password.trim() });
       }
 
       return NextResponse.json({
         success: true,
         user,
-        message: 'تم تسجيل الدخول بنجاح',
+        message: 'تم تسجيل الدخول بنجاح ✓',
       });
     }
 
@@ -134,7 +138,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: false, error: 'إجراء غير معروف' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('API /api/auth POST error:', error);
+    return NextResponse.json({ success: false, error: error.message || 'حدث خطأ غير متوقع في الخادم' }, { status: 500 });
   }
 }
 
