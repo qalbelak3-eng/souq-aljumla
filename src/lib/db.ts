@@ -11,6 +11,7 @@ import {
   MerchantStatus,
   MerchantTier,
   AccountType,
+  UserRole,
   SavedAddress,
   Banner,
   AccountTransaction,
