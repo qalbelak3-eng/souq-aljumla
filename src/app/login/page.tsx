@@ -50,9 +50,11 @@ function LoginForm() {
     if (res.success && res.user) {
       if ((res.user.accountType === 'wholesale' || res.user.accountType === 'merchant') && res.user.merchantStatus === 'pending') {
         setStatusNote('طلب اعتماد حسابك كتاجر جملة قيد المراجعة والتدقيق من قبل الإدارة، يمكنك التسوق بسعر المفرد ريثما يتم اعتماد حسابك وتصنيفك.');
-        setTimeout(() => router.push(redirect), 1800);
+        setTimeout(() => {
+          window.location.href = redirect;
+        }, 1200);
       } else {
-        router.push(redirect);
+        window.location.href = redirect;
       }
     } else {
       setError(res.error || 'فشل تسجيل الدخول، تأكد من رقم الموبايل وكلمة السر');
