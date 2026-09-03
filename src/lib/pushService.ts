@@ -108,20 +108,9 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
         },
       };
 
-      const isApple = sub.endpoint.includes('push.apple.com') || sub.endpoint.includes('apple.com');
-      const customHeaders: Record<string, string> = {
-        'Urgency': 'high',
-      };
-
-      if (isApple) {
-        customHeaders['apns-push-type'] = 'alert';
-        customHeaders['apns-priority'] = '10';
-      }
-
       await webpush.sendNotification(pushSubscription, notificationData, {
         TTL: 86400,
         urgency: 'high',
-        headers: customHeaders,
       });
       successCount++;
     } catch (err: any) {
@@ -222,16 +211,6 @@ export async function sendDirectCustomerAlert(params: {
 
   const promises = targets.map(async (sub) => {
     try {
-      const isApple = sub.endpoint.includes('push.apple.com') || sub.endpoint.includes('apple.com');
-      const customHeaders: Record<string, string> = {
-        'Urgency': 'high',
-      };
-
-      if (isApple) {
-        customHeaders['apns-push-type'] = 'alert';
-        customHeaders['apns-priority'] = '10'; // أعلى أولوية لإيقاظ شاشة الآيفون ورنين التنبيه
-      }
-
       await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
@@ -244,7 +223,6 @@ export async function sendDirectCustomerAlert(params: {
         {
           TTL: 86400,
           urgency: 'high',
-          headers: customHeaders,
         }
       );
       delivered = true;
