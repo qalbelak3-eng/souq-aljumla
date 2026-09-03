@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   Sparkles,
   Clock,
-  ChevronLeft
+  ChevronLeft,
+  Trash2
 } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationsContext';
 
@@ -24,6 +25,7 @@ export default function PushNotificationManager() {
     permission,
     isSubscribing,
     requestPermission,
+    clearAllClientNotifications,
   } = useNotifications();
 
   const [showWelcomePrompt, setShowWelcomePrompt] = useState(false);
@@ -198,50 +200,74 @@ export default function PushNotificationManager() {
                   </p>
                 </div>
               ) : (
-                notifications.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.url || '/products'}
-                    onClick={closeDrawer}
-                    className="block bg-white hover:bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition space-y-2 group cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-brand-coral shrink-0" />
-                        <h4 className="font-black text-xs text-slate-900 group-hover:text-brand-blue transition leading-tight">
-                          {item.title}
-                        </h4>
+                notifications.map((item) => {
+                  let safeUrl = item.url || '/products?filter=offers';
+                  if (safeUrl.startsWith('/admin') || safeUrl.includes('/admin/')) {
+                    if (safeUrl.includes('offer')) safeUrl = '/products?filter=offers';
+                    else if (safeUrl.includes('product')) safeUrl = '/products';
+                    else safeUrl = '/products?filter=offers';
+                  }
+
+                  return (
+                    <Link
+                      key={item.id}
+                      href={safeUrl}
+                      onClick={closeDrawer}
+                      className="block bg-white hover:bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition space-y-2 group cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-brand-coral shrink-0" />
+                          <h4 className="font-black text-xs text-slate-900 group-hover:text-brand-blue transition leading-tight">
+                            {item.title}
+                          </h4>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5 shrink-0">
+                          <Clock className="w-3 h-3" />
+                          <span>{new Date(item.createdAt).toLocaleDateString('ar-IQ')}</span>
+                        </span>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5 shrink-0">
-                        <Clock className="w-3 h-3" />
-                        <span>{new Date(item.createdAt).toLocaleDateString('ar-IQ')}</span>
-                      </span>
-                    </div>
 
-                    <p className="text-[11px] text-slate-600 leading-relaxed line-clamp-3">
-                      {item.body}
-                    </p>
+                      <p className="text-[11px] text-slate-600 leading-relaxed line-clamp-3">
+                        {item.body}
+                      </p>
 
-                    {item.image && (
-                      <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 mt-1">
-                        <img src={item.image} alt="صورة الإشعار" className="w-full h-full object-cover" />
+                      {item.image && (
+                        <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 mt-1">
+                          <img src={item.image} alt="صورة الإشعار" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+
+                      <div className="pt-1.5 flex items-center justify-between text-[10px] text-brand-blue font-bold border-t border-slate-100">
+                        <span>عرض تفاصيل العرض في المتجر 🛍️</span>
+                        <ChevronLeft className="w-3.5 h-3.5 transition group-hover:-translate-x-1" />
                       </div>
-                    )}
-
-                    <div className="pt-1.5 flex items-center justify-between text-[10px] text-brand-blue font-bold border-t border-slate-100">
-                      <span>عرض تفاصيل العرض 🛍️</span>
-                      <ChevronLeft className="w-3.5 h-3.5 transition group-hover:-translate-x-1" />
-                    </div>
-                  </Link>
-                ))
+                    </Link>
+                  );
+                })
               )}
             </div>
 
             {/* Drawer Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-              <span className="text-[11px] text-slate-500 font-bold">
-                إجمالي التنبيهات: {notifications.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-500 font-bold">
+                  التنبيهات: {notifications.length}
+                </span>
+
+                {notifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllClientNotifications}
+                    className="text-rose-600 hover:text-rose-800 text-[11px] font-black px-2 py-1 rounded-lg hover:bg-rose-50 transition flex items-center gap-1 cursor-pointer"
+                    title="مسح كافة الإشعارات والتنبيهات من هذا الجهاز"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>مسح التنبيهات</span>
+                  </button>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={closeDrawer}

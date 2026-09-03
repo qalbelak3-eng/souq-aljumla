@@ -3269,7 +3269,20 @@ export function deletePushSubscription(endpoint: string): boolean {
 
 export function getPushNotificationLogs(): PushNotificationLog[] {
   const db = ensureDbExists();
-  return db.pushNotificationLogs || [];
+  const logs = db.pushNotificationLogs || [];
+  // حماية أمنية: تطهير أي روابط قديمة مسجلة
+  return logs.map((log) => {
+    let safeUrl = log.url || '/products?filter=offers';
+    if (safeUrl.startsWith('/admin') || safeUrl.includes('/admin/')) {
+      if (safeUrl.includes('offer')) safeUrl = '/products?filter=offers';
+      else if (safeUrl.includes('product')) safeUrl = '/products';
+      else safeUrl = '/products?filter=offers';
+    }
+    return {
+      ...log,
+      url: safeUrl,
+    };
+  });
 }
 
 export function recordPushNotificationLog(log: Omit<PushNotificationLog, 'id' | 'createdAt'>): PushNotificationLog {

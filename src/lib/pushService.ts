@@ -25,6 +25,18 @@ export interface SendPushPayload {
   expiresAt?: string;
 }
 
+export function sanitizeCustomerUrl(rawUrl?: string): string {
+  if (!rawUrl) return '/products?filter=offers';
+  const trimmed = rawUrl.trim();
+  // حماية أمنية صارمة: منع أي إشعار موجه للزبائن من فتح لوحة تحكم الإدارة
+  if (trimmed.startsWith('/admin') || trimmed.includes('/admin/')) {
+    if (trimmed.includes('offer')) return '/products?filter=offers';
+    if (trimmed.includes('product')) return '/products';
+    return '/products?filter=offers';
+  }
+  return trimmed;
+}
+
 export async function sendWebPushNotification(payload: SendPushPayload): Promise<{
   success: boolean;
   totalTargeted: number;
@@ -32,6 +44,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
   failureCount: number;
   log?: PushNotificationLog;
 }> {
+  const safeUrl = sanitizeCustomerUrl(payload.url);
   const audience = payload.targetAudience || 'all';
   const audienceLabels: Record<string, string> = {
     all: 'الجميع (كافة الزبائن والتجار والماركتات)',
@@ -50,7 +63,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
       image: payload.image,
       icon: payload.icon || '/app-icon.png',
       badge: payload.badge || '/app-icon.png',
-      url: payload.url || '/',
+      url: safeUrl,
       targetAudience: audience,
       targetAudienceLabel: audienceLabels[audience] || audience,
       sentCount: 0,
@@ -77,7 +90,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
     badge: payload.badge || '/app-icon.png',
     image: payload.image,
     data: {
-      url: payload.url || '/',
+      url: safeUrl,
       timestamp: Date.now(),
     },
   });
@@ -117,7 +130,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
     image: payload.image,
     icon: payload.icon || '/app-icon.png',
     badge: payload.badge || '/app-icon.png',
-    url: payload.url || '/',
+    url: safeUrl,
     targetAudience: audience,
     targetAudienceLabel: audienceLabels[audience] || audience,
     sentCount: totalTargeted,

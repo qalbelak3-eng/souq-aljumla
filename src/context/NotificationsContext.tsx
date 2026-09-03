@@ -17,6 +17,7 @@ interface NotificationsContextType {
   isSubscribing: boolean;
   requestPermission: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
+  clearAllClientNotifications: () => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
@@ -43,71 +44,74 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [notifications, setNotifications] = useState<PushNotificationLog[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const clearAllClientNotifications = useCallback(() => {
+    setNotifications([]);
+    setUnreadCount(0);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('souq_saved_notifications');
+      localStorage.setItem('etihad_notifications_last_read', Date.now().toString());
+    }
+  }, []);
+
   const refreshNotifications = useCallback(async () => {
     try {
-      // 1. Check cached in localStorage and filter out expired
-      if (typeof window !== 'undefined') {
-        try {
+      // 1. Fetch fresh logs directly from server (Source of Truth)
+      const res = await fetch('/api/notifications/send', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.logs)) {
+        const userType = user?.accountType || 'retail';
+        const nowTime = Date.now();
+
+        // تطهير الروابط واستبعاد المنتهي الصلاحية والفلترة حسب فئة الزبون
+        const freshLogs = data.logs
+          .filter((log: PushNotificationLog) => {
+            if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
+              return false; // منتهي الصلاحية
+            }
+            if (!log.targetAudience || log.targetAudience === 'all') return true;
+            if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
+            if (log.targetAudience === 'market') return userType === 'market';
+            if (log.targetAudience === 'retail') return userType === 'individual' || userType === 'retail' || !user;
+            return true;
+          })
+          .map((log: PushNotificationLog) => {
+            // حماية صارمة: استبدال أي مسار يبدأ بـ /admin برابط العروض العامة
+            let safeUrl = log.url || '/products?filter=offers';
+            if (safeUrl.startsWith('/admin') || safeUrl.includes('/admin/')) {
+              if (safeUrl.includes('offer')) safeUrl = '/products?filter=offers';
+              else if (safeUrl.includes('product')) safeUrl = '/products';
+              else safeUrl = '/products?filter=offers';
+            }
+            return {
+              ...log,
+              url: safeUrl,
+            };
+          });
+
+        setNotifications(freshLogs);
+
+        if (typeof window !== 'undefined') {
+          if (freshLogs.length === 0) {
+            localStorage.removeItem('souq_saved_notifications');
+            setUnreadCount(0);
+          } else {
+            localStorage.setItem('souq_saved_notifications', JSON.stringify(freshLogs));
+            const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
+            const unread = freshLogs.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+            setUnreadCount(unread);
+          }
+        }
+      } else {
+        // إذا فشل الاتصال، نقرأ الكاش المؤقت فقط
+        if (typeof window !== 'undefined') {
           const cached = localStorage.getItem('souq_saved_notifications');
           if (cached) {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed)) {
-              const nowTime = Date.now();
-              const validCached = parsed.filter((n: PushNotificationLog) => {
-                if (n.expiresAt && new Date(n.expiresAt).getTime() <= nowTime) {
-                  return false; // منتهي الصلاحية
-                }
-                return true;
-              });
-              setNotifications(validCached);
-              const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-              const unread = validCached.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
-              setUnreadCount(unread);
+              setNotifications(parsed);
             }
           }
-        } catch {}
-      }
-
-      // 2. Fetch fresh logs from server
-      const res = await fetch('/api/notifications/send', { cache: 'no-store' });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
-        const userType = user?.accountType || 'retail';
-        const nowTime = Date.now();
-
-        const filtered = data.logs.filter((log: PushNotificationLog) => {
-          // استبعاد المنتهي الصلاحية فوراً
-          if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
-            return false;
-          }
-
-          if (!log.targetAudience || log.targetAudience === 'all') return true;
-          if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
-          if (log.targetAudience === 'market') return userType === 'market';
-          if (log.targetAudience === 'retail') return userType === 'individual' || userType === 'retail' || !user;
-          return true;
-        });
-
-        const freshLogs = filtered;
-
-        setNotifications((prev) => {
-          const merged = [...freshLogs];
-          prev.forEach((p) => {
-            if (!merged.some((m) => m.id === p.id)) {
-              // تحقق من الصلاحية أيضاً للعناصر السابقة
-              if (!p.expiresAt || new Date(p.expiresAt).getTime() > nowTime) {
-                merged.push(p);
-              }
-            }
-          });
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('souq_saved_notifications', JSON.stringify(merged));
-            const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-            const unread = merged.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
-            setUnreadCount(unread);
-          }
-          return merged;
-        });
+        }
       }
     } catch (err) {
       console.error('Error fetching notifications:', err);
@@ -270,6 +274,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         isSubscribing,
         requestPermission,
         refreshNotifications,
+        clearAllClientNotifications,
       }}
     >
       {children}

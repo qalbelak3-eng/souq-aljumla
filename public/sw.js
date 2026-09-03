@@ -35,9 +35,16 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
 
-  let targetUrl = '/';
+  let targetUrl = '/products?filter=offers';
   if (event.notification.data && event.notification.data.url) {
     targetUrl = event.notification.data.url;
+  }
+
+  // حماية أمنية: منع فتح مسارات الإدارة عبر الإشعارات
+  if (targetUrl.startsWith('/admin') || targetUrl.includes('/admin/')) {
+    if (targetUrl.includes('offer')) targetUrl = '/products?filter=offers';
+    else if (targetUrl.includes('product')) targetUrl = '/products';
+    else targetUrl = '/products?filter=offers';
   }
 
   event.waitUntil(
