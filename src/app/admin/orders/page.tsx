@@ -347,6 +347,44 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+
+  const handleDeleteOrder = async (orderIdToDelete: string, orderNumberToDelete: string) => {
+    const isConfirmed = await confirmDialog({
+      title: `حذف الفاتورة #${orderNumberToDelete} نهائياً؟`,
+      message: 'هل أنت متأكد من رغبتك بحذف هذه الفاتورة؟ سيتم إرجاع كافة المواد والكميات إلى المخزون تلقائياً، وإلغاء مبالغها من كشف الحساب.',
+      confirmText: 'نعم، احذف الفاتورة واسترجع المخزون 🗑️',
+      cancelText: 'تراجع',
+      type: 'danger',
+    });
+
+    if (!isConfirmed) return;
+
+    setIsDeletingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderIdToDelete}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || 'تم حذف الفاتورة واسترجاع المخزون بنجاح 🗑️✓');
+        fetchOrders();
+        fetchProductsAndMerchants();
+        setEditingOrder(null);
+        if (selectedOrder && selectedOrder.id === orderIdToDelete) {
+          setSelectedOrder(null);
+        }
+      } else {
+        toast.error(data.error || 'تعذر حذف الفاتورة');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('حدث خطأ في الاتصال بالخادم أثناء حذف الفاتورة');
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
   // Open Manual Order Modal
   const handleOpenManualOrderModal = () => {
     setManualCustomerType('guest');
@@ -1144,7 +1182,7 @@ export default function AdminOrdersPage() {
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 space-y-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto text-xs">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
               <div>
                 <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                   <Edit className="w-5 h-5 text-amber-600" />
@@ -1154,9 +1192,21 @@ export default function AdminOrdersPage() {
                   العميل: {editingOrder.customer.name} ({editingOrder.customer.phone})
                 </p>
               </div>
-              <button onClick={() => setEditingOrder(null)} className="text-slate-400 hover:text-slate-700 p-1">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteOrder(editingOrder.id, editingOrder.orderNumber)}
+                  disabled={isDeletingOrder}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="حذف هذه الفاتورة نهائياً"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingOrder ? 'جاري الحذف...' : 'حذف الفاتورة 🗑️'}</span>
+                </button>
+                <button onClick={() => setEditingOrder(null)} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Note alert */}
@@ -1313,7 +1363,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Total summary */}
-              <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between font-bold">
+              <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between font-bold flex-wrap gap-3">
                 <div>
                   <span className="text-slate-400 text-xs block">الإجمالي الجديد بعد التعديل والاسترجاع:</span>
                   <span className="text-xl font-black font-mono text-emerald-400">
@@ -1325,18 +1375,29 @@ export default function AdminOrdersPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteOrder(editingOrder.id, editingOrder.orderNumber)}
+                    disabled={isDeletingOrder}
+                    className="bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700/60 font-black py-2.5 px-4 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>{isDeletingOrder ? 'جاري الحذف...' : 'حذف الفاتورة 🗑️'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setEditingOrder(null)}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 px-4 rounded-xl transition"
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 px-4 rounded-xl transition cursor-pointer"
                   >
                     إلغاء
                   </button>
+
                   <button
                     type="submit"
-                    disabled={isSubmittingEdit}
-                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 px-6 rounded-xl transition shadow-md flex items-center gap-2"
+                    disabled={isSubmittingEdit || isDeletingOrder}
+                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 px-6 rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isSubmittingEdit ? 'جاري التعديل...' : 'حفظ التعديل واسترجاع المخزون ✅'}
                   </button>
