@@ -52,42 +52,41 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     // إرسال تنبيه فوري لهاتف الزبون بناءً على تغير حالة الطلبية 🔔
     try {
       const effectiveStatus = updated.status;
-      const statusChanged = prevOrder.status !== effectiveStatus;
+      const isDriverAssigned = driverId !== undefined && driverId !== '' && driverId !== 'none';
+      const isProcessing = effectiveStatus === 'processing' || status === 'processing';
 
-      if (statusChanged || status !== undefined) {
-        if (effectiveStatus === 'processing' && prevOrder.status === 'pending') {
-          await sendDirectCustomerAlert({
-            userId: updated.customer.userId,
-            phone: updated.customer.phone,
-            title: '📦 طلبيتك قيد التجهيز والتعليب الآن!',
-            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
-            url: `/order-success/${updated.id}`,
-          });
-        } else if (effectiveStatus === 'shipped') {
-          await sendDirectCustomerAlert({
-            userId: updated.customer.userId,
-            phone: updated.customer.phone,
-            title: '🚚 طلبيتك في الطريق إليك الآن!',
-            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
-            url: `/order-success/${updated.id}`,
-          });
-        } else if (effectiveStatus === 'delivered') {
-          await sendDirectCustomerAlert({
-            userId: updated.customer.userId,
-            phone: updated.customer.phone,
-            title: '🎉 تم تسليم طلبيتك بنجاح!',
-            body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
-            url: `/order-success/${updated.id}`,
-          });
-        } else if (effectiveStatus === 'cancelled') {
-          await sendDirectCustomerAlert({
-            userId: updated.customer.userId,
-            phone: updated.customer.phone,
-            title: '❌ تم إلغاء الطلبية',
-            body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
-            url: `/order-success/${updated.id}`,
-          });
-        }
+      if (isDriverAssigned || (isProcessing && prevOrder.status !== 'shipped' && prevOrder.status !== 'delivered')) {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '📦 طلبيتك قيد التجهيز والتعليب الآن!',
+          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (effectiveStatus === 'shipped' || status === 'shipped') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '🚚 طلبيتك في الطريق إليك الآن!',
+          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (effectiveStatus === 'delivered' || status === 'delivered') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '🎉 تم تسليم طلبيتك بنجاح!',
+          body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (effectiveStatus === 'cancelled' || status === 'cancelled') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '❌ تم إلغاء الطلبية',
+          body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
+          url: `/order-success/${updated.id}`,
+        });
       }
     } catch (e) {}
 
