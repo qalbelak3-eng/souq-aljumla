@@ -49,6 +49,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
           url: `/order-success/${updated.id}`,
         });
+      } else if (status === 'shipped') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '🚚 طلبيتك في الطريق إليك الآن!',
+          body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع المندوب (${updated.driverName || 'مندوب التوصيل'}) وهي في الطريق إليك 🚀.`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (status === 'delivered') {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '🎉 تم تسليم طلبيتك بنجاح!',
+          body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+          url: `/order-success/${updated.id}`,
+        });
       } else if (status === 'cancelled') {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,

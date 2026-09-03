@@ -21,11 +21,22 @@ import {
   Star,
   Sparkles,
   ThumbsUp,
-  Send
+  Send,
+  Bell,
+  Volume2,
+  VolumeX,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, OrderStatus } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
+import {
+  playNotificationSound,
+  sendSystemNotification,
+  requestNotificationPermission,
+  getNotificationPermissionStatus,
+  isNotificationSupported
+} from '@/lib/notifications';
 
 const TRACKING_STEPS: { status: OrderStatus; title: string; subtitle: string; icon: any }[] = [
   { status: 'pending', title: 'تم استلام الطلبية بنجاح', subtitle: 'الطلبية بانتظار مراجعة الكادر', icon: FileCheck },
@@ -43,6 +54,17 @@ export default function OrderSuccessPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
 
+  // Live in-app alert popup state
+  const [liveAlert, setLiveAlert] = useState<{
+    title: string;
+    message: string;
+    type: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+    icon: any;
+  } | null>(null);
+
+  // Notification permission state
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+
   // Rating & Feedback State
   const [rating, setRating] = useState<number>(5);
   const [feedbackText, setFeedbackText] = useState<string>('');
@@ -51,6 +73,73 @@ export default function OrderSuccessPage() {
   const [feedbackSent, setFeedbackSent] = useState<boolean>(false);
 
   const prevStatusRef = useRef<string | null>(null);
+
+  const triggerLiveNotification = (newOrder: Order) => {
+    let alertTitle = '';
+    let alertMessage = '';
+    let alertType: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' = 'processing';
+    let soundType: 'order' | 'delivered' | 'merchant' | 'test' = 'order';
+    let AlertIcon = Package;
+
+    if (newOrder.status === 'processing') {
+      alertTitle = '📦 طلبيتك قيد التجهيز والتعليب الآن!';
+      alertMessage = `يتم الآن تجهيز مواد وكراتين طلبيتك #${newOrder.orderNumber} في المستودع تمهيداً لانطلاقها.`;
+      alertType = 'processing';
+      soundType = 'order';
+      AlertIcon = Package;
+    } else if (newOrder.status === 'shipped') {
+      alertTitle = '🚗 خرجت طلبيتك مع المندوب وهي بالطريق إليك!';
+      alertMessage = `انطلقت طلبيتك #${newOrder.orderNumber} الآن مع المندوب ${newOrder.driverName ? `(${newOrder.driverName})` : ''} وهي في الطريق إلى موقعك.`;
+      alertType = 'shipped';
+      soundType = 'merchant';
+      AlertIcon = Truck;
+    } else if (newOrder.status === 'delivered') {
+      alertTitle = '🎉 تم تسليم طلبيتك بنجاح!';
+      alertMessage = `تم استلام وتسليم طلبيتك #${newOrder.orderNumber} بنجاح. نتمنى لك تجربة ممتعة!`;
+      alertType = 'delivered';
+      soundType = 'delivered';
+      AlertIcon = CheckCircle2;
+      try {
+        confetti({
+          particleCount: 120,
+          spread: 90,
+          origin: { y: 0.5 },
+          colors: ['#0284c7', '#f05138', '#16a34a', '#eab308']
+        });
+      } catch (e) {}
+    } else if (newOrder.status === 'cancelled') {
+      alertTitle = '❌ تم إلغاء / إرجاع الطلبية';
+      alertMessage = `تم تحديث حالة طلبيتك #${newOrder.orderNumber} إلى ملغية. يمكنك التواصل معنا لأي استفسار.`;
+      alertType = 'cancelled';
+      soundType = 'order';
+      AlertIcon = AlertCircle;
+    }
+
+    // 1. Play immediate audio chime
+    playNotificationSound(soundType);
+
+    // 2. Show dynamic in-app toast modal
+    setLiveAlert({
+      title: alertTitle,
+      message: alertMessage,
+      type: alertType,
+      icon: AlertIcon,
+    });
+
+    // 3. Send Native Browser / OS Push Notification
+    sendSystemNotification({
+      title: alertTitle,
+      body: alertMessage,
+      url: `/order-success/${newOrder.id}`,
+      soundType,
+      tag: `order-status-${newOrder.id}-${newOrder.status}`,
+    });
+
+    // Auto-dismiss in-app banner after 7 seconds
+    setTimeout(() => {
+      setLiveAlert(null);
+    }, 7000);
+  };
 
   const fetchOrderLive = async () => {
     try {
@@ -65,17 +154,9 @@ export default function OrderSuccessPage() {
       if (data.success && data.order) {
         const newOrder: Order = data.order;
         
-        if (prevStatusRef.current && prevStatusRef.current !== newOrder.status) {
-          if (newOrder.status === 'delivered') {
-            try {
-              confetti({
-                particleCount: 100,
-                spread: 80,
-                origin: { y: 0.5 },
-                colors: ['#0284c7', '#f05138', '#16a34a']
-              });
-            } catch (e) {}
-          }
+        // If status changed in real-time, trigger full sound and visual alert
+        if (prevStatusRef.current !== null && prevStatusRef.current !== newOrder.status) {
+          triggerLiveNotification(newOrder);
         }
 
         prevStatusRef.current = newOrder.status;
@@ -91,6 +172,10 @@ export default function OrderSuccessPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setNotificationPermission(getNotificationPermissionStatus());
+    }
+
     try {
       confetti({
         particleCount: 80,
@@ -107,6 +192,20 @@ export default function OrderSuccessPage() {
 
     return () => clearInterval(interval);
   }, [orderId]);
+
+  const handleEnableNotifications = async () => {
+    const perm = await requestNotificationPermission();
+    setNotificationPermission(perm);
+    if (perm === 'granted') {
+      playNotificationSound('test');
+      sendSystemNotification({
+        title: '🔔 تم تفعيل إشعارات تتبع الطلبية!',
+        body: 'ستصلك تنبيهات صوتية وشاشية فورية عند أي تحديث في حالة طلبيتك.',
+        url: `/order-success/${orderId}`,
+        soundType: 'test',
+      });
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -152,14 +251,43 @@ export default function OrderSuccessPage() {
   const currentStepIndex = stepIndexMap[order.status] ?? 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 text-xs">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 text-xs relative">
       
+      {/* 🔔 التنبيه المنبثق اللحظي الفوري عند تغير حالة الطلب */}
+      {liveAlert && (
+        <div className="fixed top-5 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-bounce">
+          <div className={`p-4 rounded-3xl shadow-2xl border-2 backdrop-blur-lg flex items-start gap-3.5 ${
+            liveAlert.type === 'delivered'
+              ? 'bg-emerald-900/95 text-white border-emerald-400'
+              : liveAlert.type === 'shipped'
+              ? 'bg-amber-900/95 text-white border-amber-400'
+              : liveAlert.type === 'processing'
+              ? 'bg-sky-900/95 text-white border-sky-400'
+              : 'bg-slate-900/95 text-white border-slate-700'
+          }`}>
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+              <liveAlert.icon className="w-5 h-5 text-white animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-black text-sm text-white leading-tight">{liveAlert.title}</h4>
+              <p className="text-xs text-white/90 mt-1 leading-relaxed">{liveAlert.message}</p>
+            </div>
+            <button
+              onClick={() => setLiveAlert(null)}
+              className="text-white/70 hover:text-white p-1 rounded-xl hover:bg-white/10 transition shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner with Real-Time Indicator */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-md space-y-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-brand-blue via-brand-coral to-emerald-500" />
         
-        {/* Live Badge */}
-        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-4">
+        {/* Live Badge & Notification Permission Toggle */}
+        <div className="flex items-center justify-between flex-wrap gap-3 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2">
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -170,11 +298,24 @@ export default function OrderSuccessPage() {
             </span>
           </div>
 
-          {lastUpdatedTime && (
-            <span className="text-[10px] text-slate-400 font-mono">
-              آخر فحص: {lastUpdatedTime}
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {notificationPermission !== 'granted' && isNotificationSupported() && (
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-950 font-black text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs transition"
+              >
+                <Bell className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                <span>تفعيل إشعارات الهاتف الصوتية 🔔</span>
+              </button>
+            )}
+
+            {lastUpdatedTime && (
+              <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-100">
+                آخر فحص: {lastUpdatedTime}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Order Number & Stepper */}
