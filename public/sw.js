@@ -1,8 +1,18 @@
-// Souq Al-Jumla PWA Service Worker - Background Web Push Notifications Handler
+// Souq Al-Jumla PWA Service Worker - High Reliability Mobile Push Handler
+const SW_VERSION = 'souq-sw-v2.6';
+
+self.addEventListener('install', function (event) {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('push', function (event) {
   let title = 'سوق الجملة 🇮🇶';
-  let body = 'لديك عرض جديد وتخفيضات خاصة في سوق الجملة!';
-  let url = '/';
+  let body = 'لديك إشعار وتحديث جديد بخصوص طلبيتك!';
+  let url = '/products?filter=offers';
 
   if (event.data) {
     try {
@@ -16,13 +26,20 @@ self.addEventListener('push', function (event) {
     }
   }
 
+  // تنظيف الرابط لمنع فتح لوحة الإدارة
+  if (url.startsWith('/admin') || url.includes('/admin/')) {
+    if (url.includes('offer')) url = '/products?filter=offers';
+    else if (url.includes('product')) url = '/products';
+    else url = '/products?filter=offers';
+  }
+
   // High-priority interactive mobile push options
   const options = {
     body: body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: { url: url },
-    tag: 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+    tag: 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 100000),
     renotify: true,
     requireInteraction: true,
     vibrate: [500, 200, 500, 200, 500],

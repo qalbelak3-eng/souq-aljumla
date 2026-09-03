@@ -335,7 +335,7 @@ export default function CheckoutPage() {
     );
   };
 
-  if (cart.length === 0) {
+  if (cart.length === 0 && !isSubmitting) {
     return (
       <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
         <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-400 mx-auto shadow-sm">
@@ -440,8 +440,10 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (data.success && data.order) {
-        clearCart();
-        router.push(`/order-success/${data.order.id}`);
+        try {
+          clearCart();
+        } catch {}
+        window.location.href = `/order-success/${data.order.id}`;
       } else {
         setErrorMessage(data.error || 'حدث خطأ أثناء حفظ الطلبية');
         setIsSubmitting(false);

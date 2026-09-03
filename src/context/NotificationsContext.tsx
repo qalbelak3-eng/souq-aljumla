@@ -253,7 +253,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       }
 
       if (supported && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch((e) => console.log('SW reg:', e));
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          reg.update().catch(() => {});
+        }).catch((e) => console.log('SW reg:', e));
       }
 
       refreshNotifications();

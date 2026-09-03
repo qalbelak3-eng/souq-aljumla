@@ -98,7 +98,8 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
     const permission = await Notification.requestPermission();
     if (permission === 'granted' && 'serviceWorker' in navigator) {
       try {
-        await navigator.serviceWorker.register('/sw.js');
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        reg.update().catch(() => {});
       } catch (e) {
         console.warn('SW registration:', e);
       }
