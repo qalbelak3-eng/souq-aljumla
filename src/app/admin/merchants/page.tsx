@@ -652,8 +652,8 @@ export default function AdminMerchantsPage() {
 
                       {/* Phone & Direct Contact */}
                       <td className="py-3 px-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-900 text-[11px]" dir="ltr">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1 font-mono font-bold text-slate-900 text-[11px]" dir="ltr">
                             <span>{customer.phone}</span>
                             <button
                               type="button"
@@ -662,62 +662,63 @@ export default function AdminMerchantsPage() {
                               title="نسخ رقم الهاتف"
                             >
                               {copiedPhone === customer.phone ? (
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                               ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-
-                            {/* زر أيقونة المفتاح الصغيرة لإظهار كلمة السر بنقرة واحدة */}
-                            <button
-                              type="button"
-                              onClick={() => setVisiblePasswordId(visiblePasswordId === customer.id ? null : customer.id)}
-                              className={`p-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
-                                visiblePasswordId === customer.id
-                                  ? 'bg-amber-500 text-white shadow-xs'
-                                  : 'text-amber-600 hover:bg-amber-50 bg-amber-50/60 border border-amber-200'
-                              }`}
-                              title="اضغط لمعرفة كلمة السر الخاصة بالزبون"
-                            >
-                              <Key className="w-3 h-3" />
-                              {visiblePasswordId === customer.id && (
-                                <span className="font-mono text-[10px] font-black tracking-wider pr-0.5">
-                                  {customer.password || '123456'}
-                                </span>
+                                <Copy className="w-3.5 h-3.5" />
                               )}
                             </button>
                           </div>
 
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* شريط الأيقونات السريعة فقط بدون نصوص */}
+                          <div className="flex items-center gap-1">
+                            {/* أيقونة واتساب */}
                             <a
                               href={whatsAppLink}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-emerald-700 hover:text-emerald-900 font-bold text-[9px] inline-flex items-center gap-0.5 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200 transition"
+                              className="w-6 h-6 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                              title="محادثة واتساب"
                             >
-                              <MessageCircle className="w-2.5 h-2.5 text-emerald-600" />
-                              <span>واتساب</span>
+                              <MessageCircle className="w-3.5 h-3.5" />
                             </a>
 
+                            {/* أيقونة اتصال */}
                             <a
                               href={`tel:${customer.phone}`}
-                              className="text-slate-600 hover:text-slate-900 font-bold text-[9px] inline-flex items-center gap-0.5 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 transition"
+                              className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                              title="اتصال هاتفي"
                             >
-                              <Phone className="w-2.5 h-2.5 text-slate-500" />
-                              <span>اتصال</span>
+                              <Phone className="w-3.5 h-3.5" />
                             </a>
 
+                            {/* أيقونة إظهار / إخفاء كلمة السر */}
+                            <button
+                              type="button"
+                              onClick={() => setVisiblePasswordId(visiblePasswordId === customer.id ? null : customer.id)}
+                              className={`h-6 px-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 shadow-2xs ${
+                                visiblePasswordId === customer.id
+                                  ? 'bg-amber-500 text-white border-amber-500 font-mono text-[10px] font-black'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                              }`}
+                              title={visiblePasswordId === customer.id ? "إخفاء كلمة السر" : "إظهار كلمة السر"}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              {visiblePasswordId === customer.id && (
+                                <span>{customer.password || '123456'}</span>
+                              )}
+                            </button>
+
+                            {/* أيقونة تغيير كلمة السر */}
                             <button
                               type="button"
                               onClick={() => {
                                 setPasswordModalCustomer(customer);
                                 setResetCustomerPassword('');
                               }}
-                              className="text-amber-700 hover:text-amber-900 font-bold text-[9px] inline-flex items-center gap-0.5 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 transition cursor-pointer"
-                              title="استعادة / تعيين كلمة سر جديدة للعميل"
+                              className="w-6 h-6 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 flex items-center justify-center transition shadow-2xs cursor-pointer"
+                              title="تغيير كلمة السر وإرسالها بالواتساب"
                             >
-                              <Key className="w-2.5 h-2.5 text-amber-600" />
-                              <span>تغيير 🔑</span>
+                              <Key className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
