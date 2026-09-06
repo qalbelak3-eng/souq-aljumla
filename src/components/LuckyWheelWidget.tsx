@@ -8,7 +8,23 @@ import { useAuth } from '@/context/AuthContext';
 export default function LuckyWheelWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [hasFreeSpin, setHasFreeSpin] = useState(true);
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [cooldownHours, setCooldownHours] = useState(24);
   const { user } = useAuth();
+
+  useEffect(() => {
+    fetch('/api/lucky-wheel')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.settings) {
+          setIsEnabled(data.settings.isEnabled ?? true);
+          if (data.settings.cooldownHours) {
+            setCooldownHours(data.settings.cooldownHours);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     const storageKey = user?.id ? `lucky_spin_${user.id}` : 'lucky_spin_guest';
@@ -17,10 +33,12 @@ export default function LuckyWheelWidget() {
       setHasFreeSpin(true);
     } else {
       const diff = Date.now() - parseInt(lastSpinTime, 10);
-      const cooldown = 24 * 60 * 60 * 1000;
+      const cooldown = (cooldownHours || 24) * 60 * 60 * 1000;
       setHasFreeSpin(diff >= cooldown);
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, cooldownHours]);
+
+  if (!isEnabled) return null;
 
   return (
     <>

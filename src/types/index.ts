@@ -305,6 +305,26 @@ export interface Coupon {
   expiresAt?: string; // تاريخ الانتهاء
 }
 
+export interface LuckyWheelPrize {
+  id: string;
+  label: string; // العنوان الرئيسي (مثال: "500 د.ع" أو "خصم 10%")
+  subLabel: string; // العنوان الفرعي (مثال: "رصيد أرباح 💰" أو "كوبون خصم 🏷️")
+  type: 'cashback' | 'coupon' | 'delivery' | 'try_again';
+  value: number | string;
+  couponCode?: string;
+  color: string;
+  textColor: string;
+  probability: number; // نسبة الاحتمال والوزن (مثال: 25)
+}
+
+export interface LuckyWheelSettings {
+  isEnabled: boolean;
+  cooldownHours: number; // عدد ساعات التكرار (مثال: 24 ساعة)
+  title: string;
+  description: string;
+  prizes: LuckyWheelPrize[];
+}
+
 export interface DeliveryZone {
   id: string;
   name: string; // مثال: "المناطق القريبة والمركز (أقل من 5 كم)"

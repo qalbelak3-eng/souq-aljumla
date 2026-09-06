@@ -5,115 +5,23 @@ import { X, Sparkles, Trophy, Gift, ArrowDown, Volume2, VolumeX, Check, Copy } f
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 
+import { LuckyWheelPrize, LuckyWheelSettings } from '@/types';
+import { initialLuckyWheelSettings } from '@/data/initialData';
+
 interface LuckyWheelModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface Prize {
-  id: string;
-  label: string;
-  subLabel: string;
-  type: 'cashback' | 'coupon' | 'delivery' | 'try_again';
-  value: number | string;
-  color: string;
-  textColor: string;
-  probability: number; // weight
-  couponCode?: string;
-}
-
-const PRIZES: Prize[] = [
-  {
-    id: 'p1',
-    label: '500 د.ع',
-    subLabel: 'رصيد أرباح 💰',
-    type: 'cashback',
-    value: 500,
-    color: '#16a34a', // emerald
-    textColor: '#ffffff',
-    probability: 25,
-  },
-  {
-    id: 'p2',
-    label: 'توصيل مجاني',
-    subLabel: 'كوبون شحن 🚚',
-    type: 'coupon',
-    value: 'LUCKYFREE',
-    couponCode: 'LUCKYFREE',
-    color: '#0284c7', // sky
-    textColor: '#ffffff',
-    probability: 20,
-  },
-  {
-    id: 'p3',
-    label: '1,000 د.ع',
-    subLabel: 'رصيد أرباح 🎁',
-    type: 'cashback',
-    value: 1000,
-    color: '#7c3aed', // purple
-    textColor: '#ffffff',
-    probability: 15,
-  },
-  {
-    id: 'p4',
-    label: 'حظ أوفر',
-    subLabel: 'حاول غداً 🍀',
-    type: 'try_again',
-    value: 0,
-    color: '#64748b', // slate
-    textColor: '#ffffff',
-    probability: 15,
-  },
-  {
-    id: 'p5',
-    label: '250 د.ع',
-    subLabel: 'رصيد أرباح 💵',
-    type: 'cashback',
-    value: 250,
-    color: '#ea580c', // orange
-    textColor: '#ffffff',
-    probability: 25,
-  },
-  {
-    id: 'p6',
-    label: 'خصم 5%',
-    subLabel: 'كوبون للطلبية 🏷️',
-    type: 'coupon',
-    value: 'LUCKY5',
-    couponCode: 'LUCKY5',
-    color: '#d97706', // amber
-    textColor: '#ffffff',
-    probability: 15,
-  },
-  {
-    id: 'p7',
-    label: '2,500 د.ع',
-    subLabel: 'جائزة ذهبية 👑',
-    type: 'cashback',
-    value: 2500,
-    color: '#e11d48', // rose
-    textColor: '#ffffff',
-    probability: 5,
-  },
-  {
-    id: 'p8',
-    label: 'هدية فورية',
-    subLabel: 'مع طلبيتك القادمة ✨',
-    type: 'try_again',
-    value: 0,
-    color: '#0d9488', // teal
-    textColor: '#ffffff',
-    probability: 10,
-  },
-];
-
 export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProps) {
   const { user } = useAuth();
   const toast = useToast();
 
+  const [settings, setSettings] = useState<LuckyWheelSettings>(initialLuckyWheelSettings);
+  const [prizes, setPrizes] = useState<LuckyWheelPrize[]>(initialLuckyWheelSettings.prizes);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [wonPrize, setWonPrize] = useState<Prize | null>(null);
+  const [wonPrize, setWonPrize] = useState<LuckyWheelPrize | null>(null);
   const [canSpin, setCanSpin] = useState(true);
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [isMuted, setIsMuted] = useState(false);
@@ -121,6 +29,21 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Fetch live settings and prizes
+  useEffect(() => {
+    fetch('/api/lucky-wheel')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.settings) {
+          setSettings(data.settings);
+          if (data.settings.prizes && data.settings.prizes.length > 0) {
+            setPrizes(data.settings.prizes);
+          }
+        }
+      })
+      .catch(console.error);
+  }, [isOpen]);
 
   // Sound generator using Web Audio API
   const playBeep = (freq: number, duration: number, type: OscillatorType = 'sine') => {
@@ -156,7 +79,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     setTimeout(() => playBeep(880, 0.4, 'triangle'), 450);
   };
 
-  // Check 24-hour daily spin limit
+  // Check cooldown spin limit
   const checkSpinEligibility = () => {
     const storageKey = user?.id ? `lucky_spin_${user.id}` : 'lucky_spin_guest';
     const lastSpinTime = localStorage.getItem(storageKey);
@@ -167,7 +90,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     }
 
     const diff = Date.now() - parseInt(lastSpinTime, 10);
-    const cooldown = 24 * 60 * 60 * 1000; // 24 hours
+    const cooldown = (settings.cooldownHours || 24) * 60 * 60 * 1000;
 
     if (diff < cooldown) {
       setCanSpin(false);
@@ -186,7 +109,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
       checkSpinEligibility();
       setWonPrize(null);
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, settings]);
 
   // Draw wheel on canvas
   useEffect(() => {
@@ -198,7 +121,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     const size = canvas.width;
     const center = size / 2;
     const radius = center - 12;
-    const totalSlices = PRIZES.length;
+    const totalSlices = prizes.length;
     const sliceAngle = (2 * Math.PI) / totalSlices;
 
     ctx.clearRect(0, 0, size, size);
@@ -215,7 +138,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     ctx.fill();
 
     // Slices
-    PRIZES.forEach((prize, index) => {
+    prizes.forEach((prize, index) => {
       const startAngle = index * sliceAngle;
       const endAngle = startAngle + sliceAngle;
 
@@ -236,7 +159,7 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
       ctx.translate(center, center);
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = 'right';
-      ctx.fillStyle = prize.textColor;
+      ctx.fillStyle = prize.textColor || '#ffffff';
 
       ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
       ctx.fillText(prize.label, radius - 20, 0);
@@ -266,29 +189,30 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('🎁', center, center);
-  }, []);
+  }, [prizes]);
 
   const handleSpin = () => {
-    if (isSpinning || !canSpin) return;
+    if (isSpinning || !canSpin || prizes.length === 0) return;
 
     setIsSpinning(true);
     setWonPrize(null);
 
     // Pick prize based on weighted probability
-    const totalProb = PRIZES.reduce((sum, p) => sum + p.probability, 0);
+    const totalProb = prizes.reduce((sum, p) => sum + (Number(p.probability) || 1), 0);
     let rand = Math.random() * totalProb;
     let selectedIndex = 0;
 
-    for (let i = 0; i < PRIZES.length; i++) {
-      if (rand < PRIZES[i].probability) {
+    for (let i = 0; i < prizes.length; i++) {
+      const prob = Number(prizes[i].probability) || 1;
+      if (rand < prob) {
         selectedIndex = i;
         break;
       }
-      rand -= PRIZES[i].probability;
+      rand -= prob;
     }
 
-    const prize = PRIZES[selectedIndex];
-    const sliceDeg = 360 / PRIZES.length;
+    const prize = prizes[selectedIndex];
+    const sliceDeg = 360 / prizes.length;
     
     // Top pointer points to 270 deg (or 90 offset from standard 0 at 3 o'clock).
     // Target rotation to land slice at 270 degrees

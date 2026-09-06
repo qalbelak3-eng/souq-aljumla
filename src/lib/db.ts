@@ -38,9 +38,11 @@ import {
   PushSubscriptionRecord,
   PushNotificationLog,
   NotificationTargetAudience,
-  DriverRating
+  DriverRating,
+  LuckyWheelSettings,
+  LuckyWheelPrize
 } from '@/types';
-import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners } from '@/data/initialData';
+import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners, initialLuckyWheelSettings } from '@/data/initialData';
 
 const IS_SERVERLESS = process.env.NETLIFY === 'true' || process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
 const DATA_DIR = IS_SERVERLESS ? path.join('/tmp', 'souq_data') : path.join(process.cwd(), 'data');
@@ -73,6 +75,7 @@ interface DatabaseSchema {
   pushSubscriptions?: PushSubscriptionRecord[];
   pushNotificationLogs?: PushNotificationLog[];
   driverRatings?: DriverRating[];
+  luckyWheelSettings?: LuckyWheelSettings;
   adminAuth: {
     username: string;
     password: string;
@@ -1212,6 +1215,30 @@ export function deleteCoupon(codeOrId: string): boolean {
     return true;
   }
   return false;
+}
+
+// Lucky Wheel Settings & Prizes Management
+export function getLuckyWheelSettings(): LuckyWheelSettings {
+  const db = ensureDbExists();
+  if (!db.luckyWheelSettings || !db.luckyWheelSettings.prizes || db.luckyWheelSettings.prizes.length === 0) {
+    db.luckyWheelSettings = { ...initialLuckyWheelSettings };
+    saveDb(db);
+  }
+  return db.luckyWheelSettings;
+}
+
+export function updateLuckyWheelSettings(updates: Partial<LuckyWheelSettings>): LuckyWheelSettings {
+  const db = ensureDbExists();
+  const current = db.luckyWheelSettings || { ...initialLuckyWheelSettings };
+
+  db.luckyWheelSettings = {
+    ...current,
+    ...updates,
+    prizes: updates.prizes ? updates.prizes : current.prizes,
+  };
+
+  saveDb(db);
+  return db.luckyWheelSettings;
 }
 
 // Banners

@@ -25,9 +25,15 @@ import {
   Check,
   Users,
   Store,
-  Crown
+  Crown,
+  Gift,
+  RotateCw,
+  Palette,
+  Settings2,
+  Sliders
 } from 'lucide-react';
-import { Product, ProductOffer, Coupon } from '@/types';
+import { Product, ProductOffer, Coupon, LuckyWheelPrize, LuckyWheelSettings } from '@/types';
+import { initialLuckyWheelSettings } from '@/data/initialData';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 
@@ -35,8 +41,8 @@ export default function AdminOffersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
-  // Tab State: Product Flash Offers VS Promotional Coupons
-  const [activeTab, setActiveTab] = useState<'products' | 'coupons'>('products');
+  // Tab State: Product Flash Offers VS Promotional Coupons VS Lucky Wheel
+  const [activeTab, setActiveTab] = useState<'products' | 'coupons' | 'lucky_wheel'>('products');
 
   const [offers, setOffers] = useState<ProductOffer[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -77,18 +83,35 @@ export default function AdminOffersPage() {
   const [couponExpiresAt, setCouponExpiresAt] = useState('');
   const [couponIsActive, setCouponIsActive] = useState(true);
 
+  // Lucky Wheel State
+  const [luckyWheelSettings, setLuckyWheelSettings] = useState<LuckyWheelSettings>(initialLuckyWheelSettings);
+  const [isSavingWheel, setIsSavingWheel] = useState(false);
+  const [isPrizeModalOpen, setIsPrizeModalOpen] = useState(false);
+  const [editingPrize, setEditingPrize] = useState<LuckyWheelPrize | null>(null);
+
+  // Prize Form Fields
+  const [prizeLabel, setPrizeLabel] = useState('');
+  const [prizeSubLabel, setPrizeSubLabel] = useState('');
+  const [prizeType, setPrizeType] = useState<'cashback' | 'coupon' | 'delivery' | 'try_again'>('cashback');
+  const [prizeValue, setPrizeValue] = useState<number | string>(500);
+  const [prizeCouponCode, setPrizeCouponCode] = useState('');
+  const [prizeColor, setPrizeColor] = useState('#16a34a');
+  const [prizeProbability, setPrizeProbability] = useState<number>(20);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [offersRes, productsRes, couponsRes] = await Promise.all([
+      const [offersRes, productsRes, couponsRes, wheelRes] = await Promise.all([
         fetch('/api/offers').then((r) => r.json()),
         fetch('/api/products').then((r) => r.json()),
         fetch('/api/coupons').then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/lucky-wheel').then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
       if (offersRes.success) setOffers(offersRes.offers || []);
       if (productsRes.success) setProducts(productsRes.products || []);
       if (couponsRes.success) setCoupons(couponsRes.coupons || []);
+      if (wheelRes.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);
     } catch (err) {
       console.error(err);
       toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
@@ -441,6 +464,123 @@ export default function AdminOffersPage() {
     );
   });
 
+  // --- Lucky Wheel Handlers ---
+  const handleSaveLuckyWheelSettings = async (newSettings: LuckyWheelSettings) => {
+    setIsSavingWheel(true);
+    try {
+      const res = await fetch('/api/lucky-wheel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLuckyWheelSettings(data.settings);
+        toast.success(data.message || 'تم حفظ إعدادات چرخ الحظ بنجاح! 🎡');
+      } else {
+        toast.error(data.error || 'حدث خطأ أثناء حفظ الإعدادات');
+      }
+    } catch {
+      toast.error('تعذر الاتصال بالسيرفر لحفظ الإعدادات');
+    } finally {
+      setIsSavingWheel(false);
+    }
+  };
+
+  const openAddPrizeModal = () => {
+    setEditingPrize(null);
+    setPrizeLabel('');
+    setPrizeSubLabel('');
+    setPrizeType('cashback');
+    setPrizeValue(500);
+    setPrizeCouponCode('');
+    setPrizeColor('#16a34a');
+    setPrizeProbability(20);
+    setIsPrizeModalOpen(true);
+  };
+
+  const openEditPrizeModal = (prize: LuckyWheelPrize) => {
+    setEditingPrize(prize);
+    setPrizeLabel(prize.label);
+    setPrizeSubLabel(prize.subLabel);
+    setPrizeType(prize.type);
+    setPrizeValue(prize.value);
+    setPrizeCouponCode(prize.couponCode || '');
+    setPrizeColor(prize.color);
+    setPrizeProbability(prize.probability);
+    setIsPrizeModalOpen(true);
+  };
+
+  const handleSavePrize = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prizeLabel.trim()) {
+      toast.error('يرجى كتابة عنوان الجائزة');
+      return;
+    }
+
+    const newPrize: LuckyWheelPrize = {
+      id: editingPrize?.id || `p-${Date.now()}`,
+      label: prizeLabel.trim(),
+      subLabel: prizeSubLabel.trim() || (prizeType === 'cashback' ? 'رصيد أرباح 💰' : prizeType === 'coupon' ? 'كوبون خصم 🏷️' : 'حاول غداً 🍀'),
+      type: prizeType,
+      value: prizeType === 'cashback' ? Number(prizeValue) || 0 : prizeValue,
+      couponCode: prizeType === 'coupon' ? (prizeCouponCode.trim().toUpperCase() || undefined) : undefined,
+      color: prizeColor,
+      textColor: '#ffffff',
+      probability: Number(prizeProbability) || 10,
+    };
+
+    let updatedPrizes: LuckyWheelPrize[] = [];
+    if (editingPrize) {
+      updatedPrizes = luckyWheelSettings.prizes.map((p) => (p.id === editingPrize.id ? newPrize : p));
+    } else {
+      updatedPrizes = [...luckyWheelSettings.prizes, newPrize];
+    }
+
+    const updatedSettings: LuckyWheelSettings = {
+      ...luckyWheelSettings,
+      prizes: updatedPrizes,
+    };
+
+    setLuckyWheelSettings(updatedSettings);
+    handleSaveLuckyWheelSettings(updatedSettings);
+    setIsPrizeModalOpen(false);
+  };
+
+  const handleDeletePrize = async (prizeId: string) => {
+    const isConfirmed = await confirm({
+      title: 'حذف شريحة الجائزة من العجلة',
+      message: 'هل أنت متأكد من رغبتك في حذف هذا القطاع من چرخ الحظ؟',
+      confirmText: 'نعم، احذف',
+      type: 'danger',
+    });
+
+    if (isConfirmed) {
+      const updatedPrizes = luckyWheelSettings.prizes.filter((p) => p.id !== prizeId);
+      const updatedSettings = { ...luckyWheelSettings, prizes: updatedPrizes };
+      setLuckyWheelSettings(updatedSettings);
+      handleSaveLuckyWheelSettings(updatedSettings);
+    }
+  };
+
+  const handleResetWheelToDefault = async () => {
+    const isConfirmed = await confirm({
+      title: 'استعادة جوائز چرخ الحظ الافتراضية',
+      message: 'هل تريد إعادة ضبط جميع قطاعات وجوائز العجلة إلى التشكيلة القياسية الافتراضية؟',
+      confirmText: 'نعم، استعادة الافتراضي',
+      type: 'warning',
+    });
+
+    if (isConfirmed) {
+      const resetSettings: LuckyWheelSettings = {
+        ...luckyWheelSettings,
+        prizes: initialLuckyWheelSettings.prizes,
+      };
+      setLuckyWheelSettings(resetSettings);
+      handleSaveLuckyWheelSettings(resetSettings);
+    }
+  };
+
   // Calculate savings on form
   const curOrig = Number(originalPrice) || 0;
   const curOff = Number(offerPrice) || 0;
@@ -468,7 +608,7 @@ export default function AdminOffersPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {activeTab === 'products' ? (
+          {activeTab === 'products' && (
             <button
               onClick={openAddModal}
               className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
@@ -476,7 +616,8 @@ export default function AdminOffersPage() {
               <Plus className="w-4 h-4" />
               <span>إضافة عرض صنف جديد ⚡</span>
             </button>
-          ) : (
+          )}
+          {activeTab === 'coupons' && (
             <button
               onClick={openAddCouponModal}
               className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
@@ -485,33 +626,54 @@ export default function AdminOffersPage() {
               <span>إنشاء كود خصم جديد 🎟️</span>
             </button>
           )}
+          {activeTab === 'lucky_wheel' && (
+            <button
+              onClick={openAddPrizeModal}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة جائزة جديدة 🎡</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main Navigation Tabs */}
-      <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-300/60 max-w-md">
+      <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-300/60 max-w-2xl flex-wrap sm:flex-nowrap">
         <button
           onClick={() => setActiveTab('products')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+          className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'products'
               ? 'bg-white text-rose-700 shadow-xs ring-2 ring-rose-200'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <Flame className="w-4 h-4" />
-          <span>عروض وتخفيضات الأصناف ({offers.length})</span>
+          <span>عروض الأصناف ({offers.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('coupons')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+          className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
             activeTab === 'coupons'
               ? 'bg-white text-amber-700 shadow-xs ring-2 ring-amber-200'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <Ticket className="w-4 h-4" />
-          <span>كوبونات وأكواد الخصم ({coupons.length})</span>
+          <span>كوبونات الخصم ({coupons.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('lucky_wheel')}
+          className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            activeTab === 'lucky_wheel'
+              ? 'bg-white text-purple-700 shadow-xs ring-2 ring-purple-200'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Gift className="w-4 h-4" />
+          <span>چرخ الحظ والجوائز 🎡</span>
         </button>
       </div>
 
@@ -931,6 +1093,478 @@ export default function AdminOffersPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 3: LUCKY WHEEL & PRIZES MANAGEMENT (چرخ الحظ) */}
+      {/* ======================================================== */}
+      {activeTab === 'lucky_wheel' && (
+        <div className="space-y-6">
+          {/* Main Control Card */}
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-2xl shadow-md shrink-0">
+                  🎡
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <span>إعدادات ونظام چرخ الحظ التفاعلي</span>
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black ${luckyWheelSettings.isEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
+                      {luckyWheelSettings.isEnabled ? 'نشط في المتجر ✅' : 'معطل مؤقتاً ⏸️'}
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    تحكم بالجوائز ونسب الفوز وأكواد الخصم التي يربحها الزبائن عند تدوير العجلة
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Reset to defaults button */}
+                <button
+                  type="button"
+                  onClick={handleResetWheelToDefault}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2 px-3 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  title="استعادة التشكيلة الافتراضية للجوائز"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+
+                {/* Add prize button */}
+                <button
+                  type="button"
+                  onClick={openAddPrizeModal}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة جائزة جديدة ➕</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Settings Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+              {/* 1. Toggle Wheel Status */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+                <div>
+                  <span className="font-black text-xs text-slate-900 block">ظهور العجلة في المتجر:</span>
+                  <span className="text-[10px] text-slate-500">إظهار الزر العائم للزبائن</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = { ...luckyWheelSettings, isEnabled: !luckyWheelSettings.isEnabled };
+                    setLuckyWheelSettings(updated);
+                    handleSaveLuckyWheelSettings(updated);
+                  }}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    luckyWheelSettings.isEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      luckyWheelSettings.isEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* 2. Cooldown Duration */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+                <div>
+                  <span className="font-black text-xs text-slate-900 block">تكرار التدوير المجاني:</span>
+                  <span className="text-[10px] text-slate-500">كل كم ساعة يحق للزبون التدوير</span>
+                </div>
+                <select
+                  value={luckyWheelSettings.cooldownHours || 24}
+                  onChange={(e) => {
+                    const updated = { ...luckyWheelSettings, cooldownHours: Number(e.target.value) };
+                    setLuckyWheelSettings(updated);
+                    handleSaveLuckyWheelSettings(updated);
+                  }}
+                  className="bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:border-purple-500 cursor-pointer"
+                >
+                  <option value={6}>كل 6 ساعات (4 مرات يومياً)</option>
+                  <option value={12}>كل 12 ساعة (مرتان يومياً)</option>
+                  <option value={24}>كل 24 ساعة (مرة يومياً - قياسي)</option>
+                  <option value={48}>كل 48 ساعة (مرة كل يومين)</option>
+                </select>
+              </div>
+
+              {/* 3. Summary Stats */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-around sm:col-span-2 lg:col-span-1">
+                <div className="text-center">
+                  <span className="text-[10px] font-bold text-slate-500 block">عدد الجوائز</span>
+                  <span className="text-base font-black text-purple-700 font-mono">{luckyWheelSettings.prizes?.length || 0}</span>
+                </div>
+                <div className="w-px h-8 bg-slate-200" />
+                <div className="text-center">
+                  <span className="text-[10px] font-bold text-slate-500 block">مجموع الأوزان</span>
+                  <span className="text-base font-black text-slate-800 font-mono">
+                    {(luckyWheelSettings.prizes || []).reduce((acc, p) => acc + (Number(p.probability) || 0), 0)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Slices & Prizes Grid */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                <span>قطاعات وجوائز العجلة ({luckyWheelSettings.prizes?.length || 0} قطاع)</span>
+                <span className="text-[10px] text-slate-500 font-normal">
+                  (تُرتب القطاعات في العجلة بحسب الترتيب التالي)
+                </span>
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {(luckyWheelSettings.prizes || []).map((prize, idx) => {
+                const totalProb = (luckyWheelSettings.prizes || []).reduce((acc, p) => acc + (Number(p.probability) || 0), 0) || 1;
+                const percent = Math.round(((Number(prize.probability) || 0) / totalProb) * 100);
+
+                return (
+                  <div
+                    key={prize.id || idx}
+                    className="bg-white border border-slate-200/90 hover:border-purple-300 rounded-2xl p-4 shadow-2xs hover:shadow-md transition space-y-3 relative overflow-hidden group"
+                  >
+                    {/* Top Color Accent Bar */}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-1.5"
+                      style={{ backgroundColor: prize.color }}
+                    />
+
+                    <div className="flex items-start justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        {/* Slice color indicator bubble */}
+                        <div
+                          className="w-7 h-7 rounded-xl shadow-xs flex items-center justify-center text-white text-xs font-black shrink-0 border border-white/40 font-mono"
+                          style={{ backgroundColor: prize.color }}
+                        >
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-xs text-slate-900 leading-tight">
+                            {prize.label}
+                          </h4>
+                          <span className="text-[10px] text-slate-500 font-bold block">
+                            {prize.subLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Prize Type Badge */}
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        prize.type === 'cashback'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : prize.type === 'coupon'
+                          ? 'bg-amber-100 text-amber-900'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {prize.type === 'cashback' ? '💰 كاش باك' : prize.type === 'coupon' ? '🎟️ كوبون' : '🍀 حظ أوفر'}
+                      </span>
+                    </div>
+
+                    {/* Prize Value / Coupon Code Details */}
+                    <div className="bg-slate-50 rounded-xl p-2 text-[11px] font-mono flex items-center justify-between border border-slate-100">
+                      <span className="text-slate-500 font-bold text-[10px]">القيمة / الكود:</span>
+                      {prize.type === 'cashback' && (
+                        <span className="font-black text-emerald-700">+{Number(prize.value).toLocaleString()} د.ع</span>
+                      )}
+                      {prize.type === 'coupon' && (
+                        <span className="font-black text-amber-800 bg-amber-200/60 px-1.5 py-0.5 rounded border border-amber-300">
+                          {prize.couponCode || prize.value || 'كوبون'}
+                        </span>
+                      )}
+                      {prize.type === 'try_again' && (
+                        <span className="text-slate-500 font-bold">بدون جائزة</span>
+                      )}
+                    </div>
+
+                    {/* Probability / Win Chance Meter */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-slate-500">نسبة فرصة الربح (الوزن):</span>
+                        <span className="text-purple-700 font-mono font-black">{prize.probability} ({percent}%)</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min(100, percent)}%`,
+                            backgroundColor: prize.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditPrizeModal(prize)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 transition cursor-pointer"
+                          title="تعديل تفاصيل الجائزة"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePrize(prize.id)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-600 transition cursor-pointer"
+                          title="حذف الجائزة من العجلة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {prize.color}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 3: ADD / EDIT LUCKY WHEEL PRIZE */}
+      {/* ======================================================== */}
+      {isPrizeModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 text-xs select-none">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setIsPrizeModalOpen(false)} />
+
+          <div className="relative bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl z-10 border border-slate-100 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-base">
+                  🎡
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    {editingPrize ? 'تعديل شريحة وجائزة العجلة' : 'إضافة شريحة وجائزة جديدة'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold">
+                    حدد العنوان والنوع وقيمة الجائزة ولون القطاع
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsPrizeModalOpen(false)}
+                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePrize} className="space-y-3.5">
+              {/* Prize Label & SubLabel */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    العنوان الرئيسي <span className="text-red-500">*</span>:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: 500 د.ع أو خصم 10%"
+                    value={prizeLabel}
+                    onChange={(e) => setPrizeLabel(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    العنوان الفرعي:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="مثال: رصيد أرباح 💰"
+                    value={prizeSubLabel}
+                    onChange={(e) => setPrizeSubLabel(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* Prize Type */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  نوع الجائزة:
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrizeType('cashback')}
+                    className={`py-2 px-2 rounded-xl font-black text-[11px] border transition cursor-pointer flex flex-col items-center gap-1 ${
+                      prizeType === 'cashback'
+                        ? 'bg-emerald-50 border-emerald-400 text-emerald-900 ring-2 ring-emerald-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>💰 كاش باك</span>
+                    <span className="text-[9px] font-normal text-slate-500">رصيد أرباح</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrizeType('coupon')}
+                    className={`py-2 px-2 rounded-xl font-black text-[11px] border transition cursor-pointer flex flex-col items-center gap-1 ${
+                      prizeType === 'coupon'
+                        ? 'bg-amber-50 border-amber-400 text-amber-900 ring-2 ring-amber-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🎟️ كود كوبون</span>
+                    <span className="text-[9px] font-normal text-slate-500">خصم أو شحن</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPrizeType('try_again')}
+                    className={`py-2 px-2 rounded-xl font-black text-[11px] border transition cursor-pointer flex flex-col items-center gap-1 ${
+                      prizeType === 'try_again'
+                        ? 'bg-slate-200 border-slate-400 text-slate-900 ring-2 ring-slate-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🍀 حظ أوفر</span>
+                    <span className="text-[9px] font-normal text-slate-500">بدون جائزة</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Conditional Value Fields */}
+              {prizeType === 'cashback' && (
+                <div className="space-y-1 bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200">
+                  <label className="font-black text-emerald-950 block text-xs">
+                    مبلغ الكاش باك المضاف لرصيد الزبون (د.ع):
+                  </label>
+                  <input
+                    type="number"
+                    min="50"
+                    step="50"
+                    required
+                    value={prizeValue}
+                    onChange={(e) => setPrizeValue(Number(e.target.value))}
+                    className="w-full bg-white border border-emerald-300 rounded-xl py-2 px-3 text-xs font-bold font-mono text-emerald-950 focus:border-emerald-600"
+                    placeholder="مثال: 500"
+                  />
+                </div>
+              )}
+
+              {prizeType === 'coupon' && (
+                <div className="space-y-2 bg-amber-50/70 p-3 rounded-2xl border border-amber-200">
+                  <label className="font-black text-amber-950 block text-xs">
+                    كود الخصم الممنوح للزبون:
+                  </label>
+                  
+                  {/* Select from existing coupons or custom code */}
+                  {coupons.length > 0 && (
+                    <div className="space-y-1">
+                      <select
+                        value={prizeCouponCode}
+                        onChange={(e) => setPrizeCouponCode(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-bold font-mono text-slate-900 focus:border-amber-600"
+                      >
+                        <option value="">-- اختر من قائمة الكوبونات المسجلة --</option>
+                        {coupons.map((c) => (
+                          <option key={c.id || c.code} value={c.code}>
+                            {c.code} ({c.discountType === 'percentage' ? `${c.discountValue}%` : `${c.discountValue} د.ع`}) - {c.description || 'كوبون'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <input
+                    type="text"
+                    required
+                    placeholder="أو اكتب الكود يدوياً (مثال: LUCKY5)"
+                    value={prizeCouponCode}
+                    onChange={(e) => setPrizeCouponCode(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                    className="w-full bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-mono font-black uppercase text-slate-900 focus:border-amber-600"
+                  />
+                </div>
+              )}
+
+              {/* Color Picker & Probability */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Sector Color */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    لون القطاع في العجلة:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={prizeColor}
+                      onChange={(e) => setPrizeColor(e.target.value)}
+                      className="w-9 h-9 rounded-xl border border-slate-300 cursor-pointer p-0.5 bg-white"
+                    />
+                    <div className="flex-1 flex gap-1 flex-wrap">
+                      {['#16a34a', '#0284c7', '#7c3aed', '#ea580c', '#d97706', '#e11d48', '#0d9488', '#64748b'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setPrizeColor(c)}
+                          style={{ backgroundColor: c }}
+                          className={`w-4 h-4 rounded-full border transition cursor-pointer ${prizeColor === c ? 'ring-2 ring-slate-900 scale-110' : 'border-white/50'}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Probability Weight */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    نسبة الاحتمال (الوزن):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    required
+                    value={prizeProbability}
+                    onChange={(e) => setPrizeProbability(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-mono font-black text-slate-900 focus:bg-white focus:border-purple-500"
+                    placeholder="مثال: 20"
+                  />
+                  <span className="text-[10px] text-slate-500">كلما زاد الرقم زادت فرصة الفوز</span>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsPrizeModalOpen(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-black py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{editingPrize ? 'حفظ تعديلات الشريحة' : 'إضافة الشريحة للعجلة 🎡'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
