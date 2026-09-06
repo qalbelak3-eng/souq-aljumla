@@ -83,18 +83,21 @@ export default function AdminOrdersPage() {
   const [editProductToAdd, setEditProductToAdd] = useState('');
 
   const fetchOrders = (isSilent = false) => {
-    if (!isSilent) setIsLoading(true);
+    if (!isSilent && orders.length === 0) setIsLoading(true);
     fetch('/api/orders', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setOrders(data.orders || []);
+        if (data.success && Array.isArray(data.orders)) {
+          setOrders(data.orders);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_admin_orders_cache', JSON.stringify(data.orders));
+          }
         }
-        if (!isSilent) setIsLoading(false);
+        setIsLoading(false);
       })
       .catch((err) => {
         console.error(err);
-        if (!isSilent) setIsLoading(false);
+        setIsLoading(false);
       });
   };
 
@@ -102,28 +105,40 @@ export default function AdminOrdersPage() {
     fetch('/api/products', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.products) setProducts(data.products);
+        if (data.success && data.products) {
+          setProducts(data.products);
+          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_products_cache', JSON.stringify(data.products));
+        }
       })
       .catch(console.error);
 
     fetch('/api/admin/merchants', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.merchants) setMerchants(data.merchants);
+        if (data.success && data.merchants) {
+          setMerchants(data.merchants);
+          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_merchants_cache', JSON.stringify(data.merchants));
+        }
       })
       .catch(console.error);
 
     fetch('/api/admin/drivers', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.drivers) setDrivers(data.drivers);
+        if (data.success && data.drivers) {
+          setDrivers(data.drivers);
+          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_drivers_cache', JSON.stringify(data.drivers));
+        }
       })
       .catch(console.error);
 
     fetch('/api/admin/vehicles', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.vehicles) setVehicles(data.vehicles);
+        if (data.success && data.vehicles) {
+          setVehicles(data.vehicles);
+          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_vehicles_cache', JSON.stringify(data.vehicles));
+        }
       })
       .catch(console.error);
 
@@ -138,15 +153,17 @@ export default function AdminOrdersPage() {
   // 💰 Helper to get previous outstanding balance / pending orders for customer
   const getCustomerPreviousBalance = (phone: string, name: string, merchantId?: string, excludeOrderId?: string) => {
     // 1. Search in accounts ledger first
-    if (customerAccounts.length > 0) {
-      const cleanPhone = (phone || '').replace(/\D/g, '');
-      const acc = customerAccounts.find((a: any) => {
-        const aPhone = (a.customerPhone || '').replace(/\D/g, '');
-        return (
-          (cleanPhone && aPhone && (aPhone.endsWith(cleanPhone) || cleanPhone.endsWith(aPhone))) ||
-          (merchantId && a.customerId === merchantId) ||
-          (name && a.customerName && a.customerName.trim().toLowerCase() === name.trim().toLowerCase())
-        );
+    if (merchantId) {
+      const acc = customerAccounts.find((a) => a.merchantId === merchantId || a.id === merchantId);
+      if (acc && typeof acc.remainingBalance === 'number') {
+        return Math.max(0, acc.remainingBalance);
+      }
+    }
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const acc = customerAccounts.find((a) => {
+        const aPhone = (a.phone || '').replace(/\D/g, '');
+        return cleanPhone && aPhone && (aPhone.endsWith(cleanPhone) || cleanPhone.endsWith(aPhone));
       });
       if (acc && typeof acc.remainingBalance === 'number') {
         return Math.max(0, acc.remainingBalance);
@@ -168,7 +185,28 @@ export default function AdminOrdersPage() {
   };
 
   useEffect(() => {
-    fetchOrders(false);
+    // 1. Instant Cache Hydration: Render previously stored orders in 0 milliseconds!
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedOrders = localStorage.getItem('souq_admin_orders_cache');
+        if (cachedOrders) {
+          const parsed = JSON.parse(cachedOrders);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setOrders(parsed);
+            setIsLoading(false);
+          }
+        }
+        const cachedProds = localStorage.getItem('souq_admin_products_cache');
+        if (cachedProds) setProducts(JSON.parse(cachedProds));
+        const cachedMerchants = localStorage.getItem('souq_admin_merchants_cache');
+        if (cachedMerchants) setMerchants(JSON.parse(cachedMerchants));
+        const cachedDrivers = localStorage.getItem('souq_admin_drivers_cache');
+        if (cachedDrivers) setDrivers(JSON.parse(cachedDrivers));
+      } catch (e) {}
+    }
+
+    // 2. Fetch fresh data in background
+    fetchOrders(orders.length > 0);
     fetchProductsAndMerchants();
 
     // Smart background polling: only when page is active/visible
