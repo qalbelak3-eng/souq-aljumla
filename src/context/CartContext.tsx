@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Product, Coupon, SaleType, User } from '@/types';
 import { getProductPriceForUser } from '@/lib/pricing';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface CartContextType {
   cart: CartItem[];
@@ -33,6 +34,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const toast = useToast();
+  const { user } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
@@ -174,7 +176,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch('/api/coupons/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, subtotal }),
+        body: JSON.stringify({ code, subtotal, userAccountType: user?.accountType }),
       });
       const data = await res.json();
       if (data.success && data.coupon) {

@@ -9,6 +9,7 @@ import CartDrawer from '@/components/CartDrawer';
 import WhatsAppFloatingButton from '@/components/WhatsAppFloatingButton';
 import PopupAdvertisement from '@/components/PopupAdvertisement';
 import PushNotificationManager from '@/components/PushNotificationManager';
+import LuckyWheelWidget from '@/components/LuckyWheelWidget';
 
 export default function StoreLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -44,6 +45,7 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
       <Footer />
       <CartDrawer />
       <WhatsAppFloatingButton />
+      <LuckyWheelWidget />
       <PopupAdvertisement />
       <PushNotificationManager />
     </>

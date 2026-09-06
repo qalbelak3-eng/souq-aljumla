@@ -1094,12 +1094,27 @@ export function updateUserProfile(userId: string, updates: Partial<User>): User 
 }
 
 // Coupons
-export function validateCoupon(code: string, subtotal: number): { valid: boolean; coupon?: Coupon; discount: number; message: string } {
+export function validateCoupon(code: string, subtotal: number, userAccountType?: string): { valid: boolean; coupon?: Coupon; discount: number; message: string } {
   const db = ensureDbExists();
-  const c = db.coupons.find(cp => cp.code.toUpperCase() === code.trim().toUpperCase() && cp.isActive);
+  const allCoupons = db.coupons && db.coupons.length > 0 ? db.coupons : initialCoupons;
+  const c = allCoupons.find(cp => cp.code.toUpperCase() === code.trim().toUpperCase() && cp.isActive);
   
   if (!c) {
     return { valid: false, discount: 0, message: "كود الخصم غير صالح أو منتهي" };
+  }
+
+  // التحقق من الشريحة المستهدفة (مفرد / ماركت / تاجر جملة VIP)
+  if (c.targetAudience && c.targetAudience !== 'all') {
+    const effectiveType = userAccountType || 'individual';
+    if (c.targetAudience === 'market' && effectiveType !== 'market') {
+      return { valid: false, discount: 0, message: "هذا الكوبون مخصص لحسابات أصحاب الماركتات والمحلات فقط 🏪" };
+    }
+    if (c.targetAudience === 'wholesale' && effectiveType !== 'wholesale' && effectiveType !== 'merchant') {
+      return { valid: false, discount: 0, message: "هذا الكوبون مخصص لحسابات كبار تجار الجملة VIP فقط 👑" };
+    }
+    if (c.targetAudience === 'individual' && effectiveType !== 'individual') {
+      return { valid: false, discount: 0, message: "هذا الكوبون مخصص لزبائن الشراء بالمفرد فقط 🛒" };
+    }
   }
 
   if (c.minOrderAmount && subtotal < c.minOrderAmount) {

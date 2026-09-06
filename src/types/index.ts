@@ -292,11 +292,17 @@ export interface RegisterMerchantData {
 }
 
 export interface Coupon {
+  id?: string;
   code: string;
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   minOrderAmount?: number;
   isActive: boolean;
+  targetAudience?: 'all' | 'individual' | 'market' | 'wholesale'; // الشريحة المستهدفة
+  description?: string; // وصف الكوبون والغرض منه
+  usageLimit?: number; // الحد الأقصى للاستخدام
+  usageCount?: number;
+  expiresAt?: string; // تاريخ الانتهاء
 }
 
 export interface DeliveryZone {
