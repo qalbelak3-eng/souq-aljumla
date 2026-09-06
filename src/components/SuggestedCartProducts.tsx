@@ -29,8 +29,8 @@ export default function SuggestedCartProducts({
     const loadData = async () => {
       try {
         const [settingsRes, productsRes] = await Promise.all([
-          fetch('/api/store-settings').then((r) => r.json()),
-          fetch('/api/products').then((r) => r.json()),
+          fetch('/api/settings').then((r) => r.json()).catch(() => ({ success: false })),
+          fetch('/api/products').then((r) => r.json()).catch(() => ({ success: false })),
         ]);
 
         if (settingsRes.success && settingsRes.settings) {
@@ -56,21 +56,27 @@ export default function SuggestedCartProducts({
   // Selected suggested IDs from Admin Settings
   const configuredIds: string[] = settings?.suggestedProductIds || [];
 
-  // Get matching products
+  // IDs of products already added to the customer's cart
+  const cartProductIds = new Set(cart.map((item) => item.product.id));
+
+  // Get matching products (Excluding items already in customer cart)
   let suggestedItems: Product[] = [];
   if (configuredIds.length > 0) {
     suggestedItems = configuredIds
+      .filter((id) => !cartProductIds.has(id))
       .map((id) => products.find((p) => p.id === id))
       .filter((p): p is Product => p !== undefined && p.stock > 0);
   }
 
-  // Fallback: If admin hasn't selected specific IDs, show top featured / discounted products
-  if (suggestedItems.length === 0) {
+  // Fallback: If admin hasn't selected specific IDs or all configured ones are in cart,
+  // suggest other featured / discounted products not currently in the cart
+  if (suggestedItems.length === 0 && configuredIds.length === 0) {
     suggestedItems = products
-      .filter((p) => p.stock > 0 && (p.isFeatured || (p.originalPrice && p.originalPrice > p.price)))
+      .filter((p) => !cartProductIds.has(p.id) && p.stock > 0 && (p.isFeatured || (p.originalPrice && p.originalPrice > p.price)))
       .slice(0, 6);
   }
 
+  // If no items remain (e.g. all suggested items already in cart), hide the component
   if (suggestedItems.length === 0) return null;
 
   const handleQuickAdd = (product: Product, e: React.MouseEvent) => {
