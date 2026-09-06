@@ -1452,32 +1452,50 @@ export default function AdminOffersPage() {
               </div>
 
               {/* Master Toggle & Save Button */}
-              <div className="flex items-center gap-3 self-end sm:self-center">
-                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-2xl border border-slate-200">
-                  <span className="text-xs font-black text-slate-700">تفعيل الشريط:</span>
-                  <button
-                    type="button"
-                    onClick={() => setEnableSuggested(!enableSuggested)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden cursor-pointer ${
+              <div className="flex items-center gap-3 self-end sm:self-center flex-wrap sm:flex-nowrap">
+                {/* Modern Luxury Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setEnableSuggested(!enableSuggested)}
+                  className={`py-2 px-3.5 rounded-2xl border transition-all duration-200 flex items-center gap-3 select-none cursor-pointer shadow-xs active:scale-95 ${
+                    enableSuggested
+                      ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500/20 text-emerald-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="flex flex-col text-right leading-tight">
+                    <span className="text-[10px] text-slate-500 font-bold">حالة شريط المقترحات:</span>
+                    <span className={`text-xs font-black flex items-center gap-1 ${enableSuggested ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {enableSuggested ? 'مفعل ويظهر للزبائن 🟢' : 'معطل ومخفي 🔴'}
+                    </span>
+                  </div>
+
+                  {/* iOS Style Smooth Toggle Track */}
+                  <div
+                    className={`w-12 h-6 rounded-full transition-colors duration-300 flex items-center px-0.5 shrink-0 ${
                       enableSuggested ? 'bg-emerald-600' : 'bg-slate-300'
                     }`}
+                    dir="ltr"
                   >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        enableSuggested ? 'translate-x-1' : 'translate-x-6'
+                    <div
+                      className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-300 flex items-center justify-center ${
+                        enableSuggested ? 'translate-x-6' : 'translate-x-0'
                       }`}
-                    />
-                  </button>
-                  <span className={`text-[11px] font-black ${enableSuggested ? 'text-emerald-700' : 'text-slate-400'}`}>
-                    {enableSuggested ? 'مفعل ✓' : 'معطل ✕'}
-                  </span>
-                </div>
+                    >
+                      {enableSuggested ? (
+                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                      ) : (
+                        <X className="w-3 h-3 text-slate-400 stroke-[3]" />
+                      )}
+                    </div>
+                  </div>
+                </button>
 
                 <button
                   type="button"
                   onClick={handleSaveSuggestedProducts}
                   disabled={isSavingSuggested}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-5 rounded-2xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-5 rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
                 >
                   <Check className="w-4 h-4" />
                   <span>{isSavingSuggested ? 'جاري الحفظ...' : 'حفظ التغييرات 💾'}</span>
