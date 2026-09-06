@@ -138,6 +138,11 @@ function ensureDbExists(): DatabaseSchema {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
       if (raw && raw.trim().length > 0) {
         inMemoryDb = JSON.parse(raw) as DatabaseSchema;
+        if (!inMemoryDb.coupons || inMemoryDb.coupons.length === 0) {
+          inMemoryDb.coupons = [...initialCoupons];
+        }
+        if (!inMemoryDb.pushSubscriptions) inMemoryDb.pushSubscriptions = [];
+        if (!inMemoryDb.pushNotificationLogs) inMemoryDb.pushNotificationLogs = [];
         return inMemoryDb;
       }
     }
@@ -148,6 +153,11 @@ function ensureDbExists(): DatabaseSchema {
       const sourceRaw = fs.readFileSync(SOURCE_DB_FILE, 'utf-8');
       if (sourceRaw && sourceRaw.trim().length > 0) {
         inMemoryDb = JSON.parse(sourceRaw) as DatabaseSchema;
+        if (!inMemoryDb.coupons || inMemoryDb.coupons.length === 0) {
+          inMemoryDb.coupons = [...initialCoupons];
+        }
+        if (!inMemoryDb.pushSubscriptions) inMemoryDb.pushSubscriptions = [];
+        if (!inMemoryDb.pushNotificationLogs) inMemoryDb.pushNotificationLogs = [];
         return inMemoryDb;
       }
     }

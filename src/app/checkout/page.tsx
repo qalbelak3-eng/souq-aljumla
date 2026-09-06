@@ -91,6 +91,27 @@ export default function CheckoutPage() {
   // Coupon state
   const [couponInput, setCouponInput] = useState('');
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [couponFeedback, setCouponFeedback] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+
+  const handleApplyCoupon = async (e?: React.FormEvent | React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!couponInput.trim()) return;
+    setIsApplyingCoupon(true);
+    setCouponFeedback(null);
+    const res = await applyCoupon(couponInput.trim());
+    setIsApplyingCoupon(false);
+    if (res.success) {
+      toast.showToast(res.message || 'تم تطبيق كود الخصم بنجاح! 🎉', 'success');
+      setCouponFeedback({ type: 'success', message: res.message || 'تم تطبيق كود الخصم بنجاح! 🎉' });
+      setCouponInput('');
+    } else {
+      setCouponFeedback({ type: 'error', message: res.message || 'كود الخصم غير صالح' });
+      toast.showToast(res.message || 'كود الخصم غير صالح', 'error');
+    }
+  };
 
   // Rewards / Cashback state
   const [availableCashback, setAvailableCashback] = useState<number>(0);
@@ -206,20 +227,6 @@ export default function CheckoutPage() {
         .catch(console.error);
     }
   }, [user]);
-
-  const handleApplyCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!couponInput.trim()) return;
-    setIsApplyingCoupon(true);
-    const res = await applyCoupon(couponInput.trim());
-    setIsApplyingCoupon(false);
-    if (res.success) {
-      toast.showToast(res.message || 'تم تطبيق كود الخصم بنجاح! 🎉', 'success');
-      setCouponInput('');
-    } else {
-      toast.showToast(res.message || 'كود الخصم غير صالح', 'error');
-    }
-  };
 
   // Initial load of user data & saved locations
   useEffect(() => {
@@ -1031,22 +1038,46 @@ export default function CheckoutPage() {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleApplyCoupon} className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
-                    placeholder="اكتب كود الخصم (مثال: FIRST)"
-                    className="flex-1 bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isApplyingCoupon || !couponInput.trim()}
-                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs py-2 px-4 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                  >
-                    {isApplyingCoupon ? 'جاري الفحص...' : 'تطبيق'}
-                  </button>
-                </form>
+                <div className="space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => {
+                        setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''));
+                        if (couponFeedback) setCouponFeedback(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleApplyCoupon();
+                        }
+                      }}
+                      placeholder="اكتب كود الخصم (مثال: FIRST)"
+                      className="flex-1 bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={isApplyingCoupon || !couponInput.trim()}
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs py-2 px-4 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                    >
+                      {isApplyingCoupon ? 'جاري الفحص...' : 'تطبيق'}
+                    </button>
+                  </div>
+                  {couponFeedback && (
+                    <div
+                      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 ${
+                        couponFeedback.type === 'error'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}
+                    >
+                      <span>{couponFeedback.message}</span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

@@ -34,8 +34,10 @@ export default function CartDrawer() {
   const [couponInput, setCouponInput] = useState('');
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
-  const handleApplyCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleApplyCoupon = async (e?: React.FormEvent | React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
     if (!couponInput.trim()) return;
     setIsApplyingCoupon(true);
     const res = await applyCoupon(couponInput.trim());
@@ -256,22 +258,29 @@ export default function CartDrawer() {
                     </button>
                   </div>
                 ) : (
-                  <form onSubmit={handleApplyCoupon} className="flex gap-1">
+                  <div className="flex gap-1">
                     <input
                       type="text"
                       value={couponInput}
                       onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyCoupon();
+                        }
+                      }}
                       placeholder="اكتب كود الخصم..."
                       className="flex-1 bg-white border border-amber-300 rounded-xl py-1.5 px-2.5 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600"
                     />
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={handleApplyCoupon}
                       disabled={isApplyingCoupon || !couponInput.trim()}
                       className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs py-1.5 px-3 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
                     >
                       {isApplyingCoupon ? 'فحص...' : 'تطبيق'}
                     </button>
-                  </form>
+                  </div>
                 )}
               </div>
 
