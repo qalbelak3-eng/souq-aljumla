@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Sparkles,
   ArrowRight,
@@ -73,14 +74,20 @@ export default function HomePage() {
   });
 
   const { user, isApprovedMerchant } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
+    try {
+      router.prefetch('/products');
+    } catch (e) {}
+
     Promise.all([
       fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
     ])
-      .then(([prodData, catData, settingsData]) => {
+      .then(([prodData, catData, compData, settingsData]) => {
         if (prodData.success && Array.isArray(prodData.products)) {
           setProducts(prodData.products);
           if (typeof window !== 'undefined') {
@@ -91,6 +98,11 @@ export default function HomePage() {
           setCategories(catData.categories);
           if (typeof window !== 'undefined') {
             localStorage.setItem('souq_store_categories_cache', JSON.stringify(catData.categories));
+          }
+        }
+        if (compData.success && Array.isArray(compData.companies)) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_companies_cache', JSON.stringify(compData.companies));
           }
         }
         if (settingsData?.success && settingsData?.settings) {
@@ -105,7 +117,7 @@ export default function HomePage() {
         console.error(err);
         setIsLoading(false);
       });
-  }, []);
+  }, [router]);
 
   // 0. Filter: Valid products with required fields
   const validProducts = Array.isArray(products) ? products.filter((p) => p && p.id && typeof p.price === 'number') : [];
@@ -239,6 +251,12 @@ export default function HomePage() {
               <Link
                 key={cat.id}
                 href={`/products?category=${encodeURIComponent(cat.name)}`}
+                prefetch={true}
+                onMouseEnter={() => {
+                  try {
+                    router.prefetch(`/products?category=${encodeURIComponent(cat.name)}`);
+                  } catch (e) {}
+                }}
                 className="bg-[#f7fbff] hover:bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-sky-100/90 shadow-[0_2px_12px_rgba(0,100,255,0.04)] hover:shadow-md hover:border-sky-300 transition-all text-center flex flex-col items-center justify-center space-y-2.5 group transform active:scale-95"
               >
                 {/* Animated Swaying Vector Icon */}

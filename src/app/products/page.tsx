@@ -7,7 +7,7 @@ import { Search, ArrowRight, Building, Layers, Sparkles, Store, Package } from '
 import ProductCard from '@/components/ProductCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Product, Category, Company } from '@/types';
-import { initialCategories } from '@/data/initialData';
+import { initialCategories, initialCompanies } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 // Intelligent product-to-company matcher
@@ -217,10 +217,13 @@ function ProductsCatalog() {
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('souq_store_companies_cache');
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
       } catch (e) {}
     }
-    return [];
+    return initialCompanies;
   });
   const [selectedCategory, setSelectedCategory] = useState<string>(categoryParam);
   const [selectedCompany, setSelectedCompany] = useState<string>(companyParam);
@@ -300,21 +303,41 @@ function ProductsCatalog() {
   // 1. Add DB companies
   categoryDbCompanies.forEach((c) => {
     const pCount = categoryProducts.filter((p) => checkProductMatchesCompany(p, c.name)).length;
+    let compLogo = c.logo;
+    if (!compLogo) {
+      // Check fallback in initialCompanies
+      const initMatch = initialCompanies.find((ic) => ic.name.toLowerCase() === c.name.toLowerCase());
+      if (initMatch?.logo) compLogo = initMatch.logo;
+    }
+    if (!compLogo) {
+      // Fallback from sample product image
+      const sampleProd = categoryProducts.find((p) => checkProductMatchesCompany(p, c.name) && p.images && p.images.length > 0);
+      if (sampleProd && sampleProd.images && sampleProd.images[0]) compLogo = sampleProd.images[0];
+    }
     dynamicCompanies.push({
       ...c,
+      logo: compLogo || '',
       productsCount: pCount,
     });
   });
 
   // 2. Add product companies if not already in list
   productCompanyNames.forEach((compName) => {
-    if (!dynamicCompanies.some((c) => c.name.toLowerCase() === compName.toLowerCase())) {
+    if (!dynamicCompanies.some((c) => c.name.toLowerCase() === compName.toLowerCase() || c.name.includes(compName) || compName.includes(c.name))) {
+      const matchedDb = dbCompanies.find((c) => c.name.toLowerCase() === compName.toLowerCase() || c.name.includes(compName) || compName.includes(c.name))
+        || initialCompanies.find((ic) => ic.name.toLowerCase() === compName.toLowerCase() || ic.name.includes(compName) || compName.includes(ic.name));
       const pCount = categoryProducts.filter((p) => checkProductMatchesCompany(p, compName)).length;
+      let compLogo = matchedDb?.logo;
+      if (!compLogo) {
+        const sampleProd = categoryProducts.find((p) => checkProductMatchesCompany(p, compName) && p.images && p.images.length > 0);
+        if (sampleProd && sampleProd.images && sampleProd.images[0]) compLogo = sampleProd.images[0];
+      }
       dynamicCompanies.push({
-        id: `comp-${compName}`,
+        id: matchedDb ? matchedDb.id : `comp-${compName}`,
         name: compName,
         category: selectedCategory,
-        icon: '🏢',
+        logo: compLogo || '',
+        icon: matchedDb?.icon || '🏢',
         color: 'bg-blue-50 text-brand-blue',
         productsCount: pCount,
       });
