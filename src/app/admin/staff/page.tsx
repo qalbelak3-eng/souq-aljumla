@@ -226,8 +226,28 @@ export default function AdminStaffPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [staffList, setStaffList] = useState<StaffMember[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_staff_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_staff_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
@@ -269,18 +289,23 @@ export default function AdminStaffPage() {
   });
 
   const fetchStaff = async () => {
+    if (staffList.length === 0) setIsLoading(true);
+    if (staffList.length > 0) setIsRefreshing(true);
     try {
-      setIsLoading(true);
-      const res = await fetch('/api/admin/staff');
+      const res = await fetch('/api/admin/staff', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.staff)) {
         setStaffList(data.staff);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_staff_cache', JSON.stringify(data.staff));
+        }
       }
     } catch (err) {
       console.error(err);
       toast.error('حدث خطأ في تحميل قائمة الموظفين');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -625,51 +650,57 @@ export default function AdminStaffPage() {
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
-        <div className="relative w-full sm:w-80">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="بحث بالاسم، اسم المستخدم، الهاتف، الوظيفة..."
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 pl-8 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-        </div>
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          {/* Search Box */}
+          <div className="relative w-full lg:w-72 shrink-0">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="بحث بالاسم، اسم المستخدم، الهاتف، الوظيفة..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 pl-8 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          </div>
 
-        {/* Role Filter Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 sm:pb-0">
-          <button
-            type="button"
-            onClick={() => setRoleFilter('all')}
-            className={`px-3 py-1.5 rounded-xl font-black text-xs transition cursor-pointer whitespace-nowrap ${
-              roleFilter === 'all' ? 'bg-purple-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            الكل ({staffList.length})
-          </button>
-          {ROLE_PRESETS.map((p) => {
-            const count = staffList.filter((s) => s.role === p.role).length;
-            return (
-              <button
-                key={p.role}
-                type="button"
-                onClick={() => setRoleFilter(p.role)}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
-                  roleFilter === p.role ? 'bg-purple-700 text-white font-black' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <span>{p.label}</span>
-                {count > 0 && <span className="bg-black/10 px-1.5 py-0.2 rounded-full text-[10px]">{count}</span>}
-              </button>
-            );
-          })}
+          {/* Role Filter Tabs (Wrapped & Fully Visible - No Horizontal Scroll Needed) */}
+          <div className="flex flex-wrap items-center gap-1.5 flex-1 justify-start lg:justify-end">
+            <button
+              type="button"
+              onClick={() => setRoleFilter('all')}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition cursor-pointer whitespace-nowrap ${
+                roleFilter === 'all' ? 'bg-purple-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              الكل ({staffList.length})
+            </button>
+            {ROLE_PRESETS.map((p) => {
+              const count = staffList.filter((s) => s.role === p.role).length;
+              return (
+                <button
+                  key={p.role}
+                  type="button"
+                  onClick={() => setRoleFilter(p.role)}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                    roleFilter === p.role ? 'bg-purple-700 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>{p.label}</span>
+                  {count > 0 && <span className="bg-black/10 px-1.5 py-0.5 rounded-full text-[10px]">{count}</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Staff Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        {isLoading ? (
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden relative">
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 animate-pulse z-10" />
+        )}
+        {isLoading && staffList.length === 0 ? (
           <div className="p-12 text-center text-slate-500 font-bold">جاري تحميل قائمة الموظفين...</div>
         ) : filteredStaff.length === 0 ? (
           <div className="p-12 text-center text-slate-500 font-bold space-y-3">

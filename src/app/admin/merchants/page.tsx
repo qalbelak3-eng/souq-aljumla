@@ -35,13 +35,33 @@ import {
 import { CustomerWithStats, MerchantStatus, MerchantTier, AccountType } from '@/types';
 
 export default function AdminMerchantsPage() {
-  const [customers, setCustomers] = useState<CustomerWithStats[]>([]);
+  const [customers, setCustomers] = useState<CustomerWithStats[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_merchants_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
   const [typeFilter, setTypeFilter] = useState<'all' | 'wholesale' | 'market' | 'retail'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [purchaseFilter, setPurchaseFilter] = useState<'all' | 'purchased' | 'never_purchased'>('all');
   const [tierFilter, setTierFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_merchants_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
@@ -113,18 +133,24 @@ export default function AdminMerchantsPage() {
   };
 
   const fetchCustomers = () => {
-    setIsLoading(true);
+    if (customers.length === 0) setIsLoading(true);
+    if (customers.length > 0) setIsRefreshing(true);
     fetch('/api/admin/merchants', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setCustomers(data.merchants || []);
+        if (data.success && Array.isArray(data.merchants)) {
+          setCustomers(data.merchants);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_admin_merchants_cache', JSON.stringify(data.merchants));
+          }
         }
         setIsLoading(false);
+        setIsRefreshing(false);
       })
       .catch((err) => {
         console.error(err);
         setIsLoading(false);
+        setIsRefreshing(false);
       });
   };
 
@@ -549,8 +575,11 @@ export default function AdminMerchantsPage() {
       </div>
 
       {/* Customers Table with 100% Fit Dimensions (No horizontal scroll on desktop) */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {isLoading ? (
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden relative">
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse z-10" />
+        )}
+        {isLoading && customers.length === 0 ? (
           <div className="py-16 text-center space-y-3">
             <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-xs text-slate-500 font-bold">جاري استدعاء سجل ودليل الزبائن...</p>

@@ -21,13 +21,49 @@ const defaultCompaniesByCategory: Record<string, string[]> = {
 export default function AdminProductsPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [dbCompanies, setDbCompanies] = useState<Company[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_products_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_categories_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [dbCompanies, setDbCompanies] = useState<Company[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_companies_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('الكل');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_products_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,24 +109,33 @@ export default function AdminProductsPage() {
   const [cashbackMerchantAmount, setCashbackMerchantAmount] = useState<number | ''>('');
 
   const fetchProducts = async () => {
-    setIsLoading(true);
+    if (products.length === 0) setIsLoading(true);
+    if (products.length > 0) setIsRefreshing(true);
     try {
       const [prodRes, compRes] = await Promise.all([
-        fetch('/api/products').then((r) => r.json()),
-        fetch('/api/companies').then((r) => r.json()),
+        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
       ]);
 
       if (prodRes.success) {
         setProducts(prodRes.products || []);
         setCategories(prodRes.categories || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_products_cache', JSON.stringify(prodRes.products || []));
+          localStorage.setItem('souq_admin_categories_cache', JSON.stringify(prodRes.categories || []));
+        }
       }
       if (compRes.success) {
         setDbCompanies(compRes.companies || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+        }
       }
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -507,8 +552,11 @@ export default function AdminProductsPage() {
       </div>
 
       {/* Products Table */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden space-y-3">
-        {isLoading ? (
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden space-y-3 relative">
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse z-10" />
+        )}
+        {isLoading && products.length === 0 ? (
           <div className="py-20 text-center">
             <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-xs text-slate-500 font-bold">جاري تحميل الأصناف...</p>

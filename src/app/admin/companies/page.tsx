@@ -11,11 +11,39 @@ import { compressImageFile } from '@/lib/imageUtils';
 export default function AdminCompaniesPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [companies, setCompanies] = useState<Company[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_companies_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_categories_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_companies_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,19 +54,31 @@ export default function AdminCompaniesPage() {
   const [icon, setIcon] = useState('🏢');
 
   const fetchData = async () => {
-    setIsLoading(true);
+    if (companies.length === 0) setIsLoading(true);
+    if (companies.length > 0) setIsRefreshing(true);
     try {
       const [compRes, catRes] = await Promise.all([
-        fetch('/api/companies').then(r => r.json()),
-        fetch('/api/categories').then(r => r.json()),
+        fetch('/api/companies', { cache: 'no-store' }).then(r => r.json()),
+        fetch('/api/categories', { cache: 'no-store' }).then(r => r.json()),
       ]);
 
-      if (compRes.success) setCompanies(compRes.companies || []);
-      if (catRes.success) setCategories(catRes.categories || []);
+      if (compRes.success) {
+        setCompanies(compRes.companies || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+        }
+      }
+      if (catRes.success) {
+        setCategories(catRes.categories || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_categories_cache', JSON.stringify(catRes.categories || []));
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -217,7 +257,10 @@ export default function AdminCompaniesPage() {
       </div>
 
       {/* Companies Grid */}
-      {isLoading ? (
+      {isRefreshing && (
+        <div className="h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse rounded-full" />
+      )}
+      {isLoading && companies.length === 0 ? (
         <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-sm">
           <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           <p className="text-xs text-slate-500 font-bold">جاري تحميل الشركات والماركات...</p>

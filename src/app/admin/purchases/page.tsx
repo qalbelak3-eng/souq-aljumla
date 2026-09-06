@@ -29,12 +29,48 @@ import EtihadLogo from '@/components/EtihadLogo';
 export default function AdminPurchasesPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [invoices, setInvoices] = useState<PurchaseInvoice[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_purchases_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [companies, setCompanies] = useState<Company[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_companies_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_products_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('الكل');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_purchases_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // New Invoice Modal
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -59,21 +95,38 @@ export default function AdminPurchasesPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoice | null>(null);
 
   const fetchData = async () => {
-    setIsLoading(true);
+    if (invoices.length === 0) setIsLoading(true);
+    if (invoices.length > 0) setIsRefreshing(true);
     try {
       const [invRes, compRes, prodRes] = await Promise.all([
-        fetch('/api/purchases').then((r) => r.json()),
-        fetch('/api/companies').then((r) => r.json()),
-        fetch('/api/products').then((r) => r.json()),
+        fetch('/api/purchases', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
       ]);
 
-      if (invRes.success) setInvoices(invRes.invoices || []);
-      if (compRes.success) setCompanies(compRes.companies || []);
-      if (prodRes.success) setProducts(prodRes.products || []);
+      if (invRes.success) {
+        setInvoices(invRes.invoices || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_purchases_cache', JSON.stringify(invRes.invoices || []));
+        }
+      }
+      if (compRes.success) {
+        setCompanies(compRes.companies || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+        }
+      }
+      if (prodRes.success) {
+        setProducts(prodRes.products || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_products_cache', JSON.stringify(prodRes.products || []));
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -413,8 +466,11 @@ export default function AdminPurchasesPage() {
       </div>
 
       {/* Invoices List Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        {isLoading ? (
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden relative">
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse z-10" />
+        )}
+        {isLoading && invoices.length === 0 ? (
           <div className="py-20 text-center">
             <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-xs text-slate-500 font-bold">جاري تحميل فواتير المشتريات...</p>

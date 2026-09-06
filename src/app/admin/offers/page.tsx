@@ -44,12 +44,48 @@ export default function AdminOffersPage() {
   // Tab State: Product Flash Offers VS Promotional Coupons VS Lucky Wheel VS Suggested Cart Upsells
   const [activeTab, setActiveTab] = useState<'products' | 'coupons' | 'lucky_wheel' | 'suggested'>('products');
 
-  const [offers, setOffers] = useState<ProductOffer[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [offers, setOffers] = useState<ProductOffer[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_offers_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_coupons_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_products_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired'>('all');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_offers_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Suggested Cart Products State (أضف لطلبك)
@@ -108,19 +144,35 @@ export default function AdminOffersPage() {
   const [prizeProbability, setPrizeProbability] = useState<number>(20);
 
   const fetchData = async () => {
-    setIsLoading(true);
+    if (offers.length === 0) setIsLoading(true);
+    if (offers.length > 0) setIsRefreshing(true);
     try {
       const [offersRes, productsRes, couponsRes, wheelRes, settingsRes] = await Promise.all([
-        fetch('/api/offers').then((r) => r.json()),
-        fetch('/api/products').then((r) => r.json()),
-        fetch('/api/coupons').then((r) => r.json()).catch(() => ({ success: false })),
-        fetch('/api/lucky-wheel').then((r) => r.json()).catch(() => ({ success: false })),
-        fetch('/api/settings').then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/offers', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/coupons', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/lucky-wheel', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
-      if (offersRes.success) setOffers(offersRes.offers || []);
-      if (productsRes.success) setProducts(productsRes.products || []);
-      if (couponsRes.success) setCoupons(couponsRes.coupons || []);
+      if (offersRes.success) {
+        setOffers(offersRes.offers || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_offers_cache', JSON.stringify(offersRes.offers || []));
+        }
+      }
+      if (productsRes.success) {
+        setProducts(productsRes.products || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_products_cache', JSON.stringify(productsRes.products || []));
+        }
+      }
+      if (couponsRes.success) {
+        setCoupons(couponsRes.coupons || []);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(couponsRes.coupons || []));
+        }
+      }
       if (wheelRes.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);
       if (settingsRes.success && settingsRes.settings) {
         setStoreSettings(settingsRes.settings);
@@ -133,6 +185,7 @@ export default function AdminOffersPage() {
       toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -829,7 +882,10 @@ export default function AdminOffersPage() {
           </div>
 
           {/* Offers Table / Cards */}
-          {isLoading ? (
+          {isRefreshing && (
+            <div className="h-1 bg-gradient-to-r from-rose-500 via-amber-500 to-rose-500 animate-pulse rounded-full mb-2" />
+          )}
+          {isLoading && offers.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
               <div className="w-10 h-10 border-4 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
               <p className="text-xs text-slate-500 font-bold">جاري تحميل بيانات العروض والتخفيضات...</p>
@@ -1037,7 +1093,10 @@ export default function AdminOffersPage() {
           </div>
 
           {/* Coupons List */}
-          {isLoading ? (
+          {isRefreshing && (
+            <div className="h-1 bg-gradient-to-r from-amber-500 via-rose-500 to-amber-500 animate-pulse rounded-full mb-2" />
+          )}
+          {isLoading && coupons.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
               <div className="w-10 h-10 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
               <p className="text-xs text-slate-500 font-bold">جاري تحميل قائمة الكوبونات...</p>
