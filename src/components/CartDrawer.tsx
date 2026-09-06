@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, MessageCircle, Truck, Sparkles } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, MessageCircle, Truck, Sparkles, Ticket } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 
 export default function CartDrawer() {
+  const toast = useToast();
   const {
     cart,
     removeFromCart,
@@ -23,9 +25,28 @@ export default function CartDrawer() {
     minOrderAmount,
     amountNeededForMinOrder,
     isBelowMinOrder,
+    appliedCoupon,
+    applyCoupon,
+    removeCoupon,
   } = useCart();
 
   const { isApprovedMerchant } = useAuth();
+  const [couponInput, setCouponInput] = useState('');
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponInput.trim()) return;
+    setIsApplyingCoupon(true);
+    const res = await applyCoupon(couponInput.trim());
+    setIsApplyingCoupon(false);
+    if (res.success) {
+      toast.showToast(res.message || 'تم تطبيق كود الخصم بنجاح! 🎉', 'success');
+      setCouponInput('');
+    } else {
+      toast.showToast(res.message || 'كود الخصم غير صالح', 'error');
+    }
+  };
 
   if (!isCartDrawerOpen) return null;
 
@@ -202,11 +223,69 @@ export default function CartDrawer() {
                 </div>
               )}
 
+              {/* Coupon Box in Cart Drawer */}
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-2.5 space-y-1.5 shadow-2xs">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-black text-amber-950 flex items-center gap-1">
+                    <Ticket className="w-3.5 h-3.5 text-amber-600" />
+                    <span>كود الخصم (الكوبون):</span>
+                  </span>
+                  {appliedCoupon && (
+                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                      مطبّق ✓
+                    </span>
+                  )}
+                </div>
+
+                {appliedCoupon ? (
+                  <div className="bg-white border border-emerald-300 rounded-xl p-2 flex items-center justify-between text-[11px]">
+                    <div>
+                      <span className="font-mono font-black text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-xs">
+                        {appliedCoupon.code}
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-700 mr-1.5">
+                        (-{discount.toLocaleString()} د.ع)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeCoupon}
+                      className="text-rose-600 hover:text-rose-700 font-bold text-[10px] bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg transition cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleApplyCoupon} className="flex gap-1">
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      placeholder="اكتب كود الخصم..."
+                      className="flex-1 bg-white border border-amber-300 rounded-xl py-1.5 px-2.5 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isApplyingCoupon || !couponInput.trim()}
+                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs py-1.5 px-3 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                    >
+                      {isApplyingCoupon ? 'فحص...' : 'تطبيق'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
               <div className="space-y-1.5 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span>المجموع الفرعي:</span>
                   <span className="font-bold text-slate-800">{subtotal.toLocaleString()} د.ع</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-bold">
+                    <span>خصم الكوبون:</span>
+                    <span>-{discount.toLocaleString()} د.ع</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>كروة التوصيل:</span>
                   <span className="font-bold text-slate-800">

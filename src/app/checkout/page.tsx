@@ -19,10 +19,13 @@ import {
   Clock,
   Sparkles,
   Gift,
-  Edit2
+  Edit2,
+  Ticket,
+  X
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { PaymentMethod, StoreSettings } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
 import { getUserCashbackRate } from '@/lib/pricing';
@@ -69,9 +72,25 @@ const KARBALA_AREAS: KarbalaAreaOption[] = [
 ];
 
 export default function CheckoutPage() {
-  const { cart, subtotal, discount, clearCart, minOrderAmount, amountNeededForMinOrder, isBelowMinOrder } = useCart();
+  const toast = useToast();
+  const {
+    cart,
+    subtotal,
+    discount,
+    clearCart,
+    minOrderAmount,
+    amountNeededForMinOrder,
+    isBelowMinOrder,
+    appliedCoupon,
+    applyCoupon,
+    removeCoupon
+  } = useCart();
   const { user, isApprovedMerchant, isPendingApproval } = useAuth();
   const router = useRouter();
+
+  // Coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
   // Rewards / Cashback state
   const [availableCashback, setAvailableCashback] = useState<number>(0);
@@ -187,6 +206,20 @@ export default function CheckoutPage() {
         .catch(console.error);
     }
   }, [user]);
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponInput.trim()) return;
+    setIsApplyingCoupon(true);
+    const res = await applyCoupon(couponInput.trim());
+    setIsApplyingCoupon(false);
+    if (res.success) {
+      toast.showToast(res.message || 'تم تطبيق كود الخصم بنجاح! 🎉', 'success');
+      setCouponInput('');
+    } else {
+      toast.showToast(res.message || 'كود الخصم غير صالح', 'error');
+    }
+  };
 
   // Initial load of user data & saved locations
   useEffect(() => {
@@ -962,6 +995,59 @@ export default function CheckoutPage() {
                   <span className="font-black text-slate-900">{(item.pricePerUnit * item.quantity).toLocaleString()} د.ع</span>
                 </div>
               ))}
+            </div>
+
+            {/* 🎟️ Coupon Code Box in Checkout */}
+            <div className="bg-amber-50/60 border border-amber-200/90 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-amber-950 text-xs flex items-center gap-1.5">
+                  <Ticket className="w-4 h-4 text-amber-600" />
+                  <span>كود الخصم (الكوبون) 🎟️:</span>
+                </span>
+                {appliedCoupon && (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    مطبّق بنجاح ✓
+                  </span>
+                )}
+              </div>
+
+              {appliedCoupon ? (
+                <div className="bg-white border border-emerald-300 rounded-xl p-2.5 flex items-center justify-between shadow-2xs">
+                  <div>
+                    <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                      {appliedCoupon.code}
+                    </span>
+                    <span className="text-[11px] font-bold text-emerald-700 mr-2">
+                      (خصم {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `${appliedCoupon.discountValue.toLocaleString()} د.ع`})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeCoupon}
+                    className="text-rose-600 hover:text-rose-700 font-bold text-[11px] flex items-center gap-0.5 cursor-pointer bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg transition"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>إلغاء</span>
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApplyCoupon} className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                    placeholder="اكتب كود الخصم (مثال: FIRST)"
+                    className="flex-1 bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isApplyingCoupon || !couponInput.trim()}
+                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs py-2 px-4 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  >
+                    {isApplyingCoupon ? 'جاري الفحص...' : 'تطبيق'}
+                  </button>
+                </form>
+              )}
             </div>
 
             {/* Rewards / Cashback Deduction Card */}
