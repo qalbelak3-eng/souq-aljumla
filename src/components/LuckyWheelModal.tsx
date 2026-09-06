@@ -111,84 +111,157 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
     }
   }, [isOpen, user, settings]);
 
-  // Draw wheel on canvas
+  // Draw high-resolution wheel on canvas with High-DPI supersampling
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const size = canvas.width;
-    const center = size / 2;
-    const radius = center - 12;
+    const displaySize = 340;
+    const dpr = typeof window !== 'undefined' ? Math.max(window.devicePixelRatio || 2, 2) : 2;
+    
+    canvas.width = displaySize * dpr;
+    canvas.height = displaySize * dpr;
+    canvas.style.width = `${displaySize}px`;
+    canvas.style.height = `${displaySize}px`;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    const center = displaySize / 2;
+    const outerRimRadius = center - 6;
+    const wheelRadius = outerRimRadius - 12;
     const totalSlices = prizes.length;
     const sliceAngle = (2 * Math.PI) / totalSlices;
 
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, displaySize, displaySize);
 
-    // Outer glow border
+    // 1. Outer Metallic Gold Ring / Bezel
+    const rimGradient = ctx.createLinearGradient(0, 0, displaySize, displaySize);
+    rimGradient.addColorStop(0, '#f59e0b');
+    rimGradient.addColorStop(0.3, '#fef08a');
+    rimGradient.addColorStop(0.5, '#d97706');
+    rimGradient.addColorStop(0.8, '#fef08a');
+    rimGradient.addColorStop(1, '#92400e');
+
     ctx.beginPath();
-    ctx.arc(center, center, radius + 8, 0, 2 * Math.PI);
-    ctx.fillStyle = '#1e293b';
+    ctx.arc(center, center, outerRimRadius, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0f172a'; // dark outer backdrop
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(center, center, radius + 4, 0, 2 * Math.PI);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fill();
+    ctx.arc(center, center, outerRimRadius, 0, 2 * Math.PI);
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = rimGradient;
+    ctx.stroke();
 
-    // Slices
+    // 2. Casino Light Bulbs around outer rim
+    const totalBulbs = 24;
+    for (let i = 0; i < totalBulbs; i++) {
+      const bulbAngle = (i * 2 * Math.PI) / totalBulbs;
+      const bulbRadius = outerRimRadius - 4;
+      const bx = center + Math.cos(bulbAngle) * bulbRadius;
+      const by = center + Math.sin(bulbAngle) * bulbRadius;
+
+      ctx.beginPath();
+      ctx.arc(bx, by, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#fde047';
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // 3. Slices
     prizes.forEach((prize, index) => {
       const startAngle = index * sliceAngle;
       const endAngle = startAngle + sliceAngle;
 
+      ctx.save();
       ctx.beginPath();
       ctx.moveTo(center, center);
-      ctx.arc(center, center, radius, startAngle, endAngle);
+      ctx.arc(center, center, wheelRadius, startAngle, endAngle);
       ctx.closePath();
+
+      // Slice background color
       ctx.fillStyle = prize.color;
       ctx.fill();
 
-      // Border between slices
+      // Crisp White Border between slices
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      // Text
-      ctx.save();
+      // 4. Text & Typography inside slice
       ctx.translate(center, center);
       ctx.rotate(startAngle + sliceAngle / 2);
+
+      // Shadow for text clarity
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
       ctx.textAlign = 'right';
       ctx.fillStyle = prize.textColor || '#ffffff';
 
-      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-      ctx.fillText(prize.label, radius - 20, 0);
+      // Main Prize Label (e.g. "500 د.ع" / "خصم 10%")
+      ctx.font = '900 13.5px "Cairo", "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(prize.label, wheelRadius - 22, -2);
 
-      ctx.font = '10px system-ui, -apple-system, sans-serif';
-      ctx.fillText(prize.subLabel, radius - 20, 14);
+      // SubLabel (e.g. "رصيد أرباح 💰")
+      ctx.shadowBlur = 3;
+      ctx.font = '700 9.5px "Cairo", "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.fillText(prize.subLabel, wheelRadius - 22, 13);
 
       ctx.restore();
     });
 
-    // Center Gold Pin
+    // 4. Inner Ring Border
+    ctx.beginPath();
+    ctx.arc(center, center, wheelRadius, 0, 2 * Math.PI);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+
+    // 5. Center Golden 3D Hub & Medallion
+    const hubGrad = ctx.createLinearGradient(center - 32, center - 32, center + 32, center + 32);
+    hubGrad.addColorStop(0, '#fde047');
+    hubGrad.addColorStop(0.5, '#d97706');
+    hubGrad.addColorStop(1, '#78350f');
+
+    // Outer Hub Gold Rim
+    ctx.beginPath();
+    ctx.arc(center, center, 32, 0, 2 * Math.PI);
+    ctx.fillStyle = hubGrad;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Hub White Accent
     ctx.beginPath();
     ctx.arc(center, center, 26, 0, 2 * Math.PI);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#f59e0b';
-    ctx.stroke();
 
+    // Hub Inner Dark Core
     ctx.beginPath();
-    ctx.arc(center, center, 18, 0, 2 * Math.PI);
-    ctx.fillStyle = '#1e293b';
+    ctx.arc(center, center, 22, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0f172a';
     ctx.fill();
 
-    ctx.font = 'bold 14px system-ui';
-    ctx.fillStyle = '#fbbf24';
+    // Center Emoji
+    ctx.font = 'bold 16px system-ui';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = 6;
     ctx.fillText('🎁', center, center);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
   }, [prizes]);
 
   const handleSpin = () => {
@@ -302,16 +375,14 @@ export default function LuckyWheelModal({ isOpen, onClose }: LuckyWheelModalProp
           </div>
 
           {/* Rotating Wheel Canvas */}
-          <div className="relative p-2">
+          <div className="relative p-2 flex items-center justify-center">
             <canvas
               ref={canvasRef}
-              width={310}
-              height={310}
               style={{
                 transform: `rotate(${rotation}deg)`,
                 transition: isSpinning ? 'transform 4.2s cubic-bezier(0.15, 0.95, 0.35, 1)' : 'none',
               }}
-              className="rounded-full shadow-[0_0_35px_rgba(245,158,11,0.25)] max-w-[280px] max-h-[280px] sm:max-w-[310px] sm:max-h-[310px]"
+              className="rounded-full shadow-[0_0_40px_rgba(245,158,11,0.35)] w-[290px] h-[290px] sm:w-[340px] sm:h-[340px]"
             />
           </div>
         </div>
