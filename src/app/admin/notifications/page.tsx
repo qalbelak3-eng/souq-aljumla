@@ -247,6 +247,16 @@ export default function AdminNotificationsPage() {
   // Quick Marketing Templates
   const campaignTemplates = [
     {
+      id: 'tmpl-abandoned-cart',
+      icon: '🛒',
+      name: 'تذكير السلة المتروكة',
+      desc: 'ناسي المسواك بالسلة',
+      targetAudience: 'all' as NotificationTargetAudience,
+      title: '🛒 ناسي المسواك بالسّلة ..',
+      body: 'كمّل الطلب وخلّي المسواك يوصلك وين متكون 📦✨',
+      url: '/cart',
+    },
+    {
       id: 'tmpl-new',
       icon: '👶',
       name: 'ترحيب بالمسجلين الجدد',

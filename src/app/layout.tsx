@@ -8,6 +8,7 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import StoreLayoutWrapper from '@/components/StoreLayoutWrapper';
 import ServiceWorkerCleaner from '@/components/ServiceWorkerCleaner';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import AbandonedCartNotifier from '@/components/AbandonedCartNotifier';
 
 export const viewport: Viewport = {
   themeColor: '#1b8738',
@@ -49,6 +50,7 @@ export default function RootLayout({
           <ConfirmProvider>
             <AuthProvider>
               <CartProvider>
+                <AbandonedCartNotifier />
                 <NotificationsProvider>
                   <StoreLayoutWrapper>
                     {children}
