@@ -66,7 +66,10 @@ export interface Product {
   origin?: string; // بلد المنشأ (مثال: العراق / تركيا)
   offerEndDate?: string; // تاريخ ووقت انتهاء العرض التلقائي
   enableCashbackReward?: boolean; // تفعيل هدية/كاشباك رصيد الأرباح لهذا المنتج (نعم/لا)
-  customCashbackAmount?: number; // مبلغ مخصص لهدية رصيد الأرباح للقطعة (اختياري)
+  cashbackCustomerAmount?: number; // مبلغ كاشباك القطعة للزبون العادي (المفرد)
+  cashbackMarketAmount?: number; // مبلغ كاشباك القطعة لأصحاب الماركتات والمحلات
+  cashbackMerchantAmount?: number; // مبلغ كاشباك القطعة لكبار تجار الجملة VIP
+  customCashbackAmount?: number; // احتياطي
   orderedWholesaleQty?: number; // إجمالي الكمية المطلوبة من قبل كبار التجار (الجملة)
   orderedMarketQty?: number; // إجمالي الكمية المطلوبة من قبل أصحاب الماركتات والمحلات
   orderedRetailQty?: number; // إجمالي الكمية المطلوبة من قبل الزبائن العاديين (المفرد)

@@ -5,7 +5,7 @@ import { X, Plus, Minus, ShoppingBag, Check, Gift, Sparkles } from 'lucide-react
 import { Product, SaleType, StoreSettings } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
-import { getProductPriceForUser, getUserCashbackRate } from '@/lib/pricing';
+import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
 
 interface ProductBuyModalProps {
   product: Product;
@@ -51,11 +51,10 @@ export default function ProductBuyModal({
   const availableStock = product.stock || 24;
 
   // 🎁 حساب مكافأة وهدية رصيد الأرباح
-  const isCashbackRewardEnabled = product.enableCashbackReward !== false;
-  const defaultRate = getUserCashbackRate(user, storeSettings);
-  const cashbackPerPiece = product.customCashbackAmount ? Number(product.customCashbackAmount) : defaultRate;
+  const cashbackPerPiece = getProductCashbackRate(product, user, storeSettings);
   const piecesCount = (saleType === 'wholesale' ? (product.itemsPerWholesaleUnit || 1) : 1) * quantity;
   const cashbackTotalReward = cashbackPerPiece * piecesCount;
+  const isCashbackRewardEnabled = product.enableCashbackReward !== false && cashbackTotalReward > 0;
 
   const handleConfirmBuy = () => {
     addToCart(product, quantity, saleType);

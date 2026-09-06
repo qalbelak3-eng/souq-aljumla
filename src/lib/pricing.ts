@@ -59,3 +59,53 @@ export function getUserCashbackRate(user?: User | null, settings?: StoreSettings
 
   return defaultRate;
 }
+
+/**
+ * حساب معدل مكافأة الهدية/الكاشباك لمنتج معين حسب فئة الزبون (مفرد / ماركت / تاجر VIP)
+ * يعود بـ 0 إذا تم إيقاف الهدية عن هذا المنتج
+ */
+export function getProductCashbackRate(
+  product?: Product | null,
+  user?: User | null,
+  settings?: StoreSettings | null
+): number {
+  if (!product) return getUserCashbackRate(user, settings);
+  
+  // إذا تم إيقاف الهدية صراحة عن هذا الصنف
+  if (product.enableCashbackReward === false) {
+    return 0;
+  }
+
+  const accountType = user?.accountType || 'individual';
+
+  // 1. تاجر الجملة VIP
+  if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
+    if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount >= 0) {
+      return product.cashbackMerchantAmount;
+    }
+    if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
+      return product.customCashbackAmount;
+    }
+    return Number(settings?.cashbackMerchantPerItem ?? 250);
+  }
+
+  // 2. صاحب الماركت والمحلات
+  if (accountType === 'market') {
+    if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount >= 0) {
+      return product.cashbackMarketAmount;
+    }
+    if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
+      return product.customCashbackAmount;
+    }
+    return Number(settings?.cashbackMarketPerItem ?? 150);
+  }
+
+  // 3. الزبون العادي (المفرد)
+  if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+    return product.cashbackCustomerAmount;
+  }
+  if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
+    return product.customCashbackAmount;
+  }
+  return Number(settings?.cashbackCustomerPerItem ?? 100);
+}

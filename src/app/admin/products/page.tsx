@@ -68,7 +68,9 @@ export default function AdminProductsPage() {
   const [isOnOffer, setIsOnOffer] = useState(false);
   const [isNew, setIsNew] = useState(true);
   const [enableCashbackReward, setEnableCashbackReward] = useState<boolean>(true);
-  const [customCashbackAmount, setCustomCashbackAmount] = useState<number | ''>('');
+  const [cashbackCustomerAmount, setCashbackCustomerAmount] = useState<number | ''>('');
+  const [cashbackMarketAmount, setCashbackMarketAmount] = useState<number | ''>('');
+  const [cashbackMerchantAmount, setCashbackMerchantAmount] = useState<number | ''>('');
 
   const fetchProducts = async () => {
     setIsLoading(true);
@@ -141,6 +143,10 @@ export default function AdminProductsPage() {
     setIsBestSeller(false);
     setIsOnOffer(false);
     setIsNew(true);
+    setEnableCashbackReward(true);
+    setCashbackCustomerAmount('');
+    setCashbackMarketAmount('');
+    setCashbackMerchantAmount('');
     setIsModalOpen(true);
   };
 
@@ -186,6 +192,10 @@ export default function AdminProductsPage() {
     setIsBestSeller(Boolean(p.isBestSeller || p.isFeatured));
     setIsOnOffer(Boolean(p.isOnOffer || (p.originalPrice && Number(p.originalPrice) > Number(p.price)) || (p.originalWholesalePrice && Number(p.originalWholesalePrice) > Number(p.wholesalePrice)) || p.offerBadge));
     setIsNew(Boolean(p.isNew));
+    setEnableCashbackReward(p.enableCashbackReward !== false);
+    setCashbackCustomerAmount(p.cashbackCustomerAmount !== undefined ? p.cashbackCustomerAmount : (p.customCashbackAmount ?? ''));
+    setCashbackMarketAmount(p.cashbackMarketAmount ?? '');
+    setCashbackMerchantAmount(p.cashbackMerchantAmount ?? '');
     setIsModalOpen(true);
   };
 
@@ -253,6 +263,11 @@ export default function AdminProductsPage() {
       isFeatured: Boolean(isFeatured || isBestSeller),
       isBestSeller: Boolean(isBestSeller || isFeatured),
       isNew: Boolean(isNew),
+      enableCashbackReward: Boolean(enableCashbackReward),
+      cashbackCustomerAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
+      cashbackMarketAmount: cashbackMarketAmount !== '' ? Number(cashbackMarketAmount) : undefined,
+      cashbackMerchantAmount: cashbackMerchantAmount !== '' ? Number(cashbackMerchantAmount) : undefined,
+      customCashbackAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
     };
 
     try {
@@ -1214,28 +1229,74 @@ export default function AdminProductsPage() {
                 </div>
 
                 {enableCashbackReward ? (
-                  <div className="space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-emerald-200 text-xs">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <label className="font-bold text-emerald-950 block">
-                        مبلغ الهدية المخصص للقطعة (اختياري):
+                  <div className="space-y-3 bg-white/80 p-3 rounded-xl border border-emerald-200 text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap border-b border-emerald-100 pb-1.5">
+                      <label className="font-black text-emerald-950 block">
+                        مبالغ هدية الكاشباك المخصصة لكل شريحة (اختياري للقطعة):
                       </label>
                       <span className="text-[10px] text-emerald-700 font-medium">
-                        إذا تُرك فارغاً يُطبق المعدل العام من إعدادات المتجر
+                        إذا تُرِك الحقل فارغاً يُطبّق المعدل الافتراضي من إعدادات المتجر
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={customCashbackAmount}
-                        onChange={(e) => setCustomCashbackAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                        placeholder="افتراضي (100 / 150 د.ع)"
-                        className="w-full bg-white border border-emerald-300 rounded-xl py-1.5 px-3 text-xs font-bold text-slate-900 focus:border-emerald-600 font-mono"
-                      />
-                      <span className="text-xs font-bold text-emerald-900 shrink-0">د.ع / قطعة</span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* Tier 1: Retail Customers */}
+                      <div className="bg-emerald-50/50 p-2 rounded-xl border border-emerald-100 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          🛒 زبائن المفرد (العادي):
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            value={cashbackCustomerAmount}
+                            onChange={(e) => setCashbackCustomerAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="افتراضي (100)"
+                            className="w-full bg-white border border-emerald-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-emerald-600 font-mono text-center"
+                          />
+                          <span className="text-[10px] font-bold text-emerald-900 shrink-0">د.ع</span>
+                        </div>
+                      </div>
+
+                      {/* Tier 2: Market Owners */}
+                      <div className="bg-blue-50/50 p-2 rounded-xl border border-blue-100 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          🏪 أصحاب الماركتات:
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            value={cashbackMarketAmount}
+                            onChange={(e) => setCashbackMarketAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="افتراضي (150)"
+                            className="w-full bg-white border border-blue-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-blue-600 font-mono text-center"
+                          />
+                          <span className="text-[10px] font-bold text-blue-900 shrink-0">د.ع</span>
+                        </div>
+                      </div>
+
+                      {/* Tier 3: Wholesale VIP Merchants */}
+                      <div className="bg-amber-50/50 p-2 rounded-xl border border-amber-100 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          👑 كبار تجار الجملة VIP:
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            value={cashbackMerchantAmount}
+                            onChange={(e) => setCashbackMerchantAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="افتراضي (250)"
+                            className="w-full bg-white border border-amber-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-amber-600 font-mono text-center"
+                          />
+                          <span className="text-[10px] font-bold text-amber-900 shrink-0">د.ع</span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-emerald-700">
-                      💡 سيظهر شريط الهدية الأخضر للزبون عند فتح صفحة هذا المنتج لتحفيزه على الشراء.
+
+                    <p className="text-[10px] text-emerald-700 font-medium">
+                      💡 سيظهر شريط الهدية الأخضر الترويجي في صفحة الشراء مخصصاً بحسب رتبة وحساب كل زبون تلقائياً، ومضروباً بعدد القطع عند الشراء بالكرتون.
                     </p>
                   </div>
                 ) : (
