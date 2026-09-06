@@ -40,24 +40,42 @@ export default function AdminComplaintsPage() {
   const [replyStatus, setReplyStatus] = useState<'pending' | 'in_progress' | 'resolved' | 'archived'>('resolved');
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
-  const fetchComplaints = async () => {
-    setIsLoading(true);
+  const fetchComplaints = async (isSilent = false) => {
+    if (!isSilent && complaints.length === 0) setIsLoading(true);
     try {
       const res = await fetch('/api/complaints', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.complaints)) {
         setComplaints(data.complaints);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_complaints_cache', JSON.stringify(data.complaints));
+        }
       }
     } catch (err) {
       console.error(err);
-      toast.error('حدث خطأ أثناء تحميل الرسائل والشكاوى');
+      if (!isSilent) toast.error('حدث خطأ أثناء تحميل الرسائل والشكاوى');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchComplaints();
+    // 1. Instant Cache Hydration: Render previously cached complaints in 0ms!
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_complaints_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setComplaints(parsed);
+            setIsLoading(false);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Fetch fresh complaints in background
+    fetchComplaints(complaints.length > 0);
   }, []);
 
   const handleOpenReplyModal = (comp: CustomerComplaint) => {
@@ -70,7 +88,28 @@ export default function AdminComplaintsPage() {
     e.preventDefault();
     if (!selectedComplaint) return;
 
-    setIsSubmittingReply(true);
+    const currentComp = selectedComplaint;
+    const currentReply = replyText.trim();
+    const currentStatus = replyStatus;
+
+    // 🚀 Optimistic Instant Update (0ms delay for the admin!)
+    const updatedComplaints = complaints.map((c) =>
+      c.id === currentComp.id
+        ? {
+            ...c,
+            status: currentStatus,
+            adminReply: currentReply || undefined,
+            repliedAt: new Date().toISOString(),
+          }
+        : c
+    );
+    setComplaints(updatedComplaints);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('souq_admin_complaints_cache', JSON.stringify(updatedComplaints));
+    }
+    setSelectedComplaint(null);
+    toast.success('تم حفظ الرد وتحديث حالة الشكوى بنجاح! 📨✓');
+
     try {
       const operatorRaw = localStorage.getItem('etihad_admin_auth');
       const operator = operatorRaw ? JSON.parse(operatorRaw) : { name: 'الإدارة', username: 'admin' };
@@ -79,25 +118,19 @@ export default function AdminComplaintsPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: selectedComplaint.id,
-          status: replyStatus,
-          adminReply: replyText.trim() || undefined,
+          id: currentComp.id,
+          status: currentStatus,
+          adminReply: currentReply || undefined,
           operator,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        toast.success('تم حفظ الرد وتحديث حالة الشكوى بنجاح! 📨✓');
-        setSelectedComplaint(null);
-        fetchComplaints();
-      } else {
-        toast.error(data.error || 'فشل حفظ الرد');
+      if (!data.success) {
+        fetchComplaints(true);
       }
     } catch (err) {
-      toast.error('حدث خطأ أثناء الحفظ');
-    } finally {
-      setIsSubmittingReply(false);
+      console.error('Error saving reply in background:', err);
     }
   };
 
@@ -181,7 +214,7 @@ export default function AdminComplaintsPage() {
 
         <button
           type="button"
-          onClick={fetchComplaints}
+          onClick={() => fetchComplaints(false)}
           className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-4 py-2.5 rounded-2xl transition flex items-center gap-2 self-start sm:self-auto cursor-pointer"
         >
           <Sparkles className="w-4 h-4 text-brand-blue" />
