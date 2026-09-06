@@ -159,17 +159,9 @@ export default function PushNotificationManager() {
               </button>
             </div>
 
-            {/* Permission Status & Toggle Card */}
-            <div className="p-4 bg-slate-50 border-b border-slate-100">
-              {permission === 'granted' ? (
-                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 font-bold">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                    <span>الإشعارات المباشرة مفعلة على جهازك 📱</span>
-                  </div>
-                  <span className="text-[10px] bg-emerald-600 text-white px-2.5 py-0.5 rounded-full font-black">نشط ✅</span>
-                </div>
-              ) : (
+            {/* Permission Status & Toggle Card (Only shown if notifications are NOT granted yet) */}
+            {permission !== 'granted' && (
+              <div className="p-4 bg-slate-50 border-b border-slate-100">
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-950">
                   <div>
                     <span className="font-black block text-xs">تفعيل إشعارات الهاتف المباشرة</span>
@@ -184,8 +176,8 @@ export default function PushNotificationManager() {
                     {isSubscribing ? 'جاري التفعيل...' : 'تفعيل الآن 🔔'}
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Notifications List Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
