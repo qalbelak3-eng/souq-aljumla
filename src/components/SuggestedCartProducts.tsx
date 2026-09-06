@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Sparkles, Flame, ShoppingBag } from 'lucide-react';
+import { Plus, Minus, Check, Sparkles, Flame, ShoppingBag } from 'lucide-react';
 import { Product, StoreSettings } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -16,13 +16,12 @@ export default function SuggestedCartProducts({
   variant = 'cart',
   className = '',
 }: SuggestedCartProductsProps) {
-  const { cart, addToCart } = useCart();
+  const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
   const { isApprovedMerchant } = useAuth();
   const toast = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
-  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -56,40 +55,51 @@ export default function SuggestedCartProducts({
   // Selected suggested IDs from Admin Settings
   const configuredIds: string[] = settings?.suggestedProductIds || [];
 
-  // IDs of products already added to the customer's cart
-  const cartProductIds = new Set(cart.map((item) => item.product.id));
-
-  // Get matching products (Excluding items already in customer cart)
+  // Get matching products (keep them visible so customer can add multiple quantities)
   let suggestedItems: Product[] = [];
   if (configuredIds.length > 0) {
     suggestedItems = configuredIds
-      .filter((id) => !cartProductIds.has(id))
       .map((id) => products.find((p) => p.id === id))
       .filter((p): p is Product => p !== undefined && p.stock > 0);
   }
 
-  // Fallback: If admin hasn't selected specific IDs or all configured ones are in cart,
-  // suggest other featured / discounted products not currently in the cart
+  // Fallback: If admin hasn't selected specific IDs, suggest top featured / discounted products
   if (suggestedItems.length === 0 && configuredIds.length === 0) {
     suggestedItems = products
-      .filter((p) => !cartProductIds.has(p.id) && p.stock > 0 && (p.isFeatured || (p.originalPrice && p.originalPrice > p.price)))
+      .filter((p) => p.stock > 0 && (p.isFeatured || (p.originalPrice && p.originalPrice > p.price)))
       .slice(0, 6);
   }
 
-  // If no items remain (e.g. all suggested items already in cart), hide the component
   if (suggestedItems.length === 0) return null;
+
+  const saleType = isApprovedMerchant ? 'wholesale' : 'retail';
 
   const handleQuickAdd = (product: Product, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    addToCart(product, 1, isApprovedMerchant ? 'wholesale' : 'retail');
-    setRecentlyAddedId(product.id);
+    addToCart(product, 1, saleType);
     toast.showToast(`تمت إضافة "${product.name.slice(0, 24)}..." إلى طلبك بنجاح! 🛒`, 'success');
+  };
 
-    setTimeout(() => {
-      setRecentlyAddedId(null);
-    }, 1200);
+  const handleIncrement = (product: Product, currentQty: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    updateQuantity(product.id, currentQty + 1, saleType);
+    toast.showToast(`الكمية الحالية: ${currentQty + 1} من "${product.name.slice(0, 20)}..." 🛒`, 'success');
+  };
+
+  const handleDecrement = (product: Product, currentQty: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (currentQty <= 1) {
+      removeFromCart(product.id, saleType);
+      toast.showToast(`تمت إزالة "${product.name.slice(0, 20)}..." من السلة`, 'info');
+    } else {
+      updateQuantity(product.id, currentQty - 1, saleType);
+    }
   };
 
   const title = settings?.suggestedProductsTitle || 'أضف إلى طلبك ✨';
@@ -108,8 +118,8 @@ export default function SuggestedCartProducts({
 
         <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-none snap-x">
           {suggestedItems.map((prod) => {
-            const isAdded = recentlyAddedId === prod.id;
-            const inCartItem = cart.find((item) => item.product.id === prod.id);
+            const inCartItem = cart.find((item) => item.product.id === prod.id && item.saleType === saleType);
+            const qty = inCartItem ? inCartItem.quantity : 0;
             const price = isApprovedMerchant && prod.wholesalePrice ? prod.wholesalePrice : prod.price;
 
             return (
@@ -129,9 +139,9 @@ export default function SuggestedCartProducts({
                       خصم
                     </span>
                   )}
-                  {inCartItem && (
-                    <span className="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[8px] font-bold px-1 rounded-md">
-                      بالسلة: {inCartItem.quantity}
+                  {qty > 0 && (
+                    <span className="absolute bottom-1 right-1 bg-emerald-700 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-md shadow-xs flex items-center gap-0.5">
+                      ✓ {qty}
                     </span>
                   )}
                 </div>
@@ -141,23 +151,43 @@ export default function SuggestedCartProducts({
                     {prod.name}
                   </h5>
 
-                  <div className="flex items-center justify-between pt-0.5">
+                  <div className="flex items-center justify-between pt-0.5 gap-1">
                     <span className="text-[10px] font-black text-brand-coral font-mono">
                       {price.toLocaleString()} د.ع
                     </span>
 
-                    <button
-                      type="button"
-                      onClick={(e) => handleQuickAdd(prod, e)}
-                      className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-90 ${
-                        isAdded
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-brand-blue hover:bg-brand-blueDark text-white'
-                      }`}
-                      title="أضف للطلب"
-                    >
-                      {isAdded ? <Check className="w-3.5 h-3.5 animate-bounce" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
-                    </button>
+                    {qty > 0 ? (
+                      <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-300 rounded-lg p-0.5 shadow-2xs shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => handleDecrement(prod, qty, e)}
+                          className="w-4 h-4 rounded-md bg-white hover:bg-red-50 text-slate-700 hover:text-red-600 flex items-center justify-center transition cursor-pointer active:scale-90"
+                          title="تقليل"
+                        >
+                          <Minus className="w-2.5 h-2.5 stroke-[3]" />
+                        </button>
+                        <span className="font-mono font-black text-[10px] text-emerald-900 min-w-[12px] text-center">
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleIncrement(prod, qty, e)}
+                          className="w-4 h-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition cursor-pointer active:scale-90"
+                          title="زيادة"
+                        >
+                          <Plus className="w-2.5 h-2.5 stroke-[3]" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => handleQuickAdd(prod, e)}
+                        className="w-6 h-6 rounded-lg bg-brand-blue hover:bg-brand-blueDark text-white flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-90 shrink-0"
+                        title="أضف للطلب"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -193,14 +223,16 @@ export default function SuggestedCartProducts({
 
       <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-slate-200 snap-x">
         {suggestedItems.map((prod) => {
-          const isAdded = recentlyAddedId === prod.id;
-          const inCartItem = cart.find((item) => item.product.id === prod.id);
+          const inCartItem = cart.find((item) => item.product.id === prod.id && item.saleType === saleType);
+          const qty = inCartItem ? inCartItem.quantity : 0;
           const price = isApprovedMerchant && prod.wholesalePrice ? prod.wholesalePrice : prod.price;
 
           return (
             <div
               key={prod.id}
-              className="w-36 sm:w-40 shrink-0 bg-slate-50/70 hover:bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 shadow-2xs hover:shadow-md transition flex flex-col justify-between snap-start group"
+              className={`w-36 sm:w-40 shrink-0 border rounded-2xl p-2.5 shadow-2xs hover:shadow-md transition flex flex-col justify-between snap-start group ${
+                qty > 0 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50/70 hover:bg-slate-50 border-slate-200/90'
+              }`}
             >
               <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-white mb-2 border border-slate-100">
                 <img
@@ -217,9 +249,10 @@ export default function SuggestedCartProducts({
                   </span>
                 )}
 
-                {inCartItem && (
-                  <span className="absolute bottom-1.5 right-1.5 bg-slate-900/85 text-white text-[9px] font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs">
-                    بالسلة: {inCartItem.quantity}
+                {qty > 0 && (
+                  <span className="absolute bottom-1.5 right-1.5 bg-emerald-800 text-white text-[9px] font-black px-2 py-0.5 rounded-lg backdrop-blur-xs shadow-xs flex items-center gap-1">
+                    <Check className="w-2.5 h-2.5" />
+                    <span>بالسلة ({qty})</span>
                   </span>
                 )}
               </div>
@@ -229,7 +262,7 @@ export default function SuggestedCartProducts({
                   {prod.name}
                 </h4>
 
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between pt-1 gap-1">
                   <div>
                     <span className="text-xs font-black text-brand-coral font-mono block">
                       {price.toLocaleString()} د.ع
@@ -239,27 +272,40 @@ export default function SuggestedCartProducts({
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={(e) => handleQuickAdd(prod, e)}
-                    className={`px-2.5 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-90 ${
-                      isAdded
-                        ? 'bg-emerald-600 text-white shadow-emerald-500/30'
-                        : 'bg-brand-blue hover:bg-brand-blueDark text-white shadow-blue-500/20'
-                    }`}
-                  >
-                    {isAdded ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">أضيف ✓</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                        <span className="text-[10px]">أضف</span>
-                      </>
-                    )}
-                  </button>
+                  {qty > 0 ? (
+                    /* Interactive Stepper (+ / -) when in cart */
+                    <div className="flex items-center gap-1 bg-emerald-100/80 border border-emerald-300 rounded-xl p-0.5 shadow-xs shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => handleDecrement(prod, qty, e)}
+                        className="w-5 h-5 rounded-lg bg-white hover:bg-red-50 text-slate-700 hover:text-red-600 flex items-center justify-center transition shadow-2xs cursor-pointer active:scale-90"
+                        title="تقليل العدد"
+                      >
+                        <Minus className="w-3 h-3 stroke-[3]" />
+                      </button>
+                      <span className="font-mono font-black text-xs text-emerald-950 px-1 min-w-[14px] text-center">
+                        {qty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => handleIncrement(prod, qty, e)}
+                        className="w-5 h-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition shadow-2xs cursor-pointer active:scale-90"
+                        title="زيادة العدد"
+                      >
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                      </button>
+                    </div>
+                  ) : (
+                    /* Initial Add Button */
+                    <button
+                      type="button"
+                      onClick={(e) => handleQuickAdd(prod, e)}
+                      className="px-2.5 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-90 bg-brand-blue hover:bg-brand-blueDark text-white shadow-blue-500/20 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span className="text-[10px]">أضف</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
