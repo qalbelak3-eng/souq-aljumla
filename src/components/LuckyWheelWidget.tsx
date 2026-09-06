@@ -40,10 +40,10 @@ export default function LuckyWheelWidget() {
             <span className="text-2xl sm:text-3xl filter drop-shadow">🎡</span>
           </div>
 
-          {/* Badge: Free spin available (1) or Gift */}
+          {/* Badge: Free spin available (1) or Gift Icon */}
           {hasFreeSpin && (
-            <span className="absolute -top-1.5 -left-1.5 bg-rose-600 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-md font-mono animate-bounce">
-              هدية
+            <span className="absolute -top-1.5 -left-1.5 bg-rose-600 text-white w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-md animate-bounce">
+              <Gift className="w-3.5 h-3.5 text-white" />
             </span>
           )}
 
