@@ -126,6 +126,28 @@ const initialUsers: User[] = [
 
 let inMemoryDb: DatabaseSchema | null = null;
 
+function sanitizeDb(db: DatabaseSchema): DatabaseSchema {
+  if (Array.isArray(db.orders)) {
+    db.orders.forEach(order => {
+      if (Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (item.image && item.image.startsWith('data:image/') && item.image.length > 300) {
+            item.image = '';
+          }
+        });
+      }
+    });
+  }
+  if (Array.isArray(db.offers)) {
+    db.offers.forEach(offer => {
+      if (offer.productImage && offer.productImage.startsWith('data:image/') && offer.productImage.length > 300) {
+        offer.productImage = '';
+      }
+    });
+  }
+  return db;
+}
+
 function ensureDbExists(): DatabaseSchema {
   if (inMemoryDb) {
     return inMemoryDb;
@@ -140,7 +162,7 @@ function ensureDbExists(): DatabaseSchema {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
       if (raw && raw.trim().length > 0) {
-        inMemoryDb = JSON.parse(raw) as DatabaseSchema;
+        inMemoryDb = sanitizeDb(JSON.parse(raw) as DatabaseSchema);
         if (!inMemoryDb.coupons || inMemoryDb.coupons.length === 0) {
           inMemoryDb.coupons = [...initialCoupons];
         }
@@ -155,7 +177,7 @@ function ensureDbExists(): DatabaseSchema {
     if (fs.existsSync(SOURCE_DB_FILE)) {
       const sourceRaw = fs.readFileSync(SOURCE_DB_FILE, 'utf-8');
       if (sourceRaw && sourceRaw.trim().length > 0) {
-        inMemoryDb = JSON.parse(sourceRaw) as DatabaseSchema;
+        inMemoryDb = sanitizeDb(JSON.parse(sourceRaw) as DatabaseSchema);
         if (!inMemoryDb.coupons || inMemoryDb.coupons.length === 0) {
           inMemoryDb.coupons = [...initialCoupons];
         }
@@ -166,7 +188,7 @@ function ensureDbExists(): DatabaseSchema {
     }
   } catch {}
 
-  inMemoryDb = {
+  inMemoryDb = sanitizeDb({
     products: initialProducts,
     categories: initialCategories,
     orders: [],
@@ -180,18 +202,18 @@ function ensureDbExists(): DatabaseSchema {
     pushSubscriptions: [],
     pushNotificationLogs: [],
     adminAuth: defaultAdmin,
-  };
+  });
   return inMemoryDb;
 }
 
 function saveDb(data: DatabaseSchema) {
-  inMemoryDb = data;
+  inMemoryDb = sanitizeDb(data);
 
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const jsonStr = JSON.stringify(data, null, 2);
+    const jsonStr = JSON.stringify(inMemoryDb, null, 2);
     fs.writeFileSync(DB_FILE, jsonStr, 'utf-8');
 
     // 🛡️ Automatic Backup: حفظ نسخة احتياطية حية دائمة

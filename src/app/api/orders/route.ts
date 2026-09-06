@@ -102,7 +102,7 @@ export async function POST(request: Request) {
         quantity: qty,
         saleType,
         unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : 'مفرد'),
-        image: prod?.images?.[0] || item.image || '',
+        image: (prod?.images?.[0] && !prod.images[0].startsWith('data:image/')) ? prod.images[0] : (item.image && !item.image.startsWith('data:image/')) ? item.image : '',
         costPrice: prod?.costPrice,
       };
     });

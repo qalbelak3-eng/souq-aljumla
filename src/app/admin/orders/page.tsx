@@ -37,17 +37,78 @@ import EtihadLogo from '@/components/EtihadLogo';
 export default function AdminOrdersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [merchants, setMerchants] = useState<UserType[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_orders_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_products_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [merchants, setMerchants] = useState<UserType[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_merchants_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [customerAccounts, setCustomerAccounts] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_drivers_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_vehicles_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_orders_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Helper to dynamically resolve product image from cached catalog
+  const getItemImage = (item: OrderItem) => {
+    if (item.image && !item.image.startsWith('data:image/')) return item.image;
+    const prod = products.find((p) => p.id === item.productId || (item.name && p.name === item.name));
+    if (prod?.images?.[0]) return prod.images[0];
+    if ((prod as any)?.image) return (prod as any).image;
+    return item.image || '';
+  };
 
   // MANUAL ORDER MODAL (POS / Phone orders)
   const [isManualOrderModalOpen, setIsManualOrderModalOpen] = useState(false);
@@ -84,6 +145,7 @@ export default function AdminOrdersPage() {
 
   const fetchOrders = (isSilent = false) => {
     if (!isSilent && orders.length === 0) setIsLoading(true);
+    if (orders.length > 0) setIsRefreshing(true);
     fetch('/api/orders', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
@@ -94,10 +156,12 @@ export default function AdminOrdersPage() {
           }
         }
         setIsLoading(false);
+        setIsRefreshing(false);
       })
       .catch((err) => {
         console.error(err);
         setIsLoading(false);
+        setIsRefreshing(false);
       });
   };
 
@@ -696,9 +760,15 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Orders Table */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        {isLoading ? (
-          <div className="p-12 text-center text-slate-500 font-bold">جاري تحميل الطلبات...</div>
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden relative">
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse z-10" />
+        )}
+        {isLoading && orders.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 font-bold space-y-3">
+            <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
+            <p>جاري مزامنة الطلبيات...</p>
+          </div>
         ) : filteredOrders.length === 0 ? (
           <div className="p-12 text-center text-slate-500 font-bold space-y-3">
             <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto text-xl">
@@ -1135,7 +1205,12 @@ export default function AdminOrdersPage() {
                 {selectedOrder.items.map((item, idx) => (
                   <div key={idx} className="p-3 flex items-center justify-between gap-3 bg-white">
                     <div className="flex items-center gap-3">
-                      <img src={item.image} alt={item.name} className="w-10 h-10 object-contain rounded-lg bg-slate-50 p-0.5" />
+                      <img
+                        src={getItemImage(item)}
+                        alt={item.name}
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                        className="w-10 h-10 object-contain rounded-lg bg-slate-50 p-0.5"
+                      />
                       <div>
                         <span className="font-bold text-slate-900 block">{item.name}</span>
                         <span className="text-[10px] text-slate-500">
@@ -1295,7 +1370,12 @@ export default function AdminOrdersPage() {
                 {editItems.map((item, idx) => (
                   <div key={idx} className="p-3 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <img src={item.image} alt={item.name} className="w-10 h-10 object-contain rounded-lg bg-slate-50" />
+                      <img
+                        src={getItemImage(item)}
+                        alt={item.name}
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                        className="w-10 h-10 object-contain rounded-lg bg-slate-50"
+                      />
                       <div>
                         <div className="font-bold text-slate-900">{item.name}</div>
                         <div className="text-[10px] text-slate-500 font-bold">
@@ -1712,7 +1792,12 @@ export default function AdminOrdersPage() {
                   {manualItems.map((item, idx) => (
                     <div key={idx} className="p-3 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <img src={item.image} alt={item.name} className="w-10 h-10 object-contain rounded-lg bg-slate-50" />
+                        <img
+                        src={getItemImage(item)}
+                        alt={item.name}
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                        className="w-10 h-10 object-contain rounded-lg bg-slate-50"
+                      />
                         <div>
                           <div className="font-bold text-slate-900">{item.name}</div>
                           <div className="text-[10px] text-slate-500 font-bold">

@@ -29,8 +29,28 @@ export default function AdminComplaintsPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
-  const [complaints, setComplaints] = useState<CustomerComplaint[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [complaints, setComplaints] = useState<CustomerComplaint[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_complaints_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_complaints_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'resolved' | 'archived'>('all');
   
@@ -42,6 +62,7 @@ export default function AdminComplaintsPage() {
 
   const fetchComplaints = async (isSilent = false) => {
     if (!isSilent && complaints.length === 0) setIsLoading(true);
+    if (complaints.length > 0) setIsRefreshing(true);
     try {
       const res = await fetch('/api/complaints', { cache: 'no-store' });
       const data = await res.json();
@@ -56,6 +77,7 @@ export default function AdminComplaintsPage() {
       if (!isSilent) toast.error('حدث خطأ أثناء تحميل الرسائل والشكاوى');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -306,7 +328,10 @@ export default function AdminComplaintsPage() {
       </div>
 
       {/* Complaints Stream / List */}
-      {isLoading ? (
+      {isRefreshing && (
+        <div className="h-1 bg-gradient-to-r from-brand-blue via-emerald-500 to-brand-blue animate-pulse rounded-full" />
+      )}
+      {isLoading && complaints.length === 0 ? (
         <div className="py-20 text-center space-y-3 bg-white rounded-3xl border border-slate-200">
           <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs text-slate-500 font-bold">جاري تحميل رسائل وشكاوى الزبائن...</p>
