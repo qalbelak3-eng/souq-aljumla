@@ -48,6 +48,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setNotifications([]);
     setUnreadCount(0);
     if (typeof window !== 'undefined') {
+      localStorage.setItem('souq_client_cleared_at', Date.now().toString());
       localStorage.removeItem('souq_saved_notifications');
       localStorage.setItem('etihad_notifications_last_read', Date.now().toString());
     }
@@ -61,12 +62,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (data.success && Array.isArray(data.logs)) {
         const userType = user?.accountType || 'retail';
         const nowTime = Date.now();
+        const clientClearedAt = typeof window !== 'undefined' ? Number(localStorage.getItem('souq_client_cleared_at') || '0') : 0;
 
-        // تطهير الروابط واستبعاد المنتهي الصلاحية والفلترة حسب فئة الزبون
+        // تطهير الروابط واستبعاد المنتهي الصلاحية والتنبيهات الممسوحة مسبقاً والفلترة حسب فئة الزبون
         const freshLogs = data.logs
           .filter((log: PushNotificationLog) => {
+            // استبعاد المنتهي الصلاحية
             if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
-              return false; // منتهي الصلاحية
+              return false;
+            }
+            // استبعاد ما تم مسحه مسبقاً من قبل هذا العميل
+            if (clientClearedAt > 0 && new Date(log.createdAt).getTime() <= clientClearedAt) {
+              return false;
             }
             if (!log.targetAudience || log.targetAudience === 'all') return true;
             if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
@@ -256,16 +263,54 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         setPermission(Notification.permission);
       }
 
-      if (supported && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').then((reg) => {
-          reg.update().catch(() => {});
-          if (Notification.permission === 'granted') {
-            subscribeUserToPush(reg, false).catch(() => {});
+      const syncAndCheckUpdate = async () => {
+        if (supported && 'serviceWorker' in navigator) {
+          try {
+            const reg = await navigator.serviceWorker.register('/sw.js');
+            await reg.update().catch(() => {});
+            if (Notification.permission === 'granted') {
+              await subscribeUserToPush(reg, false).catch(() => {});
+            }
+          } catch (e) {
+            console.log('SW sync error:', e);
           }
-        }).catch((e) => console.log('SW reg:', e));
+        }
+        refreshNotifications();
+      };
+
+      // Initial sync on mount
+      syncAndCheckUpdate();
+
+      // Background auto-sync on app resume / focus on mobile
+      const handleAppResume = () => {
+        if (document.visibilityState === 'visible') {
+          syncAndCheckUpdate();
+        }
+      };
+
+      window.addEventListener('focus', handleAppResume);
+      document.addEventListener('visibilitychange', handleAppResume);
+
+      // Auto reload on controller change when new PWA version activates
+      let refreshing = false;
+      const handleControllerChange = () => {
+        if (!refreshing) {
+          refreshing = true;
+          syncAndCheckUpdate();
+        }
+      };
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
       }
 
-      refreshNotifications();
+      return () => {
+        window.removeEventListener('focus', handleAppResume);
+        document.removeEventListener('visibilitychange', handleAppResume);
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+        }
+      };
     }
   }, [refreshNotifications]);
 

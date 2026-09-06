@@ -167,15 +167,7 @@ export default function PushNotificationManager() {
                     <ShieldCheck className="w-5 h-5 text-emerald-600" />
                     <span>الإشعارات المباشرة مفعلة على جهازك 📱</span>
                   </div>
-                  <button
-                    type="button"
-                    disabled={isSubscribing}
-                    onClick={requestPermission}
-                    className="text-[11px] bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-2.5 py-1 rounded-xl font-black transition cursor-pointer shadow-xs"
-                    title="إعادة تحديث وربط هذا الجهاز بالسيرفر"
-                  >
-                    {isSubscribing ? 'جاري الفحص...' : 'تحديث الربط 🔄'}
-                  </button>
+                  <span className="text-[10px] bg-emerald-600 text-white px-2.5 py-0.5 rounded-full font-black">نشط ✅</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-950">
