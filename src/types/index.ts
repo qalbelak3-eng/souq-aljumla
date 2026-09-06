@@ -743,6 +743,16 @@ export interface PushSubscriptionRecord {
   lastActiveAt?: string;
 }
 
+export type NotificationTargetAudience = 
+  | 'all' 
+  | 'wholesale' 
+  | 'market' 
+  | 'retail' 
+  | 'registered_no_orders' 
+  | 'inactive_30d' 
+  | 'few_orders' 
+  | 'active_vip';
+
 export interface PushNotificationLog {
   id: string;
   title: string;
@@ -751,7 +761,7 @@ export interface PushNotificationLog {
   icon?: string;
   badge?: string;
   url?: string;
-  targetAudience: 'all' | 'wholesale' | 'market' | 'retail';
+  targetAudience: NotificationTargetAudience;
   targetAudienceLabel: string;
   sentCount: number;
   successCount: number;

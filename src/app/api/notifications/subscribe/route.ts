@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { savePushSubscription, getPushSubscriptions } from '@/lib/db';
+import { savePushSubscription, getPushAudienceStats } from '@/lib/db';
 import { VAPID_PUBLIC_KEY } from '@/lib/pushService';
 
 export const dynamic = 'force-dynamic';
@@ -7,14 +7,11 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const subscriptions = getPushSubscriptions('all');
+    const stats = getPushAudienceStats();
     return NextResponse.json({
       success: true,
       vapidPublicKey: VAPID_PUBLIC_KEY,
-      totalSubscribers: subscriptions.length,
-      wholesaleCount: subscriptions.filter(s => s.accountType === 'wholesale' || s.accountType === 'merchant').length,
-      marketCount: subscriptions.filter(s => s.accountType === 'market').length,
-      retailCount: subscriptions.filter(s => !s.accountType || s.accountType === 'individual' || s.accountType === 'visitor').length,
+      ...stats,
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

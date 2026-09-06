@@ -20,19 +20,23 @@ import {
   Hourglass,
   Calendar
 } from 'lucide-react';
-import { PushNotificationLog } from '@/types';
+import { PushNotificationLog, NotificationTargetAudience } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { compressImageFile } from '@/lib/imageUtils';
 
 export default function AdminNotificationsPage() {
   const toast = useToast();
 
-  // Stats
+  // Stats for 8 Smart Audience Segments
   const [stats, setStats] = useState({
     totalSubscribers: 0,
     wholesaleCount: 0,
     marketCount: 0,
     retailCount: 0,
+    registeredNoOrdersCount: 0,
+    inactive30dCount: 0,
+    fewOrdersCount: 0,
+    activeVipCount: 0,
   });
   const [logs, setLogs] = useState<PushNotificationLog[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -40,7 +44,7 @@ export default function AdminNotificationsPage() {
   // Form State
   const [title, setTitle] = useState('🔥 عروض وخصومات كبرى في سوق الجملة!');
   const [body, setBody] = useState('تخفيضات حصرية الآن على كراتين الشيبس، السناكات، ومشروبات الطاقة. اطلب الآن واستفد من التوصيل السريع!');
-  const [targetAudience, setTargetAudience] = useState<'all' | 'wholesale' | 'market' | 'retail'>('all');
+  const [targetAudience, setTargetAudience] = useState<NotificationTargetAudience>('all');
   const [image, setImage] = useState('');
   const [url, setUrl] = useState('/products?filter=offers');
   const [expiryHours, setExpiryHours] = useState<number>(24); // افتراضياً 24 ساعة للعروض اليومية
@@ -64,6 +68,10 @@ export default function AdminNotificationsPage() {
             wholesaleCount: subData.wholesaleCount || 0,
             marketCount: subData.marketCount || 0,
             retailCount: subData.retailCount || 0,
+            registeredNoOrdersCount: subData.registeredNoOrdersCount || 0,
+            inactive30dCount: subData.inactive30dCount || 0,
+            fewOrdersCount: subData.fewOrdersCount || 0,
+            activeVipCount: subData.activeVipCount || 0,
           });
         }
         if (sendData.success && Array.isArray(sendData.logs)) {
@@ -229,7 +237,73 @@ export default function AdminNotificationsPage() {
     if (targetAudience === 'wholesale') return stats.wholesaleCount;
     if (targetAudience === 'market') return stats.marketCount;
     if (targetAudience === 'retail') return stats.retailCount;
+    if (targetAudience === 'registered_no_orders') return stats.registeredNoOrdersCount;
+    if (targetAudience === 'inactive_30d') return stats.inactive30dCount;
+    if (targetAudience === 'few_orders') return stats.fewOrdersCount;
+    if (targetAudience === 'active_vip') return stats.activeVipCount;
     return stats.totalSubscribers;
+  };
+
+  // Quick Marketing Templates
+  const campaignTemplates = [
+    {
+      id: 'tmpl-new',
+      icon: '👶',
+      name: 'ترحيب بالمسجلين الجدد',
+      desc: 'لم يطلبوا بعد (0 طلبات)',
+      targetAudience: 'registered_no_orders' as NotificationTargetAudience,
+      title: '🎁 أهلاً بك! هدية توصيل مجاني على أول طلبية لك اليوم 🚚',
+      body: 'استخدم كود: FIRST عند الشراء واستمتع بأفضل الأسعار والتوصيل السريع لبيتك أو محلك!',
+      url: '/products?filter=offers',
+    },
+    {
+      id: 'tmpl-miss-you',
+      icon: '💔',
+      name: 'حملة اشتقتنا لك',
+      desc: 'انقطعوا عن الشراء (14+ يوم)',
+      targetAudience: 'inactive_30d' as NotificationTargetAudience,
+      title: 'مشتاقين لك يا غالي! أضفنا هدية في رصيد أرباحك ✨',
+      body: 'وصلت بضاعة جديدة وتخفيضات جملة ومفرد مميزة بانتظارك. افتح التطبيق واطلب الآن!',
+      url: '/products',
+    },
+    {
+      id: 'tmpl-few',
+      icon: '📦',
+      name: 'تنشيط قليلي الطلبات',
+      desc: 'طلبوا 1 أو 2 مرات',
+      targetAudience: 'few_orders' as NotificationTargetAudience,
+      title: '🔥 عروض كراتين وسناكات حصرية بأسعار الجملة المباشرة!',
+      body: 'نوفر لك تشكيلة واسعة من المواد الغذائية والسناكات بهوامش ربح ممتازة مع توصيل فوري.',
+      url: '/products?filter=offers',
+    },
+    {
+      id: 'tmpl-wheel',
+      icon: '🎡',
+      name: 'تذكير چرخ الحظ',
+      desc: 'لجميع المشتركين',
+      targetAudience: 'all' as NotificationTargetAudience,
+      title: '🎡 لفة مجانية بانتظارك اليوم في چرخ الحظ!',
+      body: 'دوّر العجلة الآن واربح رصيد أرباح كاش أو كوبونات خصم وتوصيل مجاني فوري 🎁',
+      url: '/',
+    },
+    {
+      id: 'tmpl-vip',
+      icon: '👑',
+      name: 'عروض كبار التجار VIP',
+      desc: 'تجار الجملة والموزعين',
+      targetAudience: 'wholesale' as NotificationTargetAudience,
+      title: '👑 كبار تجار الجملة: عروض أسعار خاصة وتوريد كراتين ضخم',
+      body: 'تم تحديث قائمة أسعار VIP وتوفير كميات جديدة بأفضل هوامش ربح لمحلك ومستودعك.',
+      url: '/products',
+    },
+  ];
+
+  const handleApplyTemplate = (tmpl: typeof campaignTemplates[0]) => {
+    setTitle(tmpl.title);
+    setBody(tmpl.body);
+    setTargetAudience(tmpl.targetAudience);
+    setUrl(tmpl.url);
+    toast.showToast(`تم اختيار نموذج (${tmpl.name}) بنجاح ✨`, 'success');
   };
 
   return (
@@ -240,14 +314,15 @@ export default function AdminNotificationsPage() {
         <div>
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-black">
-              <Bell className="w-5 h-5" />
+              🔔
             </div>
-            <h1 className="text-base sm:text-lg font-black tracking-tight">
-              📢 إرسال إشعارات وتنبيهات مباشرة لهواتف الزبائن والتجار
-            </h1>
+            <span className="bg-white/10 text-amber-300 font-bold px-3 py-1 rounded-full text-[10px] border border-white/10">
+              إشعارات المتجر وإعادة الاستهداف الذكي 🎯
+            </span>
           </div>
-          <p className="text-xs text-sky-100/80 mt-1 max-w-xl leading-relaxed">
-            يصل التنبيه بصوت واهتزاز إلى شاشات هواتف الزبائن وأجهزة الكمبيوتر مباشرة حتى عند قفل الشاشة أو إغلاق المتجر!
+          <h1 className="text-xl sm:text-2xl font-black mt-2">نظام الإشعارات اللحظية وحملات الاستهداف الذكية</h1>
+          <p className="text-slate-300 text-xs mt-1 max-w-xl">
+            أرسل إشعارات مخصصة بحسب سلوك الزبائن (المسجلين الجدد، الخاملين، كبار التجار، أصحاب الماركتات) لتنشيط المبيعات فوراً!
           </p>
         </div>
 
@@ -261,41 +336,107 @@ export default function AdminNotificationsPage() {
         </button>
       </div>
 
-      {/* Audience Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      {/* 8 Smart Audience Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         
-        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
           <span className="text-[10px] text-slate-400 font-bold block">👥 إجمالي الأجهزة المشتركة</span>
-          <div className="text-xl font-black text-slate-900 font-mono">
+          <div className="text-lg font-black text-slate-900 font-mono">
             {stats.totalSubscribers.toLocaleString('en-US')}
           </div>
           <span className="text-[10px] text-emerald-600 font-bold">جاهزون للاستقبال فوراً</span>
         </div>
 
-        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-1">
-          <span className="text-[10px] text-slate-400 font-bold block">👑 هواتف تجار الجملة</span>
-          <div className="text-xl font-black text-purple-700 font-mono">
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">👶 مسجلين بدون أي طلبية</span>
+          <div className="text-lg font-black text-amber-600 font-mono">
+            {stats.registeredNoOrdersCount.toLocaleString('en-US')}
+          </div>
+          <span className="text-[10px] text-amber-700 font-bold">فرصة أول طلبية 🎯</span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">💔 زبائن خاملين (14+ يوم)</span>
+          <div className="text-lg font-black text-rose-600 font-mono">
+            {stats.inactive30dCount.toLocaleString('en-US')}
+          </div>
+          <span className="text-[10px] text-rose-700 font-bold">بحاجة لتنشيط فوري</span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">📦 زبائن قليلين (1-2 طلب)</span>
+          <div className="text-lg font-black text-indigo-600 font-mono">
+            {stats.fewOrdersCount.toLocaleString('en-US')}
+          </div>
+          <span className="text-[10px] text-indigo-700 font-bold">فرصة تكرار الشراء</span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">🌟 الزبائن النشطين VIP</span>
+          <div className="text-lg font-black text-emerald-700 font-mono">
+            {stats.activeVipCount.toLocaleString('en-US')}
+          </div>
+          <span className="text-[10px] text-emerald-600 font-bold">الأكثر ولاءً وطلباً</span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">👑 كبار تجار الجملة</span>
+          <div className="text-lg font-black text-purple-700 font-mono">
             {stats.wholesaleCount.toLocaleString('en-US')}
           </div>
-          <span className="text-[10px] text-slate-400 font-bold">أصحاب الطلبيات الكبرى</span>
+          <span className="text-[10px] text-purple-600 font-bold">أصحاب طلبيات الكرتون</span>
         </div>
 
-        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-1">
-          <span className="text-[10px] text-slate-400 font-bold block">🏪 هواتف أصحاب الماركتات</span>
-          <div className="text-xl font-black text-brand-blue font-mono">
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold block">🏪 أصحاب الماركتات</span>
+          <div className="text-lg font-black text-brand-blue font-mono">
             {stats.marketCount.toLocaleString('en-US')}
           </div>
-          <span className="text-[10px] text-slate-400 font-bold">المحلات والمتاجر التجارية</span>
+          <span className="text-[10px] text-blue-600 font-bold">المحلات والمتاجر</span>
         </div>
 
-        <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-xs space-y-1">
+        <div className="bg-white p-3.5 rounded-3xl border border-slate-100 shadow-xs space-y-1">
           <span className="text-[10px] text-slate-400 font-bold block">🛍️ زبائن المفرد والزوار</span>
-          <div className="text-xl font-black text-emerald-600 font-mono">
+          <div className="text-lg font-black text-slate-800 font-mono">
             {stats.retailCount.toLocaleString('en-US')}
           </div>
-          <span className="text-[10px] text-slate-400 font-bold">العملاء والطلبات المنزلية</span>
+          <span className="text-[10px] text-slate-500 font-bold">العملاء والطلبات المنزلية</span>
         </div>
 
+      </div>
+
+      {/* Quick Marketing Campaign Templates Bar */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-300/80 p-4 rounded-3xl space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="font-black text-amber-950 text-xs flex items-center gap-1.5">
+            <span>⚡ نماذج حملات تسويقية جاهزة ومجربة (اضغط لتعبئة الإشعار فوراً):</span>
+          </span>
+          <span className="text-[10px] text-amber-800 font-bold">توفير الوقت وزيادة التفاعل 🚀</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          {campaignTemplates.map((tmpl) => (
+            <button
+              key={tmpl.id}
+              type="button"
+              onClick={() => handleApplyTemplate(tmpl)}
+              className="bg-white hover:bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl text-right transition shadow-2xs hover:shadow-xs group cursor-pointer space-y-1"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-base">{tmpl.icon}</span>
+                <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md">
+                  اختر القالب ✍️
+                </span>
+              </div>
+              <span className="font-black text-slate-900 text-[11px] block line-clamp-1 group-hover:text-amber-800">
+                {tmpl.name}
+              </span>
+              <span className="text-[9px] text-slate-500 font-medium block line-clamp-1">
+                {tmpl.desc}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -314,15 +455,15 @@ export default function AdminNotificationsPage() {
 
           <form onSubmit={handleSendNotification} className="space-y-4">
             
-            {/* Target Audience Selector */}
+            {/* Target Audience Selector (8 Smart Segments) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-800 block">الفئة المستهدفة للإشعار *:</label>
+              <label className="text-xs font-bold text-slate-800 block">الفئة والشريحة المستهدفة للإشعار *:</label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 
                 <button
                   type="button"
                   onClick={() => setTargetAudience('all')}
-                  className={`py-2 px-3 rounded-2xl font-black text-xs transition border cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
                     targetAudience === 'all'
                       ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -333,8 +474,56 @@ export default function AdminNotificationsPage() {
 
                 <button
                   type="button"
+                  onClick={() => setTargetAudience('registered_no_orders')}
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
+                    targetAudience === 'registered_no_orders'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  👶 مسجلين جدد ({stats.registeredNoOrdersCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetAudience('inactive_30d')}
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
+                    targetAudience === 'inactive_30d'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  💔 خاملين 14+ يوم ({stats.inactive30dCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetAudience('few_orders')}
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
+                    targetAudience === 'few_orders'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  📦 قليلي الطلبات ({stats.fewOrdersCount})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetAudience('active_vip')}
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
+                    targetAudience === 'active_vip'
+                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  🌟 النشطين VIP ({stats.activeVipCount})
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setTargetAudience('wholesale')}
-                  className={`py-2 px-3 rounded-2xl font-black text-xs transition border cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
                     targetAudience === 'wholesale'
                       ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -346,7 +535,7 @@ export default function AdminNotificationsPage() {
                 <button
                   type="button"
                   onClick={() => setTargetAudience('market')}
-                  className={`py-2 px-3 rounded-2xl font-black text-xs transition border cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
                     targetAudience === 'market'
                       ? 'bg-brand-blue text-white border-brand-blue shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -358,7 +547,7 @@ export default function AdminNotificationsPage() {
                 <button
                   type="button"
                   onClick={() => setTargetAudience('retail')}
-                  className={`py-2 px-3 rounded-2xl font-black text-xs transition border cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-2xl font-black text-xs transition border cursor-pointer text-center ${
                     targetAudience === 'retail'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'

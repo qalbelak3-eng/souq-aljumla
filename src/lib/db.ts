@@ -37,6 +37,7 @@ import {
   CustomerComplaint,
   PushSubscriptionRecord,
   PushNotificationLog,
+  NotificationTargetAudience,
   DriverRating
 } from '@/types';
 import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners } from '@/data/initialData';
@@ -3318,27 +3319,75 @@ export function savePushSubscription(sub: Omit<PushSubscriptionRecord, 'id' | 'c
   return newRecord;
 }
 
-export function getPushSubscriptions(targetAudience: 'all' | 'wholesale' | 'market' | 'retail' = 'all'): PushSubscriptionRecord[] {
+export function getPushSubscriptions(targetAudience: NotificationTargetAudience = 'all'): PushSubscriptionRecord[] {
   const db = ensureDbExists();
   const list = db.pushSubscriptions || [];
+  const orders = db.orders || [];
+  const users = db.users || [];
+  const nowTime = Date.now();
+  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
 
   if (targetAudience === 'all') return list;
 
   return list.filter((sub) => {
-    if (!sub.accountType || sub.accountType === 'visitor') {
-      return targetAudience === 'retail';
-    }
+    // 1. كبار تجار الجملة VIP
     if (targetAudience === 'wholesale') {
       return sub.accountType === 'wholesale' || sub.accountType === 'merchant';
     }
+
+    // 2. أصحاب الماركتات والمحلات
     if (targetAudience === 'market') {
       return sub.accountType === 'market';
     }
+
+    // 3. زبائن المفرد فقط
     if (targetAudience === 'retail') {
-      return sub.accountType === 'individual' || sub.accountType === ('retail' as any);
+      return sub.accountType === 'individual' || sub.accountType === ('retail' as any) || !sub.accountType || sub.accountType === 'visitor';
     }
+
+    // طلبات الزبون
+    const userOrders = orders.filter(
+      (o) => ((o as any).userId && sub.userId && (o as any).userId === sub.userId) || (sub.userPhone && o.customer?.phone === sub.userPhone)
+    );
+
+    // 4. مسجلين جدد بدون أي طلبية (0 طلبات)
+    if (targetAudience === 'registered_no_orders') {
+      const isRegistered = Boolean(sub.userId || (sub.userPhone && users.some(u => u.phone === sub.userPhone)));
+      return isRegistered && userOrders.length === 0;
+    }
+
+    // 5. زبائن خاملين (انقطعوا عن الطلب منذ أكثر من 14 يوماً)
+    if (targetAudience === 'inactive_30d') {
+      if (userOrders.length === 0) return false;
+      const latestOrderTime = Math.max(...userOrders.map(o => new Date(o.createdAt).getTime()));
+      return (nowTime - latestOrderTime) >= fourteenDaysMs;
+    }
+
+    // 6. زبائن قليلين الطلبات (طلبوا 1 أو 2 مرات فقط)
+    if (targetAudience === 'few_orders') {
+      return userOrders.length === 1 || userOrders.length === 2;
+    }
+
+    // 7. الزبائن النشطين والمميزين VIP (3 طلبات فما فوق أو تاجر معتمد)
+    if (targetAudience === 'active_vip') {
+      return userOrders.length >= 3 || sub.accountType === 'wholesale' || sub.accountType === 'merchant';
+    }
+
     return true;
   });
+}
+
+export function getPushAudienceStats() {
+  return {
+    totalSubscribers: getPushSubscriptions('all').length,
+    wholesaleCount: getPushSubscriptions('wholesale').length,
+    marketCount: getPushSubscriptions('market').length,
+    retailCount: getPushSubscriptions('retail').length,
+    registeredNoOrdersCount: getPushSubscriptions('registered_no_orders').length,
+    inactive30dCount: getPushSubscriptions('inactive_30d').length,
+    fewOrdersCount: getPushSubscriptions('few_orders').length,
+    activeVipCount: getPushSubscriptions('active_vip').length,
+  };
 }
 
 export function deletePushSubscription(endpoint: string): boolean {

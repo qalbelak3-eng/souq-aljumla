@@ -1,5 +1,5 @@
 import webpush from 'web-push';
-import { PushSubscriptionRecord, PushNotificationLog } from '@/types';
+import { PushSubscriptionRecord, PushNotificationLog, NotificationTargetAudience } from '@/types';
 import { getPushSubscriptions, deletePushSubscription, recordPushNotificationLog } from '@/lib/db';
 
 export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BCemmhMkVO3oWHVRJkLIsaTBbBq6yV_be5pZQR7PREU-nbbYzIcMExgpYlkq5uJREvytFXHCMtYaI--BKuXDG2E';
@@ -19,7 +19,7 @@ export interface SendPushPayload {
   icon?: string;
   badge?: string;
   url?: string;
-  targetAudience?: 'all' | 'wholesale' | 'market' | 'retail';
+  targetAudience?: NotificationTargetAudience;
   sentBy?: string;
   expiryHours?: number; // مدة الصلاحية بالساعات (24 ساعة، 48 ساعة، أو 0 = دائم)
   expiresAt?: string;
@@ -46,11 +46,15 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
 }> {
   const safeUrl = sanitizeCustomerUrl(payload.url);
   const audience = payload.targetAudience || 'all';
-  const audienceLabels: Record<string, string> = {
-    all: 'الجميع (كافة الزبائن والتجار والماركتات)',
-    wholesale: 'تجار الجملة والموزعين فقط 👑',
+  const audienceLabels: Record<NotificationTargetAudience, string> = {
+    all: 'الجميع (كافة الزبائن والتجار والماركتات) 🌍',
+    wholesale: 'كبار تجار الجملة والموزعين فقط 👑',
     market: 'أصحاب الماركتات والمحلات فقط 🏪',
     retail: 'زبائن المفرد فقط 🛍️',
+    registered_no_orders: 'مسجلين جدد بدون أي طلبية 👶',
+    inactive_30d: 'زبائن خاملين (انقطعوا عن الطلب) 💔',
+    few_orders: 'زبائن قليلين الطلبات (طلبوا 1-2 مرة) 📦',
+    active_vip: 'الزبائن النشطين والمميزين VIP 🌟',
   };
 
   const subscriptions = getPushSubscriptions(audience);
