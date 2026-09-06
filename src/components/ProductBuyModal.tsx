@@ -229,7 +229,7 @@ export default function ProductBuyModal({
           <div className="bg-emerald-50 border border-emerald-300/90 rounded-2xl py-2 px-3 text-center flex items-center justify-center gap-1.5 text-[11px] font-black text-emerald-800 shadow-2xs animate-fadeIn">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0 animate-pulse" />
             <span>
-              🎁 احصل على خصم هدية <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong> {saleType === 'wholesale' ? `(${cashbackPerPiece.toLocaleString()} د.ع × ${piecesCount} قطعة)` : `(${cashbackPerPiece.toLocaleString()} د.ع للقطعة)`} في رصيد أرباحك!
+              🎁 احصل على خصم هدية <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong>{piecesCount > 1 ? ` (${cashbackPerPiece.toLocaleString()} د.ع × ${piecesCount} قطعة)` : ''} في رصيد أرباحك!
             </span>
           </div>
         )}
