@@ -106,46 +106,18 @@ export const initialSettings: StoreSettings = {
 };
 
 export const initialCategories: Category[] = [
-  {
-    id: "cat-chips-snacks",
-    name: "سناك وشيبس ومقرمشات",
-    slug: "chips-snacks",
-    image: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800&auto=format&fit=crop",
-    count: 8,
-    description: "شيبس مقرمش بنكهات مشكلة، سناكات ذرة ومقرمشات بالكرتون والمفرد",
-  },
-  {
-    id: "cat-croissant-swissroll",
-    name: "كرواسون وسويس رول وكيك",
-    slug: "croissant-swissroll",
-    image: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?q=80&w=800&auto=format&fit=crop",
-    count: 6,
-    description: "كرواسون شوكولاتة وجبن، سويس رول فاخر فراولة وشوكولاتة، كيك وكوكيز",
-  },
-  {
-    id: "cat-energy-drinks",
-    name: "مشروبات طاقة وعصائر",
-    slug: "energy-drinks-juices",
-    image: "https://images.unsplash.com/photo-1622543925917-763c34d1a86e?q=80&w=800&auto=format&fit=crop",
-    count: 8,
-    description: "مشروبات طاقة أصلية، عصائر طبيعية، ومشروبات باردة كراتين وعلب",
-  },
-  {
-    id: "cat-tomato-paste",
-    name: "معجون طماطة وصلصات",
-    slug: "tomato-paste-sauces",
-    image: "https://images.unsplash.com/photo-1592417817098-8f3d6eb22504?q=80&w=800&auto=format&fit=crop",
-    count: 6,
-    description: "معجون طماطة مركز، كتشب، صلصات وشطة حارة بالكرتون والشدات",
-  },
-  {
-    id: "cat-biscuits-sweets",
-    name: "بسكويت وحلويات وويفر",
-    slug: "biscuits-sweets",
-    image: "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?q=80&w=800&auto=format&fit=crop",
-    count: 6,
-    description: "بسكويت ويفر محشو، شوكولاتة فاخرة، وبسكويت شاي بالكرتون",
-  },
+  { id: "cat-1787837463364", name: "غذائية", slug: "غذائية", image: "", icon: "basket", color: "#16a34a", description: "", count: 0 },
+  { id: "cat-1787837472683", name: "سناكات", slug: "سناكات", image: "", icon: "popcorn", color: "#f97316", description: "", count: 0 },
+  { id: "cat-1787837479939", name: "لحوم", slug: "لحوم", image: "", icon: "beef", color: "#e11d48", description: "", count: 0 },
+  { id: "cat-1787837485036", name: "دجاج", slug: "دجاج", image: "", icon: "drumstick", color: "#0284c7", description: "", count: 0 },
+  { id: "cat-1787837503255", name: "ألبان", slug: "ألبان", image: "", icon: "milk", color: "#2563eb", description: "", count: 0 },
+  { id: "cat-1787837512478", name: "مشروبات", slug: "مشروبات", image: "", icon: "soda", color: "#06b6d4", description: "", count: 0 },
+  { id: "cat-1787837520622", name: "بقوليات", slug: "بقوليات", image: "", icon: "wheat", color: "#ca8a04", description: "", count: 0 },
+  { id: "cat-1787837529965", name: "منظفات", slug: "منظفات", image: "", icon: "sparkles", color: "#7c3aed", description: "", count: 0 },
+  { id: "cat-1787837536321", name: "حلويات", slug: "حلويات", image: "", icon: "cookie", color: "#b45309", description: "", count: 0 },
+  { id: "cat-1787837544234", name: "بيض", slug: "بيض", image: "", icon: "egg", color: "#d97706", description: "", count: 0 },
+  { id: "cat-1787837575251", name: "مخبوزات", slug: "مخبوزات", image: "", icon: "cake", color: "#ea580c", description: "", count: 0 },
+  { id: "cat-1787837599014", name: "منوعات", slug: "منوعات", image: "", icon: "package", color: "#4f46e5", description: "منوعات", count: 0 }
 ];
 
 export const initialProducts: Product[] = [
