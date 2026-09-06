@@ -9,7 +9,31 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const orders = getOrders();
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const phone = searchParams.get('phone');
+    const email = searchParams.get('email');
+    const limit = searchParams.get('limit');
+
+    let orders = getOrders();
+
+    if (userId || phone || email) {
+      const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
+      orders = orders.filter((o) => {
+        if (userId && o.customer?.userId === userId) return true;
+        if (cleanPhone && o.customer?.phone && o.customer.phone.replace(/\D/g, '') === cleanPhone) return true;
+        if (email && o.customer?.email && o.customer.email.toLowerCase() === email.toLowerCase()) return true;
+        return false;
+      });
+    }
+
+    if (limit) {
+      const numLimit = Number(limit);
+      if (!isNaN(numLimit) && numLimit > 0) {
+        orders = orders.slice(0, numLimit);
+      }
+    }
+
     return NextResponse.json({ success: true, orders });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

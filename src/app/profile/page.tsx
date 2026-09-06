@@ -198,8 +198,28 @@ function ProfileContent() {
 
   useEffect(() => {
     if (user) {
+      // 1. Instant Cache Hydration: Load previously saved orders immediately (0ms perceived delay)
+      if (typeof window !== 'undefined' && user.id) {
+        const cached = localStorage.getItem(`souq_user_orders_${user.id}`);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setOrders(parsed);
+              setIsFetchingOrders(false);
+            }
+          } catch (e) {}
+        }
+      }
+
+      // 2. Fetch fresh user-targeted orders from server
+      const params = new URLSearchParams();
+      if (user.id) params.set('userId', user.id);
+      if (user.phone) params.set('phone', user.phone);
+      if (user.email) params.set('email', user.email);
+
       Promise.all([
-        fetch('/api/orders').then((res) => res.json()),
+        fetch(`/api/orders?${params.toString()}`).then((res) => res.json()),
         fetch('/api/settings').then((res) => res.json()).catch(() => ({ success: false })),
       ])
         .then(([ordersData, settingsData]) => {
@@ -207,18 +227,19 @@ function ProfileContent() {
             const rate = getUserCashbackRate(user, settingsData.settings);
             setCashbackRate(rate);
           }
-          if (ordersData?.success && ordersData?.orders) {
-            const userOrders = ordersData.orders.filter(
-              (o: Order) =>
-                (o.customer.userId && o.customer.userId === user.id) ||
-                (o.customer.email && user.email && o.customer.email.toLowerCase() === user.email.toLowerCase()) ||
-                (o.customer.phone && o.customer.phone === user.phone)
-            );
-            setOrders(userOrders);
+          if (ordersData?.success && Array.isArray(ordersData?.orders)) {
+            setOrders(ordersData.orders);
+            if (typeof window !== 'undefined' && user.id) {
+              localStorage.setItem(`souq_user_orders_${user.id}`, JSON.stringify(ordersData.orders));
+            }
           }
-          setIsFetchingOrders(false);
         })
-        .catch(() => setIsFetchingOrders(false));
+        .catch((err) => {
+          console.error('Error fetching user orders:', err);
+        })
+        .finally(() => {
+          setIsFetchingOrders(false);
+        });
     }
   }, [user]);
 
@@ -609,9 +630,16 @@ function ProfileContent() {
           </div>
 
           {isFetchingOrders ? (
-            <div className="bg-white rounded-3xl p-10 text-center border border-slate-100">
-              <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-xs text-slate-500">جاري تحميل الطلبات...</p>
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 animate-pulse space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="h-4 bg-slate-200 rounded-md w-24" />
+                    <div className="h-4 bg-slate-200 rounded-md w-20" />
+                  </div>
+                  <div className="h-10 bg-slate-100 rounded-2xl w-full" />
+                </div>
+              ))}
             </div>
           ) : orders.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs space-y-3">
