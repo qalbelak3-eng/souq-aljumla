@@ -44,25 +44,7 @@ export default function PushNotificationManager() {
 
   return (
     <>
-      {/* 1. FLOATING NOTIFICATION BELL BUTTON */}
-      <button
-        type="button"
-        onClick={openDrawer}
-        className="fixed bottom-24 left-4 z-40 w-12 h-12 rounded-full bg-slate-900/90 hover:bg-slate-950 text-white flex items-center justify-center shadow-2xl border-2 border-white/80 backdrop-blur-md transition-transform hover:scale-105 active:scale-95 cursor-pointer group"
-        aria-label="مركز التنبيهات والإشعارات"
-        title="مركز الإشعارات والتنبيهات 🔔"
-      >
-        <Bell className="w-5 h-5 text-amber-400 group-hover:animate-bounce" />
-        
-        {/* Unread Counter Badge */}
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-600 text-white text-[10px] font-black rounded-full px-1.5 flex items-center justify-center border-2 border-white animate-pulse shadow-md">
-            {unreadCount}
-          </span>
-        )}
-      </button>
-
-      {/* 2. PROMPT BANNER FOR NEW VISITORS */}
+      {/* 1. PROMPT BANNER FOR NEW VISITORS */}
       {showWelcomePrompt && permission === 'default' && (
         <aside
           aria-label="تنبيهات المتجر"
