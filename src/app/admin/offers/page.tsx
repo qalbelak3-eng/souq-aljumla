@@ -1148,28 +1148,46 @@ export default function AdminOffersPage() {
             {/* Quick Settings Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
               {/* 1. Toggle Wheel Status */}
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
-                <div>
-                  <span className="font-black text-xs text-slate-900 block">ظهور العجلة في المتجر:</span>
-                  <span className="text-[10px] text-slate-500">إظهار الزر العائم للزبائن</span>
+              <div
+                onClick={() => {
+                  const updated = { ...luckyWheelSettings, isEnabled: !luckyWheelSettings.isEnabled };
+                  setLuckyWheelSettings(updated);
+                  handleSaveLuckyWheelSettings(updated);
+                }}
+                className={`border-2 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all duration-200 select-none ${
+                  luckyWheelSettings.isEnabled
+                    ? 'bg-emerald-50/90 border-emerald-400 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shadow-2xs shrink-0 ${
+                      luckyWheelSettings.isEnabled
+                        ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                        : 'bg-slate-200 text-slate-500'
+                    }`}
+                  >
+                    <Power className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-black text-xs text-slate-900 block">ظهور العجلة في المتجر:</span>
+                    <span className={`text-[10px] font-bold ${luckyWheelSettings.isEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {luckyWheelSettings.isEnabled ? 'مفعلة وتظهر للزبائن الآن' : 'معطلة ومخفية عن الزبائن'}
+                    </span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = { ...luckyWheelSettings, isEnabled: !luckyWheelSettings.isEnabled };
-                    setLuckyWheelSettings(updated);
-                    handleSaveLuckyWheelSettings(updated);
-                  }}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    luckyWheelSettings.isEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+
+                <div
+                  className={`flex items-center gap-1.5 font-black text-xs px-3 py-1.5 rounded-xl border shadow-2xs transition-all ${
+                    luckyWheelSettings.isEnabled
+                      ? 'bg-emerald-600 text-white border-emerald-700'
+                      : 'bg-slate-200 text-slate-600 border-slate-300'
                   }`}
                 >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      luckyWheelSettings.isEnabled ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+                  <span className={`w-2 h-2 rounded-full ${luckyWheelSettings.isEnabled ? 'bg-white animate-pulse' : 'bg-slate-400'}`} />
+                  <span>{luckyWheelSettings.isEnabled ? 'تشغيل ✅' : 'إيقاف ⏸️'}</span>
+                </div>
               </div>
 
               {/* 2. Cooldown Duration */}
