@@ -316,18 +316,14 @@ export default function OrderSuccessPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {isNotificationSupported() && (
+            {isNotificationSupported() && notificationPermission !== 'granted' && (
               <button
                 type="button"
                 onClick={handleEnableNotifications}
-                className={`border font-black text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs transition ${
-                  notificationPermission === 'granted'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-600 animate-bounce'
-                }`}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-600 font-black text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs transition animate-bounce"
               >
-                <Bell className={`w-3.5 h-3.5 ${notificationPermission === 'granted' ? 'text-emerald-700' : 'text-slate-950 animate-pulse'}`} />
-                <span>{notificationPermission === 'granted' ? 'الإشعارات مفعلة على هاتفك ✅' : 'تفعيل إشعارات الشاشة المقفلة 🔔'}</span>
+                <Bell className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+                <span>تفعيل إشعارات الشاشة المقفلة 🔔</span>
               </button>
             )}
 
