@@ -68,8 +68,8 @@ export default function MerchantStatsCard() {
   return (
     <div className="space-y-2.5 w-full select-none max-w-5xl mx-auto">
       
-      {/* 1. TOP CARD: رصيد أرباحك (#6dbd44) */}
-      <div className="relative overflow-hidden bg-[#6dbd44] text-white rounded-2xl md:rounded-3xl p-3 sm:p-4 md:py-3.5 md:px-6 shadow-sm flex items-center justify-between">
+      {/* 1. TOP CARD: رصيد أرباحك (أحمر #e53935) */}
+      <div className="relative overflow-hidden bg-[#e53935] text-white rounded-2xl md:rounded-3xl p-3 sm:p-4 md:py-3.5 md:px-6 shadow-sm flex items-center justify-between">
         
         {/* Left Side: Pill Button "عرض حسابي" */}
         <Link
