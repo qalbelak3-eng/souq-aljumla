@@ -6,6 +6,8 @@ import { getProductPriceForUser } from '@/lib/pricing';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 
+import { getEffectiveDeliveryFee } from '@/lib/delivery';
+
 interface CartContextType {
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number, saleType?: SaleType) => void;
@@ -154,7 +156,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Dynamic Free Delivery & Minimum Order Calculation
   const isFreeDelivery = subtotal >= storeSettings.freeDeliveryThreshold && subtotal > 0;
-  const deliveryFee = isFreeDelivery || subtotal === 0 ? 0 : storeSettings.deliveryFee;
+  const deliveryFee = getEffectiveDeliveryFee(subtotal, storeSettings, user);
   const amountNeededForFreeDelivery = Math.max(0, storeSettings.freeDeliveryThreshold - subtotal);
   const minOrderAmount = storeSettings.minOrderAmount || 10000;
   const isBelowMinOrder = subtotal > 0 && subtotal < minOrderAmount;
