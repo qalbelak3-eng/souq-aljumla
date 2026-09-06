@@ -6,6 +6,7 @@ import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, MessageCircle, Truck, 
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import SuggestedCartProducts from '@/components/SuggestedCartProducts';
 
 export default function CartDrawer() {
   const toast = useToast();
@@ -207,6 +208,9 @@ export default function CartDrawer() {
                 </div>
               ))
             )}
+
+            {/* Suggested / Add to Order Strip */}
+            {cart.length > 0 && <SuggestedCartProducts variant="drawer" />}
           </div>
 
           {/* Footer Summary */}

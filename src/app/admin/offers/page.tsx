@@ -32,7 +32,7 @@ import {
   Settings2,
   Sliders
 } from 'lucide-react';
-import { Product, ProductOffer, Coupon, LuckyWheelPrize, LuckyWheelSettings } from '@/types';
+import { Product, ProductOffer, Coupon, LuckyWheelPrize, LuckyWheelSettings, StoreSettings } from '@/types';
 import { initialLuckyWheelSettings } from '@/data/initialData';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
@@ -41,8 +41,8 @@ export default function AdminOffersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
-  // Tab State: Product Flash Offers VS Promotional Coupons VS Lucky Wheel
-  const [activeTab, setActiveTab] = useState<'products' | 'coupons' | 'lucky_wheel'>('products');
+  // Tab State: Product Flash Offers VS Promotional Coupons VS Lucky Wheel VS Suggested Cart Upsells
+  const [activeTab, setActiveTab] = useState<'products' | 'coupons' | 'lucky_wheel' | 'suggested'>('products');
 
   const [offers, setOffers] = useState<ProductOffer[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -51,6 +51,15 @@ export default function AdminOffersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // Suggested Cart Products State (أضف لطلبك)
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [enableSuggested, setEnableSuggested] = useState(true);
+  const [suggestedTitle, setSuggestedTitle] = useState('أضف إلى طلبك ✨');
+  const [selectedSuggestedIds, setSelectedSuggestedIds] = useState<string[]>([]);
+  const [suggestedSearch, setSuggestedSearch] = useState('');
+  const [suggestedCategoryFilter, setSuggestedCategoryFilter] = useState<string>('all');
+  const [isSavingSuggested, setIsSavingSuggested] = useState(false);
 
   // Offer Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,17 +110,24 @@ export default function AdminOffersPage() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [offersRes, productsRes, couponsRes, wheelRes] = await Promise.all([
+      const [offersRes, productsRes, couponsRes, wheelRes, settingsRes] = await Promise.all([
         fetch('/api/offers').then((r) => r.json()),
         fetch('/api/products').then((r) => r.json()),
         fetch('/api/coupons').then((r) => r.json()).catch(() => ({ success: false })),
         fetch('/api/lucky-wheel').then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/settings').then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
       if (offersRes.success) setOffers(offersRes.offers || []);
       if (productsRes.success) setProducts(productsRes.products || []);
       if (couponsRes.success) setCoupons(couponsRes.coupons || []);
       if (wheelRes.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);
+      if (settingsRes.success && settingsRes.settings) {
+        setStoreSettings(settingsRes.settings);
+        setEnableSuggested(settingsRes.settings.enableSuggestedProducts ?? true);
+        setSuggestedTitle(settingsRes.settings.suggestedProductsTitle || 'أضف إلى طلبك ✨');
+        setSelectedSuggestedIds(settingsRes.settings.suggestedProductIds || []);
+      }
     } catch (err) {
       console.error(err);
       toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
@@ -581,6 +597,39 @@ export default function AdminOffersPage() {
     }
   };
 
+  // --- Suggested Cart Products Handlers (أضف لطلبك) ---
+  const handleToggleSuggestedProduct = (productId: string) => {
+    setSelectedSuggestedIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
+
+  const handleSaveSuggestedProducts = async () => {
+    setIsSavingSuggested(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enableSuggestedProducts: enableSuggested,
+          suggestedProductsTitle: suggestedTitle.trim() || 'أضف إلى طلبك ✨',
+          suggestedProductIds: selectedSuggestedIds,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStoreSettings(data.settings);
+        toast.success('تم حفظ منتجات "أضف إلى طلبك" المقترحة بنجاح! 🛒✨');
+      } else {
+        toast.error(data.error || 'حدث خطأ أثناء حفظ الإعدادات');
+      }
+    } catch {
+      toast.error('تعذر الاتصال بالسيرفر لحفظ الإعدادات');
+    } finally {
+      setIsSavingSuggested(false);
+    }
+  };
+
   // Calculate savings on form
   const curOrig = Number(originalPrice) || 0;
   const curOff = Number(offerPrice) || 0;
@@ -595,15 +644,15 @@ export default function AdminOffersPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="bg-rose-500/30 text-rose-200 border border-rose-400/40 text-[10px] font-black px-2.5 py-0.5 rounded-full">
-              قسم إدارة التخفيضات والكوبونات 🔥
+              قسم إدارة التخفيضات والكوبونات والمقترحات 🔥
             </span>
           </div>
           <h1 className="text-base sm:text-xl font-black mt-1.5 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-300" />
-            <span>إدارة العروض وأكواد الخصم الترويجية</span>
+            <span>إدارة العروض وأكواد الخصم والمنتجات المقترحة</span>
           </h1>
           <p className="text-xs text-rose-200/90 font-medium mt-1">
-            أنشئ عروض أسعار موقوتة للأصناف، أو أصدر أكواد خصم (كوبونات) مخصصة للزبائن والمحلات وكبار التجار
+            أنشئ عروض أسعار موقوتة، أصدر أكواد خصم (كوبونات)، خصص عجلة الحظ، أو اختر المنتجات المقترحة "أضف لطلبك" في السلة
           </p>
         </div>
 
@@ -635,11 +684,21 @@ export default function AdminOffersPage() {
               <span>إضافة جائزة جديدة 🎡</span>
             </button>
           )}
+          {activeTab === 'suggested' && (
+            <button
+              onClick={handleSaveSuggestedProducts}
+              disabled={isSavingSuggested}
+              className="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" />
+              <span>{isSavingSuggested ? 'جاري الحفظ...' : 'حفظ منتجات السلة 💾'}</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main Navigation Tabs */}
-      <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-300/60 max-w-2xl flex-wrap sm:flex-nowrap">
+      <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-300/60 max-w-4xl flex-wrap sm:flex-nowrap">
         <button
           onClick={() => setActiveTab('products')}
           className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
@@ -674,6 +733,18 @@ export default function AdminOffersPage() {
         >
           <Gift className="w-4 h-4" />
           <span>چرخ الحظ والجوائز 🎡</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('suggested')}
+          className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            activeTab === 'suggested'
+              ? 'bg-white text-emerald-700 shadow-xs ring-2 ring-emerald-200'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>أضف لطلبك (مقترحات السلة) 🛒 ({selectedSuggestedIds.length})</span>
         </button>
       </div>
 
@@ -1348,6 +1419,309 @@ export default function AdminOffersPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 4: SUGGESTED UPSELL PRODUCTS (أضف لطلبك) */}
+      {/* ======================================================== */}
+      {activeTab === 'suggested' && (
+        <div className="space-y-6">
+          {/* Main Overview & Explanation Card */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-emerald-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center font-black text-2xl shadow-xs">
+                  🛒
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm sm:text-base font-black text-slate-900">
+                      إدارة شريط (أضف إلى طلبك) المقترح في السلة
+                    </h2>
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                      زيادة المبيعات والطلب 🚀
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    اختر المنتجات التي تريد عرضها بشكل مميز أسفل السلة وفي نافذة الشراء السريع لتشجيع الزبائن على إضافتها بنقرة واحدة
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Toggle & Save Button */}
+              <div className="flex items-center gap-3 self-end sm:self-center">
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-2xl border border-slate-200">
+                  <span className="text-xs font-black text-slate-700">تفعيل الشريط:</span>
+                  <button
+                    type="button"
+                    onClick={() => setEnableSuggested(!enableSuggested)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden cursor-pointer ${
+                      enableSuggested ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        enableSuggested ? 'translate-x-1' : 'translate-x-6'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-[11px] font-black ${enableSuggested ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {enableSuggested ? 'مفعل ✓' : 'معطل ✕'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSuggestedProducts}
+                  disabled={isSavingSuggested}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-5 rounded-2xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{isSavingSuggested ? 'جاري الحفظ...' : 'حفظ التغييرات 💾'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Customization Settings Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
+              <div className="space-y-1">
+                <label className="font-black text-slate-800 text-xs flex items-center gap-1.5">
+                  <span>عنوان القسم كما يظهر للزبون:</span>
+                  <span className="text-emerald-600 text-[10px]">(مثال: أضف إلى طلبك ✨ أو منتجات نوصي بها)</span>
+                </label>
+                <input
+                  type="text"
+                  value={suggestedTitle}
+                  onChange={(e) => setSuggestedTitle(e.target.value)}
+                  placeholder="أضف إلى طلبك ✨"
+                  className="w-full bg-white border border-emerald-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-emerald-600 shadow-2xs"
+                />
+              </div>
+
+              <div className="space-y-1 flex flex-col justify-center">
+                <span className="text-[11px] font-bold text-slate-600">
+                  💡 <strong className="text-slate-900">نصيحة تجارية لزيادة الأرباح:</strong>
+                </span>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  اختر منتجات عليها طلب مستمر، أو أصناف ذات مخزون وفير ترغب في تصريفها، أو ملحقات ومنتجات سريعة الإضافة بأسعار مناسبة.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Currently Selected Products (الأصناف المحددة حالياً) */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                  {selectedSuggestedIds.length}
+                </span>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">
+                    الأصناف المقترحة المختارة حالياً ({selectedSuggestedIds.length} صنف)
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold">
+                    هذه المنتجات ستظهر في السلة للشراء السريع بنقرة واحدة
+                  </p>
+                </div>
+              </div>
+
+              {selectedSuggestedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSuggestedIds([])}
+                  className="text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 font-bold text-[11px] py-1 px-3 rounded-xl transition cursor-pointer flex items-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>تفريغ القائمة</span>
+                </button>
+              )}
+            </div>
+
+            {selectedSuggestedIds.length === 0 ? (
+              <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                <Package className="w-8 h-8 text-slate-400 mx-auto" />
+                <h4 className="text-xs font-bold text-slate-700">لم تقم باختيار أي منتجات محددة بعد</h4>
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  اختر من قائمة المنتجات بالأسفل بالنقر على زر "+ إضافة للشريط"، أو سيعتمد المتجر تلقائياً على المنتجات المميزة.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {selectedSuggestedIds.map((id, index) => {
+                  const prod = products.find((p) => p.id === id);
+                  if (!prod) return null;
+                  return (
+                    <div
+                      key={id}
+                      className="bg-emerald-50/40 border border-emerald-200 rounded-2xl p-2.5 flex flex-col justify-between space-y-2 relative group hover:shadow-xs transition"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSuggestedProduct(id)}
+                        className="absolute top-1.5 left-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-xs cursor-pointer transition transform active:scale-90"
+                        title="إزالة من المقترحات"
+                      >
+                        ✕
+                      </button>
+
+                      <div className="space-y-1.5">
+                        <div className="relative aspect-square rounded-xl bg-white p-1 border border-emerald-100 flex items-center justify-center overflow-hidden">
+                          <img
+                            src={prod.images?.[0] || '/images/placeholder.png'}
+                            alt={prod.name}
+                            className="w-full h-full object-contain"
+                          />
+                          <span className="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[9px] font-mono px-1 rounded">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <h4 className="text-[11px] font-black text-slate-900 line-clamp-2 leading-snug">
+                          {prod.name}
+                        </h4>
+                        <span className="text-[9px] text-slate-500 font-bold block truncate">
+                          {prod.company || prod.category}
+                        </span>
+                      </div>
+
+                      <div className="pt-1.5 border-t border-emerald-100 flex items-center justify-between text-[10px]">
+                        <span className="font-mono font-black text-emerald-800">
+                          {prod.price.toLocaleString()} د.ع
+                        </span>
+                        <span className={`text-[9px] font-bold ${prod.stock > 0 ? 'text-slate-500' : 'text-red-500'}`}>
+                          المخزون: {prod.stock ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Product Catalog & Selector Table */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-xs sm:text-sm font-black text-slate-900">
+                  كتالوج المنتجات للاختيار والإضافة
+                </h3>
+                <p className="text-[10px] text-slate-500 font-bold">
+                  ابحث عن المنتجات واضغط على زر الإضافة لتضمينها في شريط المقترحات
+                </p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+                <div className="relative flex-1 sm:w-64">
+                  <input
+                    type="text"
+                    placeholder="ابحث بالاسم أو الشركة..."
+                    value={suggestedSearch}
+                    onChange={(e) => setSuggestedSearch(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-8 text-xs font-bold focus:bg-white focus:border-emerald-500"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
+                </div>
+
+                <select
+                  value={suggestedCategoryFilter}
+                  onChange={(e) => setSuggestedCategoryFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl py-2 px-2.5 text-xs font-bold text-slate-800 focus:bg-white"
+                >
+                  <option value="all">جميع الأقسام</option>
+                  {Array.from(new Set(products.map((p) => p.category).filter(Boolean))).map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Products Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[600px] overflow-y-auto p-1">
+              {products
+                .filter((p) => {
+                  const q = suggestedSearch.toLowerCase().trim();
+                  const matchesSearch =
+                    !q ||
+                    p.name.toLowerCase().includes(q) ||
+                    (p.company && p.company.toLowerCase().includes(q));
+                  const matchesCategory =
+                    suggestedCategoryFilter === 'all' || p.category === suggestedCategoryFilter;
+                  return matchesSearch && matchesCategory;
+                })
+                .map((prod) => {
+                  const isSelected = selectedSuggestedIds.includes(prod.id);
+                  return (
+                    <div
+                      key={prod.id}
+                      onClick={() => handleToggleSuggestedProduct(prod.id)}
+                      className={`p-3 rounded-2xl border transition flex items-center justify-between gap-2.5 cursor-pointer select-none ${
+                        isSelected
+                          ? 'bg-emerald-50/70 border-emerald-400 ring-2 ring-emerald-200 shadow-xs'
+                          : 'bg-white border-slate-200/80 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-12 h-12 rounded-xl bg-white border border-slate-100 p-1 shrink-0 flex items-center justify-center">
+                          <img
+                            src={prod.images?.[0] || '/images/placeholder.png'}
+                            alt={prod.name}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-black text-xs text-slate-900 truncate">
+                            {prod.name}
+                          </h4>
+                          <span className="text-[10px] text-slate-500 font-bold block truncate">
+                            {prod.company || prod.category}
+                          </span>
+                          <div className="flex items-center gap-2 mt-0.5 font-mono text-[10px]">
+                            <span className="font-black text-emerald-700">
+                              {prod.price.toLocaleString()} د.ع
+                            </span>
+                            <span className="text-slate-400">|</span>
+                            <span className={`font-bold ${prod.stock > 0 ? 'text-slate-600' : 'text-red-500'}`}>
+                              المخزون: {prod.stock ?? 0}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Select Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSuggestedProduct(prod.id);
+                        }}
+                        className={`py-1.5 px-3 rounded-xl font-black text-xs transition shrink-0 cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-emerald-600 hover:bg-red-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>مضاف</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>

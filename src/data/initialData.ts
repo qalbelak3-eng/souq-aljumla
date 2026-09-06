@@ -99,7 +99,10 @@ export const initialSettings: StoreSettings = {
     buttonText: "تصفح العروض والتخفيضات الآن 🚀",
     badge: "عرض خاص ومحدود ✦",
     showOncePerUser: true,
-  }
+  },
+  enableSuggestedProducts: true,
+  suggestedProductsTitle: "أضف إلى طلبك ✨",
+  suggestedProductIds: ["prod-snack-1", "prod-snack-3", "prod-snack-7", "prod-snack-8"],
 };
 
 export const initialCategories: Category[] = [

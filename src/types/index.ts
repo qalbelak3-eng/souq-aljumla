@@ -392,6 +392,11 @@ export interface StoreSettings {
   // Popup Advertisement Modal (الإعلانات المنبثقة الترويجية المتتابعة)
   popupAd?: PopupAdSettings;
   popupAds?: PopupAdSettings[]; // قائمة بجميع البوسترات والإعلانات المنبثقة المتتابعة
+
+  // Upsell & Suggested Products in Cart (منتجات مقترحة في السلة وأسفل الطلب)
+  enableSuggestedProducts?: boolean; // تفعيل / إيقاف قسم أضف لطلبك
+  suggestedProductsTitle?: string; // عنوان القسم (مثال: "أضف إلى طلبك ✨")
+  suggestedProductIds?: string[]; // معرفات الأصناف المختارة من قبل الإدارة
 }
 
 export interface PopupAdSettings {

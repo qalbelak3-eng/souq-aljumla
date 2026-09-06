@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
+import SuggestedCartProducts from '@/components/SuggestedCartProducts';
 
 export default function CartPage() {
   const {
@@ -178,6 +179,9 @@ export default function CartPage() {
               </div>
             </div>
           ))}
+
+          {/* Suggested / Add to Order Strip */}
+          <SuggestedCartProducts variant="cart" />
         </div>
 
         {/* Order Summary Column */}
