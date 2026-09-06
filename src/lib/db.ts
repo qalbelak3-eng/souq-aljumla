@@ -1131,6 +1131,78 @@ export function validateCoupon(code: string, subtotal: number, userAccountType?:
   return { valid: true, coupon: c, discount, message: `تم تطبيق خصم ${discount.toLocaleString()} د.ع بنجاح!` };
 }
 
+export function getCoupons(): Coupon[] {
+  const db = ensureDbExists();
+  if (!db.coupons || db.coupons.length === 0) {
+    db.coupons = [...initialCoupons];
+    saveDb(db);
+  }
+  return db.coupons;
+}
+
+export function createCoupon(data: Partial<Coupon> & { code: string; discountType: 'percentage' | 'fixed'; discountValue: number }): Coupon {
+  const db = ensureDbExists();
+  if (!db.coupons) db.coupons = [...initialCoupons];
+  
+  const newCoupon: Coupon = {
+    id: `cpn-${Date.now()}`,
+    code: data.code.trim().toUpperCase(),
+    discountType: data.discountType,
+    discountValue: Number(data.discountValue),
+    minOrderAmount: data.minOrderAmount ? Number(data.minOrderAmount) : undefined,
+    targetAudience: data.targetAudience || 'all',
+    description: data.description?.trim() || '',
+    isActive: data.isActive ?? true,
+    expiresAt: data.expiresAt || undefined,
+    usageLimit: data.usageLimit ? Number(data.usageLimit) : undefined,
+    usageCount: 0,
+  };
+
+  // Check if code already exists
+  const existingIdx = db.coupons.findIndex(c => c.code.toUpperCase() === newCoupon.code);
+  if (existingIdx !== -1) {
+    db.coupons[existingIdx] = { ...db.coupons[existingIdx], ...newCoupon };
+  } else {
+    db.coupons.unshift(newCoupon);
+  }
+
+  saveDb(db);
+  return newCoupon;
+}
+
+export function updateCoupon(codeOrId: string, updates: Partial<Coupon>): Coupon | null {
+  const db = ensureDbExists();
+  if (!db.coupons) db.coupons = [...initialCoupons];
+
+  const index = db.coupons.findIndex(c => c.id === codeOrId || c.code.toUpperCase() === codeOrId.toUpperCase());
+  if (index === -1) return null;
+
+  db.coupons[index] = {
+    ...db.coupons[index],
+    ...updates,
+    code: updates.code ? updates.code.trim().toUpperCase() : db.coupons[index].code,
+    discountValue: updates.discountValue !== undefined ? Number(updates.discountValue) : db.coupons[index].discountValue,
+    minOrderAmount: updates.minOrderAmount !== undefined ? (updates.minOrderAmount ? Number(updates.minOrderAmount) : undefined) : db.coupons[index].minOrderAmount,
+  };
+
+  saveDb(db);
+  return db.coupons[index];
+}
+
+export function deleteCoupon(codeOrId: string): boolean {
+  const db = ensureDbExists();
+  if (!db.coupons) return false;
+
+  const initialLen = db.coupons.length;
+  db.coupons = db.coupons.filter(c => c.id !== codeOrId && c.code.toUpperCase() !== codeOrId.toUpperCase());
+  
+  if (db.coupons.length !== initialLen) {
+    saveDb(db);
+    return true;
+  }
+  return false;
+}
+
 // Banners
 export function getBanners(onlyActive = true, position?: string): Banner[] {
   const db = ensureDbExists();

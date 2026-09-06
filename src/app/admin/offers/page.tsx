@@ -18,26 +18,39 @@ import {
   Flame,
   ArrowRight,
   ExternalLink,
-  Power
+  Power,
+  Ticket,
+  Tag,
+  Copy,
+  Check,
+  Users,
+  Store,
+  Crown
 } from 'lucide-react';
-import { Product, ProductOffer } from '@/types';
+import { Product, ProductOffer, Coupon } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 
 export default function AdminOffersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
+
+  // Tab State: Product Flash Offers VS Promotional Coupons
+  const [activeTab, setActiveTab] = useState<'products' | 'coupons'>('products');
+
   const [offers, setOffers] = useState<ProductOffer[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired'>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  // Modal State
+  // Offer Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<ProductOffer | null>(null);
 
-  // Form Fields
+  // Offer Form Fields
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productSearchText, setProductSearchText] = useState('');
@@ -50,19 +63,35 @@ export default function AdminOffersPage() {
   const [endDate, setEndDate] = useState('');
   const [isActive, setIsActive] = useState(true);
 
+  // Coupon Modal State
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+
+  // Coupon Form Fields
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscountType, setCouponDiscountType] = useState<'percentage' | 'fixed'>('fixed');
+  const [couponDiscountValue, setCouponDiscountValue] = useState<number | ''>('');
+  const [couponMinOrderAmount, setCouponMinOrderAmount] = useState<number | ''>('');
+  const [couponTargetAudience, setCouponTargetAudience] = useState<'all' | 'individual' | 'market' | 'wholesale'>('all');
+  const [couponDescription, setCouponDescription] = useState('');
+  const [couponExpiresAt, setCouponExpiresAt] = useState('');
+  const [couponIsActive, setCouponIsActive] = useState(true);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [offersRes, productsRes] = await Promise.all([
+      const [offersRes, productsRes, couponsRes] = await Promise.all([
         fetch('/api/offers').then((r) => r.json()),
         fetch('/api/products').then((r) => r.json()),
+        fetch('/api/coupons').then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
       if (offersRes.success) setOffers(offersRes.offers || []);
       if (productsRes.success) setProducts(productsRes.products || []);
+      if (couponsRes.success) setCoupons(couponsRes.coupons || []);
     } catch (err) {
       console.error(err);
-      toast.error('حدث خطأ أثناء تحميل بيانات العروض');
+      toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
     } finally {
       setIsLoading(false);
     }
@@ -80,6 +109,7 @@ export default function AdminOffersPage() {
     return d.toISOString().slice(0, 16);
   };
 
+  // --- Product Offers Handlers ---
   const openAddModal = () => {
     setEditingOffer(null);
     setSelectedProductId('');
@@ -109,7 +139,6 @@ export default function AdminOffersPage() {
     setOfferWholesalePrice(o.offerWholesalePrice || '');
     setBadge(o.badge || '🔥 عرض خاص');
     
-    // Format endDate for datetime-local input
     if (o.endDate) {
       const d = new Date(o.endDate);
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -121,7 +150,6 @@ export default function AdminOffersPage() {
     setIsModalOpen(true);
   };
 
-  // Handle Product Selection From Smart Search
   const handleSelectProduct = (prod: Product) => {
     setSelectedProductId(prod.id);
     setSelectedProduct(prod);
@@ -129,7 +157,7 @@ export default function AdminOffersPage() {
     setIsSearchDropdownOpen(false);
     setOriginalPrice(prod.price);
     setOriginalWholesalePrice(prod.wholesalePrice || '');
-    setOfferPrice(Math.round(prod.price * 0.85)); // 15% recommended discount
+    setOfferPrice(Math.round(prod.price * 0.85));
     setOfferWholesalePrice(prod.wholesalePrice ? Math.round(prod.wholesalePrice * 0.9) : '');
   };
 
@@ -148,15 +176,8 @@ export default function AdminOffersPage() {
       return;
     }
 
-    const prod = selectedProduct || products.find((p) => p.id === selectedProductId);
     const payload = {
       productId: selectedProductId,
-      productName: prod?.name || 'صنف',
-      productImage: prod?.images[0] || '',
-      category: prod?.category || '',
-      company: prod?.company || '',
-      originalPrice: Number(originalPrice) || prod?.price || 0,
-      originalWholesalePrice: originalWholesalePrice !== '' ? Number(originalWholesalePrice) : undefined,
       offerPrice: Number(offerPrice),
       offerWholesalePrice: offerWholesalePrice !== '' ? Number(offerWholesalePrice) : undefined,
       badge: badge.trim() || '🔥 عرض خاص',
@@ -174,10 +195,11 @@ export default function AdminOffersPage() {
         const data = await res.json();
         if (data.success) {
           setOffers((prev) => prev.map((o) => (o.id === editingOffer.id ? data.offer : o)));
-          toast.success('تم تحديث العرض بنجاح ✨');
           setIsModalOpen(false);
+          toast.success('تم تحديث بيانات العرض الترويجي بنجاح ✨');
+          fetchData();
         } else {
-          toast.error(data.error || 'فشل تحديث العرض');
+          toast.error(data.error || 'حدث خطأ أثناء تعديل العرض');
         }
       } else {
         const res = await fetch('/api/offers', {
@@ -188,15 +210,16 @@ export default function AdminOffersPage() {
         const data = await res.json();
         if (data.success) {
           setOffers((prev) => [data.offer, ...prev]);
-          toast.success('تم إطلاق وتفعيل العرض بنجاح 🚀🔥');
           setIsModalOpen(false);
+          toast.success('تم إطلاق وتفعيل العرض الترويجي بنجاح 🚀');
+          fetchData();
         } else {
-          toast.error(data.error || 'فشل إضافة العرض');
+          toast.error(data.error || 'حدث خطأ أثناء إضافة العرض');
         }
       }
     } catch (err) {
       console.error(err);
-      toast.error('حدث خطأ أثناء حفظ العرض');
+      toast.error('تعذر الاتصال بالسيرفر لحفظ العرض');
     }
   };
 
@@ -242,6 +265,132 @@ export default function AdminOffersPage() {
     }
   };
 
+  // --- Coupon Handlers ---
+  const openAddCouponModal = () => {
+    setEditingCoupon(null);
+    setCouponCode('');
+    setCouponDiscountType('fixed');
+    setCouponDiscountValue('');
+    setCouponMinOrderAmount('');
+    setCouponTargetAudience('all');
+    setCouponDescription('');
+    setCouponExpiresAt(getDefaultEndDate(30));
+    setCouponIsActive(true);
+    setIsCouponModalOpen(true);
+  };
+
+  const openEditCouponModal = (c: Coupon) => {
+    setEditingCoupon(c);
+    setCouponCode(c.code);
+    setCouponDiscountType(c.discountType);
+    setCouponDiscountValue(c.discountValue);
+    setCouponMinOrderAmount(c.minOrderAmount ?? '');
+    setCouponTargetAudience(c.targetAudience ?? 'all');
+    setCouponDescription(c.description ?? '');
+    if (c.expiresAt) {
+      const d = new Date(c.expiresAt);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      setCouponExpiresAt(d.toISOString().slice(0, 16));
+    } else {
+      setCouponExpiresAt('');
+    }
+    setCouponIsActive(c.isActive);
+    setIsCouponModalOpen(true);
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim()) {
+      toast.error('يرجى كتابة كود الخصم');
+      return;
+    }
+    if (couponDiscountValue === '' || Number(couponDiscountValue) <= 0) {
+      toast.error('يرجى تحديد قيمة الخصم');
+      return;
+    }
+
+    const payload = {
+      id: editingCoupon?.id,
+      code: couponCode.trim().toUpperCase(),
+      discountType: couponDiscountType,
+      discountValue: Number(couponDiscountValue),
+      minOrderAmount: couponMinOrderAmount !== '' ? Number(couponMinOrderAmount) : undefined,
+      targetAudience: couponTargetAudience,
+      description: couponDescription.trim(),
+      expiresAt: couponExpiresAt ? new Date(couponExpiresAt).toISOString() : undefined,
+      isActive: couponIsActive,
+    };
+
+    try {
+      const method = editingCoupon ? 'PUT' : 'POST';
+      const res = await fetch('/api/coupons', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsCouponModalOpen(false);
+        toast.success(editingCoupon ? 'تم حفظ تعديلات كود الخصم بنجاح ✨' : 'تم إنشاء كود الخصم الجديد بنجاح 🚀');
+        fetchData();
+      } else {
+        toast.error(data.error || 'حدث خطأ أثناء حفظ الكوبون');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('تعذر الاتصال بالسيرفر لحفظ الكود');
+    }
+  };
+
+  const handleToggleCouponActive = async (c: Coupon) => {
+    const newStatus = !c.isActive;
+    try {
+      const res = await fetch('/api/coupons', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, code: c.code, isActive: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCoupons((prev) => prev.map((item) => (item.code === c.code ? { ...item, isActive: newStatus } : item)));
+        toast.success(newStatus ? `تم تفعيل كود الخصم ${c.code} ✅` : `تم إيقاف كود الخصم ${c.code} ⏸️`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteCoupon = async (c: Coupon) => {
+    const isConfirmed = await confirm({
+      title: 'حذف كود الخصم',
+      message: `هل أنت متأكد من حذف كود الخصم "${c.code}" نهائياً من النظام؟`,
+      confirmText: 'نعم، احذف الكود',
+      cancelText: 'تراجع',
+      type: 'danger',
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/coupons?code=${encodeURIComponent(c.code)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setCoupons((prev) => prev.filter((item) => item.code !== c.code));
+        toast.info('تم حذف كود الخصم بنجاح');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('حدث خطأ أثناء حذف الكوبون');
+    }
+  };
+
+  const handleCopyCouponCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    toast.success(`تم نسخ كود الخصم (${code})`);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
   // Remaining time formatter
   const formatRemainingTime = (endIso: string, active: boolean) => {
     if (!active) return { text: 'متوقف مؤقتاً ⏸️', isExpired: false, color: 'text-slate-500 bg-slate-100' };
@@ -284,6 +433,14 @@ export default function AdminOffersPage() {
     return true;
   });
 
+  const filteredCoupons = coupons.filter((c) => {
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      c.code.toLowerCase().includes(q) ||
+      (c.description && c.description.toLowerCase().includes(q))
+    );
+  });
+
   // Calculate savings on form
   const curOrig = Number(originalPrice) || 0;
   const curOff = Number(offerPrice) || 0;
@@ -292,600 +449,597 @@ export default function AdminOffersPage() {
 
   return (
     <div className="space-y-6 text-xs">
+      
       {/* Top Header Card */}
       <div className="bg-gradient-to-r from-rose-900 via-red-800 to-rose-950 text-white p-5 sm:p-6 rounded-3xl shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="bg-rose-500/30 text-rose-200 border border-rose-400/40 text-[10px] font-black px-2.5 py-0.5 rounded-full">
-              قسم إدارة التخفيضات الذكية 🔥
+              قسم إدارة التخفيضات والكوبونات 🔥
             </span>
           </div>
           <h1 className="text-base sm:text-xl font-black mt-1.5 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-300" />
-            <span>إدارة العروض والتخفيضات الموقوتة</span>
+            <span>إدارة العروض وأكواد الخصم الترويجية</span>
           </h1>
           <p className="text-xs text-rose-200/90 font-medium mt-1">
-            اختر أي صنف وحدد سعره المخفض الجديد وفترة الصلاحية، وسيتوقف العرض تلقائياً عند انتهاء المدة
+            أنشئ عروض أسعار موقوتة للأصناف، أو أصدر أكواد خصم (كوبونات) مخصصة للزبائن والمحلات وكبار التجار
           </p>
         </div>
 
+        <div className="flex items-center gap-2">
+          {activeTab === 'products' ? (
+            <button
+              onClick={openAddModal}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة عرض صنف جديد ⚡</span>
+            </button>
+          ) : (
+            <button
+              onClick={openAddCouponModal}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إنشاء كود خصم جديد 🎟️</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Navigation Tabs */}
+      <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-300/60 max-w-md">
         <button
-          onClick={openAddModal}
-          className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 shrink-0 cursor-pointer"
+          onClick={() => setActiveTab('products')}
+          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'products'
+              ? 'bg-white text-rose-700 shadow-xs ring-2 ring-rose-200'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          <span>إضافة عرض جديد ⚡</span>
+          <Flame className="w-4 h-4" />
+          <span>عروض وتخفيضات الأصناف ({offers.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('coupons')}
+          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'coupons'
+              ? 'bg-white text-amber-700 shadow-xs ring-2 ring-amber-200'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Ticket className="w-4 h-4" />
+          <span>كوبونات وأكواد الخصم ({coupons.length})</span>
         </button>
       </div>
 
-      {/* 4 Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center font-black text-lg">
-            🔥
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-500 font-bold block">العروض النشطة</span>
-            <span className="text-base font-black text-slate-900 font-mono">{activeOffersCount} عرض</span>
-          </div>
-        </div>
+      {/* ======================================================== */}
+      {/* TAB 1: PRODUCT FLASH OFFERS */}
+      {/* ======================================================== */}
+      {activeTab === 'products' && (
+        <div className="space-y-6">
+          {/* 4 Summary Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center font-black text-lg">
+                🔥
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">العروض النشطة</span>
+                <span className="text-base font-black text-slate-900 font-mono">{activeOffersCount} عرض</span>
+              </div>
+            </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center font-black text-lg">
-            ⏳
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-500 font-bold block">منتهية / متوقفة</span>
-            <span className="text-base font-black text-slate-900 font-mono">{expiredOffersCount} عرض</span>
-          </div>
-        </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center font-black text-lg">
+                ⏳
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">منتهية / متوقفة</span>
+                <span className="text-base font-black text-slate-900 font-mono">{expiredOffersCount} عرض</span>
+              </div>
+            </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center font-black text-lg">
-            📦
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-500 font-bold block">إجمالي العروض</span>
-            <span className="text-base font-black text-slate-900 font-mono">{offers.length}</span>
-          </div>
-        </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center font-black text-lg">
+                📦
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">إجمالي العروض</span>
+                <span className="text-base font-black text-slate-900 font-mono">{offers.length}</span>
+              </div>
+            </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center font-black text-lg">
-            %
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center font-black text-lg">
+                %
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">إدارة آلية</span>
+                <span className="text-xs font-black text-emerald-700 block">توقف تلقائي ✓</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-[11px] text-slate-500 font-bold block">إدارة آلية</span>
-            <span className="text-xs font-black text-emerald-700 block">توقف تلقائي ✓</span>
+
+          {/* Search and Filters Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <input
+                type="text"
+                placeholder="ابحث باسم المنتج أو الشركة أو الشارة..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-9 text-xs focus:bg-white focus:border-rose-500 font-bold"
+              />
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {(['all', 'active', 'expired'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setStatusFilter(filter)}
+                  className={`py-1.5 px-3 rounded-xl font-bold text-xs transition cursor-pointer ${
+                    statusFilter === filter
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {filter === 'all' && 'الكل'}
+                  {filter === 'active' && 'النشطة فقط 🔥'}
+                  {filter === 'expired' && 'المنتهية ⌛'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        {/* Search */}
-        <div className="relative flex-1 w-full max-w-md">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث باسم المنتج أو الشارة أو الشركة..."
-            className="w-full bg-white border border-slate-300 rounded-2xl py-2.5 pr-10 pl-4 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand-blue shadow-xs"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-        </div>
+          {/* Offers Table / Cards */}
+          {isLoading ? (
+            <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+              <div className="w-10 h-10 border-4 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="text-xs text-slate-500 font-bold">جاري تحميل بيانات العروض والتخفيضات...</p>
+            </div>
+          ) : filteredOffers.length === 0 ? (
+            <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+              <span className="text-4xl block">🏷️</span>
+              <h3 className="text-sm font-black text-slate-800">لا توجد عروض حالياً مطابقة لبحثك</h3>
+              <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
+                يمكنك الضغط على زر "إضافة عرض جديد" للبدء في ترويج أي صنف بسعر مخفض لفترة محددة!
+              </p>
+              <button
+                onClick={openAddModal}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-2 px-4 rounded-xl transition inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة أول عرض الآن</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredOffers.map((o) => {
+                const prod = products.find((p) => p.id === o.productId);
+                const timeStatus = formatRemainingTime(o.endDate, o.isActive);
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap ${
-              statusFilter === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            جميع العروض ({offers.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap ${
-              statusFilter === 'active'
-                ? 'bg-rose-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            النشطة حالياً ({activeOffersCount})
-          </button>
-          <button
-            onClick={() => setStatusFilter('expired')}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap ${
-              statusFilter === 'expired'
-                ? 'bg-amber-600 text-white'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            المنتهية والمتوقفة ({expiredOffersCount})
-          </button>
-        </div>
-      </div>
-
-      {/* Offers Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="p-16 text-center">
-            <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            <p className="text-xs text-slate-500 font-bold">جاري تحميل العروض والتخفيضات...</p>
-          </div>
-        ) : filteredOffers.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 space-y-3">
-            <Flame className="w-12 h-12 mx-auto text-rose-300" />
-            <p className="text-sm font-bold text-slate-700">لا توجد عروض مسجلة تطابق البحث</p>
-            <button
-              onClick={openAddModal}
-              className="bg-brand-blue hover:bg-brand-blueDark text-white font-bold text-xs py-2 px-4 rounded-xl transition inline-flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة أول عرض الآن</span>
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-slate-100/90 text-slate-700 border-b border-slate-200 font-black text-[11px]">
-                <tr className="divide-x divide-x-reverse divide-slate-200">
-                  <th className="py-3 px-4 w-[28%] min-w-[220px]">الصنف والشركة</th>
-                  <th className="py-3 px-3 w-[15%] min-w-[130px] text-center">السعر السابق (الأساسي)</th>
-                  <th className="py-3 px-3 w-[18%] min-w-[150px] text-center">سعر العرض المخفض 🔥</th>
-                  <th className="py-3 px-3 w-[12%] min-w-[100px] text-center">نسبة الخصم والتوفير</th>
-                  <th className="py-3 px-3 w-[17%] min-w-[140px] text-center">المدة والصلاحية ⏳</th>
-                  <th className="py-3 px-3 w-[10%] min-w-[90px] text-center">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredOffers.map((offer) => {
-                  const rem = formatRemainingTime(offer.endDate, offer.isActive);
-                  const saving = offer.originalPrice - offer.offerPrice;
-                  const discountPct = offer.discountPercent || (offer.originalPrice > 0 ? Math.round((saving / offer.originalPrice) * 100) : 0);
-
-                  return (
-                    <tr
-                      key={offer.id}
-                      className={`hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100 ${
-                        !offer.isActive || rem.isExpired ? 'opacity-70 bg-slate-50/50' : ''
-                      }`}
-                    >
-                      {/* Product details */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={offer.productImage || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=200'}
-                            alt={offer.productName}
-                            className="w-12 h-12 object-contain rounded-2xl bg-slate-50 border border-slate-200 p-1 shrink-0"
-                          />
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-black text-slate-900 text-xs sm:text-sm">{offer.productName}</span>
-                              <span className="bg-rose-100 text-rose-800 text-[10px] font-black px-2 py-0.5 rounded-md border border-rose-200">
-                                {offer.badge || '🔥 عرض خاص'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px]">
-                              {offer.company && (
-                                <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                                  🏢 {offer.company}
-                                </span>
-                              )}
-                              <span className="text-slate-400 font-bold">{offer.category}</span>
-                            </div>
+                return (
+                  <div
+                    key={o.id}
+                    className={`bg-white rounded-3xl border transition shadow-xs hover:shadow-md p-4 flex flex-col justify-between space-y-3 relative overflow-hidden ${
+                      !o.isActive
+                        ? 'border-slate-200 opacity-75'
+                        : timeStatus.isExpired
+                        ? 'border-red-200 bg-red-50/20'
+                        : 'border-rose-200 ring-1 ring-rose-100'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-100 p-1 flex items-center justify-center shrink-0 border border-slate-200">
+                            <img
+                              src={o.productImage || prod?.images[0] || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800'}
+                              alt={o.productName}
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                          <div>
+                            <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                              {o.badge || '🔥 عرض خاص'}
+                            </span>
+                            <h3 className="text-xs font-black text-slate-900 mt-1 line-clamp-1">
+                              {o.productName}
+                            </h3>
+                            <span className="text-[10px] text-slate-400 font-bold block">{o.company || 'شركة عامة'}</span>
                           </div>
                         </div>
-                      </td>
 
-                      {/* Original Base Price */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="space-y-0.5 font-mono">
-                          <span className="text-xs font-bold text-slate-400 line-through block">
-                            {offer.originalPrice.toLocaleString()} د.ع
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-medium block">قطعة مفردة</span>
-                          {offer.originalWholesalePrice && (
-                            <span className="text-[10px] text-slate-400 line-through block pt-0.5">
-                              كرتون: {offer.originalWholesalePrice.toLocaleString()} د.ع
-                            </span>
-                          )}
+                        {o.discountPercent && (
+                          <div className="bg-amber-400 text-slate-950 font-black text-xs px-2 py-1 rounded-xl shadow-2xs shrink-0 font-mono">
+                            -{o.discountPercent}%
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Pricing Comparison */}
+                      <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-slate-500 font-bold">سعر المفرد المخفض:</span>
+                          <div className="flex items-center gap-1.5 font-mono font-black">
+                            <span className="text-rose-600 text-sm">{o.offerPrice.toLocaleString()} د.ع</span>
+                            <span className="text-[10px] text-slate-400 line-through">{o.originalPrice.toLocaleString()}</span>
+                          </div>
                         </div>
-                      </td>
 
-                      {/* Offer Price */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="space-y-0.5 font-mono">
-                          <span className="text-sm font-black text-rose-600 block">
-                            {offer.offerPrice.toLocaleString()} د.ع
-                          </span>
-                          <span className="text-[10px] text-rose-800 font-bold block">سعر العرض للقطعة</span>
-                          {offer.offerWholesalePrice && (
-                            <span className="text-[11px] font-black text-amber-800 block pt-0.5">
-                              كرتون: {offer.offerWholesalePrice.toLocaleString()} د.ع
-                            </span>
-                          )}
+                        {o.offerWholesalePrice && o.originalWholesalePrice && (
+                          <div className="flex items-center justify-between border-t border-slate-200/60 pt-1">
+                            <span className="text-[11px] text-slate-500 font-bold">سعر كرتون الجملة:</span>
+                            <div className="flex items-center gap-1.5 font-mono font-black">
+                              <span className="text-emerald-700 text-xs">{o.offerWholesalePrice.toLocaleString()} د.ع</span>
+                              <span className="text-[10px] text-slate-400 line-through">{o.originalWholesalePrice.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Remaining Time Badge */}
+                      <div className={`py-1.5 px-3 rounded-xl border text-[11px] font-black flex items-center justify-between ${timeStatus.color}`}>
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{timeStatus.text}</span>
                         </div>
-                      </td>
+                        <span className="text-[10px] opacity-80 font-mono">
+                          {new Date(o.endDate).toLocaleDateString('ar-IQ')}
+                        </span>
+                      </div>
+                    </div>
 
-                      {/* Discount & Savings */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="space-y-1">
-                          <span className="inline-block bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono font-black text-[11px] px-2 py-0.5 rounded-lg">
-                            خصم {discountPct}%
-                          </span>
-                          {saving > 0 && (
-                            <span className="text-[10px] text-emerald-700 font-bold block">
-                              توفير {saving.toLocaleString()} د.ع
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 gap-2">
+                      <button
+                        onClick={() => handleToggleActive(o)}
+                        className={`py-1.5 px-3 rounded-xl font-bold text-[11px] transition flex items-center gap-1.5 cursor-pointer ${
+                          o.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>{o.isActive ? 'مفعل بالمتجر' : 'متوقف'}</span>
+                      </button>
 
-                      {/* Expiration Countdown */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="space-y-1">
-                          <span className={`inline-block font-bold text-[10px] px-2.5 py-1 rounded-xl border ${rem.color}`}>
-                            {rem.text}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block font-mono">
-                            ينتهي: {new Date(offer.endDate).toLocaleDateString('ar-IQ')} {new Date(offer.endDate).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </td>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditModal(o)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 transition cursor-pointer"
+                          title="تعديل العرض"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(o.id, o.productName)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 transition cursor-pointer"
+                          title="حذف العرض"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Active Toggle Switch */}
-                          <button
-                            onClick={() => handleToggleActive(offer)}
-                            className={`p-2 rounded-xl border transition shadow-2xs ${
-                              offer.isActive
-                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-400 border-slate-200'
-                            }`}
-                            title={offer.isActive ? 'إيقاف العرض مؤقتاً' : 'تفعيل العرض'}
-                          >
-                            <Power className="w-3.5 h-3.5" />
-                          </button>
+      {/* ======================================================== */}
+      {/* TAB 2: COUPONS & DISCOUNT CODES */}
+      {/* ======================================================== */}
+      {activeTab === 'coupons' && (
+        <div className="space-y-6">
+          {/* Coupons Summary Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center font-black text-lg">
+                🎟️
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">إجمالي الكوبونات</span>
+                <span className="text-base font-black text-slate-900 font-mono">{coupons.length} كود</span>
+              </div>
+            </div>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => openEditModal(offer)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl border border-slate-200 transition shadow-2xs"
-                            title="تعديل السعر أو تمديد التاريخ"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 text-brand-blue" />
-                          </button>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center font-black text-lg">
+                ✅
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">الكوبونات الفعالة</span>
+                <span className="text-base font-black text-emerald-700 font-mono">{coupons.filter(c => c.isActive).length} كود</span>
+              </div>
+            </div>
 
-                          {/* Delete */}
-                          <button
-                            onClick={() => handleDelete(offer.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition shadow-2xs"
-                            title="حذف العرض"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center font-black text-lg">
+                🏪
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">كوبونات الماركت</span>
+                <span className="text-base font-black text-slate-900 font-mono">{coupons.filter(c => c.targetAudience === 'market').length}</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center font-black text-lg">
+                👑
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 font-bold block">كبار تجار الجملة</span>
+                <span className="text-base font-black text-slate-900 font-mono">{coupons.filter(c => c.targetAudience === 'wholesale').length}</span>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* ADD / EDIT OFFER MODAL */}
+          {/* Coupons Search and Action Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <input
+                type="text"
+                placeholder="ابحث بكود الخصم أو الوصف..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-9 text-xs focus:bg-white focus:border-amber-500 font-bold"
+              />
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            </div>
+
+            <button
+              onClick={openAddCouponModal}
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إنشاء كود خصم جديد</span>
+            </button>
+          </div>
+
+          {/* Coupons List */}
+          {isLoading ? (
+            <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+              <div className="w-10 h-10 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="text-xs text-slate-500 font-bold">جاري تحميل قائمة الكوبونات...</p>
+            </div>
+          ) : filteredCoupons.length === 0 ? (
+            <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+              <span className="text-4xl block">🎟️</span>
+              <h3 className="text-sm font-black text-slate-800">لا توجد أكواد خصم حالياً</h3>
+              <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
+                اضغط على زر "إنشاء كود خصم جديد" لإصدار أول كوبون ترويجي لزبائنك أو أصحاب المحلات!
+              </p>
+              <button
+                onClick={openAddCouponModal}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 px-4 rounded-xl transition inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إنشاء أول كود خصم الآن</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCoupons.map((c) => {
+                const isCopied = copiedCode === c.code;
+
+                return (
+                  <div
+                    key={c.code}
+                    className={`bg-white rounded-3xl border transition shadow-xs hover:shadow-md p-4 flex flex-col justify-between space-y-3 relative overflow-hidden ${
+                      !c.isActive ? 'border-slate-200 opacity-70 bg-slate-50/50' : 'border-amber-200 ring-1 ring-amber-100'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      {/* Code Header & Copy */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-black bg-slate-900 text-amber-400 px-3 py-1 rounded-xl border border-amber-400/40 tracking-wider">
+                            {c.code}
+                          </span>
+                          <button
+                            onClick={() => handleCopyCouponCode(c.code)}
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                            title="نسخ الكود"
+                          >
+                            {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+
+                        {/* Audience Badge */}
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-xl border ${
+                          c.targetAudience === 'market'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : c.targetAudience === 'wholesale'
+                            ? 'bg-purple-50 text-purple-800 border-purple-200'
+                            : c.targetAudience === 'individual'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-slate-100 text-slate-800 border-slate-200'
+                        }`}>
+                          {c.targetAudience === 'market' && '🏪 أصحاب الماركتات'}
+                          {c.targetAudience === 'wholesale' && '👑 كبار تجار الجملة VIP'}
+                          {c.targetAudience === 'individual' && '🛒 زبائن المفرد'}
+                          {(!c.targetAudience || c.targetAudience === 'all') && '🌍 عام للجميع'}
+                        </span>
+                      </div>
+
+                      {/* Discount Details Box */}
+                      <div className="bg-amber-50/60 p-3 rounded-2xl border border-amber-200/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-amber-950 font-bold">قيمة الخصم الممنوح:</span>
+                          <span className="font-mono text-sm font-black text-amber-900">
+                            {c.discountType === 'percentage'
+                              ? `خصم ${c.discountValue}%`
+                              : `خصم ${c.discountValue.toLocaleString()} د.ع`}
+                          </span>
+                        </div>
+
+                        {c.minOrderAmount && (
+                          <div className="flex items-center justify-between border-t border-amber-200/60 pt-1 text-[11px]">
+                            <span className="text-slate-600 font-bold">الحد الأدنى للطلب:</span>
+                            <span className="font-mono font-black text-slate-800">{c.minOrderAmount.toLocaleString()} د.ع</span>
+                          </div>
+                        )}
+
+                        {c.description && (
+                          <p className="text-[10px] text-amber-800/90 font-medium pt-1 border-t border-amber-200/40">
+                            📝 {c.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Controls */}
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 gap-2">
+                      <button
+                        onClick={() => handleToggleCouponActive(c)}
+                        className={`py-1.5 px-3 rounded-xl font-bold text-[11px] transition flex items-center gap-1.5 cursor-pointer ${
+                          c.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>{c.isActive ? 'مفعل ومتاح للاستخدام' : 'معطل مؤقتاً'}</span>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditCouponModal(c)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 transition cursor-pointer"
+                          title="تعديل الكوبون"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCoupon(c)}
+                          className="p-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 transition cursor-pointer"
+                          title="حذف الكوبون"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 1: ADD/EDIT PRODUCT OFFER */}
+      {/* ======================================================== */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-5 sm:p-6 space-y-4 text-xs my-auto">
-            
-            {/* Modal Header */}
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 text-xs select-none">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setIsModalOpen(false)} />
+
+          <div className="relative bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl z-10 border border-slate-100 my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Flame className="w-5 h-5 text-rose-600" />
-                <span>{editingOffer ? 'تعديل بيانات العرض والتخفيض' : 'إنشاء وإطلاق عرض جديد ⚡'}</span>
-              </h3>
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                  🔥
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    {editingOffer ? 'تعديل بيانات العرض الترويجي' : 'إطلاق وتفعيل عرض تخفيض موقوت'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold">
+                    حدد الصنف والسعر المخفض الجديد وتاريخ انتهاء العرض
+                  </p>
+                </div>
+              </div>
+
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="space-y-4">
-              
-              {/* 1. Smart Search & Product Selection */}
-              <div className="space-y-1.5 relative">
-                <label className="font-black text-slate-800 block text-xs flex items-center justify-between">
-                  <span>1. ابحث واختر الصنف المطلوب عمل عرض وتخفيض عليه *:</span>
-                  {selectedProduct && !editingOffer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedProductId('');
-                        setSelectedProduct(null);
-                        setProductSearchText('');
-                        setIsSearchDropdownOpen(true);
-                        setOriginalPrice(0);
-                        setOriginalWholesalePrice('');
-                        setOfferPrice('');
-                        setOfferWholesalePrice('');
-                      }}
-                      className="text-[10px] text-rose-600 hover:underline font-bold"
-                    >
-                      تغيير الصنف ↺
-                    </button>
-                  )}
+              <div className="space-y-1 relative">
+                <label className="font-bold text-slate-800 block text-xs">
+                  اختر الصنف المراد عمل العرض عليه: <span className="text-red-500">*</span>
                 </label>
+                <input
+                  type="text"
+                  placeholder="ابحث بالاسم لاختيار الصنف..."
+                  value={productSearchText}
+                  onChange={(e) => {
+                    setProductSearchText(e.target.value);
+                    setIsSearchDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsSearchDropdownOpen(true)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
+                />
 
-                {/* Search Input Box */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    disabled={Boolean(editingOffer)}
-                    value={productSearchText}
-                    onChange={(e) => {
-                      setProductSearchText(e.target.value);
-                      setIsSearchDropdownOpen(true);
-                      if (!e.target.value.trim()) {
-                        setSelectedProductId('');
-                        setSelectedProduct(null);
-                        setOriginalPrice(0);
-                        setOriginalWholesalePrice('');
-                      }
-                    }}
-                    onFocus={() => {
-                      if (!editingOffer) setIsSearchDropdownOpen(true);
-                    }}
-                    placeholder="🔍 ابحث بالاسم أو الشركة أو القسم... (مثال: رقائق، عصير، شيبس، التونسا...)"
-                    className={`w-full border-2 rounded-2xl py-3 pr-10 pl-10 text-xs font-bold text-slate-900 transition-all ${
-                      selectedProduct
-                        ? 'bg-emerald-50/60 border-emerald-400 focus:bg-white'
-                        : 'bg-slate-50 border-slate-300 focus:bg-white focus:border-brand-blue shadow-xs'
-                    }`}
-                  />
-                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-                  
-                  {productSearchText && !editingOffer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProductSearchText('');
-                        setSelectedProductId('');
-                        setSelectedProduct(null);
-                        setOriginalPrice(0);
-                        setOriginalWholesalePrice('');
-                        setOfferPrice('');
-                        setOfferWholesalePrice('');
-                        setIsSearchDropdownOpen(true);
-                      }}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Smart Search Filtered Results Dropdown */}
-                {isSearchDropdownOpen && !editingOffer && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white rounded-2xl border-2 border-brand-blue shadow-2xl max-h-64 overflow-y-auto p-1.5 space-y-1">
-                    {(() => {
-                      const q = productSearchText.toLowerCase().trim();
-                      const matches = products.filter(
-                        (p) =>
-                          !q ||
-                          p.name.toLowerCase().includes(q) ||
-                          (p.company && p.company.toLowerCase().includes(q)) ||
-                          p.category.toLowerCase().includes(q)
-                      );
-
-                      if (matches.length === 0) {
-                        return (
-                          <div className="p-4 text-center text-slate-400 text-xs font-bold">
-                            لا توجد منتجات تطابق كلمة البحث &quot;{productSearchText}&quot;
+                {isSearchDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto mt-1 p-1 space-y-1">
+                    {products
+                      .filter((p) => p.name.toLowerCase().includes(productSearchText.toLowerCase()))
+                      .slice(0, 8)
+                      .map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectProduct(p)}
+                          className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <img src={p.images[0]} alt={p.name} className="w-8 h-8 object-contain rounded-lg bg-slate-100 p-0.5" />
+                            <div>
+                              <span className="font-bold text-slate-900 block">{p.name}</span>
+                              <span className="text-[10px] text-slate-500">{p.company}</span>
+                            </div>
                           </div>
-                        );
-                      }
-
-                      return matches.map((p) => {
-                        const isSel = selectedProductId === p.id;
-                        return (
-                          <button
-                            type="button"
-                            key={p.id}
-                            onClick={() => handleSelectProduct(p)}
-                            className={`w-full text-right p-2.5 rounded-xl transition flex items-center justify-between gap-3 border ${
-                              isSel
-                                ? 'bg-sky-50 border-brand-blue shadow-xs'
-                                : 'bg-white hover:bg-slate-50 border-slate-100 hover:border-sky-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <img
-                                src={p.images[0] || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=100'}
-                                alt={p.name}
-                                className="w-10 h-10 rounded-xl object-contain bg-slate-50 border border-slate-200 p-0.5 shrink-0"
-                              />
-                              <div className="min-w-0">
-                                <span className="font-black text-slate-900 text-xs block truncate">{p.name}</span>
-                                <div className="flex items-center gap-1.5 text-[10px] mt-0.5">
-                                  {p.company && (
-                                    <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md font-bold">
-                                      🏢 {p.company}
-                                    </span>
-                                  )}
-                                  <span className="text-slate-500 font-bold">{p.category}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="text-left font-mono shrink-0">
-                              <span className="text-xs font-black text-slate-900 block">{p.price.toLocaleString()} د.ع</span>
-                              {p.wholesalePrice && (
-                                <span className="text-[10px] text-slate-400 font-bold block">
-                                  جملة: {p.wholesalePrice.toLocaleString()} د.ع
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
-
-                {/* Selected Product Card (if selected) */}
-                {selectedProduct && (
-                  <div className="bg-emerald-50/80 border border-emerald-300 rounded-2xl p-2.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <img
-                        src={selectedProduct.images[0]}
-                        alt={selectedProduct.name}
-                        className="w-9 h-9 rounded-xl object-contain bg-white border border-emerald-200 p-0.5 shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <span className="text-xs font-black text-emerald-950 block truncate">
-                          ✓ {selectedProduct.name}
-                        </span>
-                        <span className="text-[10px] text-emerald-800 font-bold block">
-                          {selectedProduct.company ? `${selectedProduct.company} - ` : ''}{selectedProduct.category}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-black font-mono text-emerald-900 bg-white px-2.5 py-1 rounded-xl border border-emerald-200 shrink-0">
-                      السعر الحالي: {selectedProduct.price.toLocaleString()} د.ع
-                    </span>
+                          <span className="font-mono font-bold text-slate-700">{p.price.toLocaleString()} د.ع</span>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>
 
-              {/* 2. Auto-Fetched Regular Base Price Display (معلومات السعر الأصلي الحالي) */}
-              <div className="bg-sky-50/70 p-3.5 rounded-2xl border border-sky-200 space-y-2">
-                <span className="font-black text-sky-950 text-xs block flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-sky-600" />
-                  <span>السعر الأساسي المسجل للصنف (تم جلبه تلقائياً من النظام):</span>
-                </span>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white p-2.5 rounded-xl border border-sky-200">
-                    <span className="text-[10px] text-slate-500 font-bold block">سعر المفرد المسجل (السابق):</span>
-                    <span className="text-sm font-black font-mono text-slate-900">
-                      {selectedProductId ? `${originalPrice.toLocaleString()} د.ع` : '--- (بانتظار اختيار الصنف)'}
-                    </span>
-                  </div>
-
-                  <div className="bg-white p-2.5 rounded-xl border border-sky-200">
-                    <span className="text-[10px] text-slate-500 font-bold block">سعر كرتون الجملة المسجل:</span>
-                    <span className="text-sm font-black font-mono text-slate-900">
-                      {selectedProductId ? (originalWholesalePrice ? `${Number(originalWholesalePrice).toLocaleString()} د.ع` : 'غير محدد') : '---'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. New Offer Prices Inputs */}
-              <div className="bg-rose-50/60 p-3.5 rounded-2xl border border-rose-200 space-y-3">
-                <span className="font-black text-rose-950 text-xs block flex items-center gap-1.5">
-                  <Percent className="w-4 h-4 text-rose-600" />
-                  <span>أسعار العرض المخفضة الجديدة (د.ع):</span>
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Retail Offer Price */}
-                  <div className="space-y-1">
-                    <label className="font-black text-rose-900 block text-xs">
-                      سعر العرض للقطعة المفردة * (د.ع):
-                    </label>
+              {/* Price Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">سعر المفرد المخفض:</label>
+                  <div className="flex items-center gap-1">
                     <input
                       type="number"
                       required
-                      min="1"
                       value={offerPrice}
                       onChange={(e) => setOfferPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="مثال: 400"
-                      className="w-full bg-white border-2 border-rose-400 rounded-xl py-2 px-3 text-xs font-black font-mono text-rose-950 focus:border-rose-600 shadow-xs"
+                      className="w-full bg-white border border-rose-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-rose-600 focus:border-rose-500"
                     />
-                    <span className="text-[10px] text-rose-700 font-bold block">السعر المخفض الذي سيظهر للزبون</span>
+                    <span className="text-[11px] font-bold text-slate-600 shrink-0">د.ع</span>
                   </div>
+                </div>
 
-                  {/* Wholesale Offer Price */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-amber-900 block text-xs">
-                      سعر العرض لكرتون الجملة (اختياري):
-                    </label>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">سعر كرتون الجملة (اختياري):</label>
+                  <div className="flex items-center gap-1">
                     <input
                       type="number"
-                      min="0"
                       value={offerWholesalePrice}
                       onChange={(e) => setOfferWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="مثال: 7000"
-                      className="w-full bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-amber-950 focus:border-amber-500"
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-emerald-700 focus:border-emerald-600"
                     />
-                    <span className="text-[10px] text-amber-700 block">إذا كان العرض يشمل كراتين الجملة أيضاً</span>
+                    <span className="text-[11px] font-bold text-slate-600 shrink-0">د.ع</span>
                   </div>
                 </div>
-
-                {/* Realtime Savings Calculator Indicator */}
-                {savingAmount > 0 && (
-                  <div className="bg-emerald-100/90 border border-emerald-300 p-2.5 rounded-xl flex items-center justify-between text-emerald-900 font-black text-xs">
-                    <span>🎉 نسبة الخصم: <strong className="text-sm font-mono">{savingPercent}%</strong></span>
-                    <span>💰 توفير: <strong className="text-sm font-mono">{savingAmount.toLocaleString()} د.ع</strong> بالقطعة!</span>
-                  </div>
-                )}
               </div>
 
-              {/* 4. Duration & Expiration Setup (تاريخ الانتهاء والتوقف التلقائي) */}
-              <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between">
-                  <label className="font-black text-slate-800 block text-xs flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-brand-blue" />
-                    <span>تاريخ ووقت انتهاء العرض (يتوقف تلقائياً) *:</span>
-                  </label>
-                </div>
-
-                {/* Quick Preset Buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] text-slate-500 font-bold">مدة جاهزة:</span>
-                  <button
-                    type="button"
-                    onClick={() => setEndDate(getDefaultEndDate(3))}
-                    className="bg-white hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-[10px] transition"
-                  >
-                    ⚡ 3 أيام
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEndDate(getDefaultEndDate(7))}
-                    className="bg-white hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-[10px] transition"
-                  >
-                    📅 أسبوع كامل
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEndDate(getDefaultEndDate(15))}
-                    className="bg-white hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-[10px] transition"
-                  >
-                    🗓️ 15 يوم
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEndDate(getDefaultEndDate(30))}
-                    className="bg-white hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-[10px] transition"
-                  >
-                    📆 شهر كامل
-                  </button>
-                </div>
-
-                {/* Date Input */}
+              {/* End Date */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">تاريخ ووقت انتهاء العرض:</label>
                 <input
                   type="datetime-local"
                   required
@@ -894,40 +1048,19 @@ export default function AdminOffersPage() {
                   className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:border-brand-blue"
                   dir="ltr"
                 />
-                <span className="text-[10px] text-slate-500 font-bold block">
-                  عند بلوغ هذا الوقت، سيعود المنتج لسعره الطبيعي تلقائياً بدون الحاجة لأي تعديل يدوي.
-                </span>
               </div>
 
-              {/* 5. Badge Text & Quick Chips */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-slate-800 block text-xs">
-                  نص شارة العرض (تظهر كعلامة بارزة على المنتج):
-                </label>
-                <div className="flex items-center gap-1.5 flex-wrap pb-1">
-                  {['🔥 عرض خاص', '⚡ خصم اليوم', '⭐ عرض الأسبوع', '📦 تصفية مخزون', '👑 عرض الماركت'].map((b) => (
-                    <button
-                      type="button"
-                      key={b}
-                      onClick={() => setBadge(b)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition ${
-                        badge === b ? 'bg-rose-500 text-white border-rose-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
+              {/* Badge Text */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">نص شارة العرض:</label>
                 <input
                   type="text"
                   value={badge}
                   onChange={(e) => setBadge(e.target.value)}
-                  placeholder="مثال: 🔥 عرض خاص"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
                 />
               </div>
 
-              {/* Submit / Cancel Buttons */}
               <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -941,12 +1074,169 @@ export default function AdminOffersPage() {
                   className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-1.5"
                 >
                   <Flame className="w-4 h-4" />
-                  <span>{editingOffer ? 'حفظ تعديلات العرض ✅' : 'إطلاق وتفعيل العرض الآن 🚀'}</span>
+                  <span>{editingOffer ? 'حفظ التعديلات' : 'إطلاق العرض الآن'}</span>
                 </button>
               </div>
-
             </form>
+          </div>
+        </div>
+      )}
 
+      {/* ======================================================== */}
+      {/* MODAL 2: ADD/EDIT COUPON */}
+      {/* ======================================================== */}
+      {isCouponModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 text-xs select-none">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setIsCouponModalOpen(false)} />
+
+          <div className="relative bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl z-10 border border-slate-100 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                  🎟️
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    {editingCoupon ? 'تعديل كود الخصم' : 'إنشاء وإصدار كود خصم جديد (كوبون)'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold">
+                    حدد كود الخصم وقيمته والشريحة المستهدفة لاستخدامه في السلة
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsCouponModalOpen(false)}
+                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCoupon} className="space-y-3.5">
+              {/* Coupon Code Input */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  رمز كود الخصم (الكوبون): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: ETIHAD2026 أو MARKET5"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                  className="w-full bg-slate-50 border border-amber-300 rounded-xl py-2 px-3 text-sm font-black font-mono text-slate-950 uppercase tracking-wider focus:bg-white focus:border-amber-600"
+                />
+                <span className="text-[10px] text-slate-400 block font-medium">
+                  يكتبه الزبون في سلة التسوق عند إتمام الشراء.
+                </span>
+              </div>
+
+              {/* Discount Type & Value */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">نوع الخصم:</label>
+                  <select
+                    value={couponDiscountType}
+                    onChange={(e) => setCouponDiscountType(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-2.5 text-xs font-bold text-slate-900 focus:bg-white"
+                  >
+                    <option value="fixed">مبلغ ثابت (بالدينار د.ع)</option>
+                    <option value="percentage">نسبة مئوية (%)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    قيمة الخصم: <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={couponDiscountValue}
+                      onChange={(e) => setCouponDiscountValue(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder={couponDiscountType === 'percentage' ? '10' : '5000'}
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:border-amber-500"
+                    />
+                    <span className="text-[11px] font-black text-slate-700 shrink-0">
+                      {couponDiscountType === 'percentage' ? '%' : 'د.ع'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Audience (الشرائح الثلاث) */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  الفئة والشريحة المستهدفة بالكوبون:
+                </label>
+                <select
+                  value={couponTargetAudience}
+                  onChange={(e) => setCouponTargetAudience(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-2.5 text-xs font-bold text-slate-900 focus:bg-white"
+                >
+                  <option value="all">🌍 عام لجميع الزبائن (مفرد + ماركت + تجار)</option>
+                  <option value="individual">🛒 زبائن المفرد فقط (القطاعي والعادي)</option>
+                  <option value="market">🏪 أصحاب الماركتات والمحلات المعتمدة فقط</option>
+                  <option value="wholesale">👑 كبار تجار الجملة VIP فقط</option>
+                </select>
+                <span className="text-[10px] text-slate-500 block font-medium">
+                  إذا حاول مستخدم من غير الشريحة المختارة استخدام الكوبون سيمنعه النظام تلقائياً.
+                </span>
+              </div>
+
+              {/* Min Order Amount */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  الحد الأدنى لقيمة الفاتورة (اختياري):
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="مثال: 50000 (اتركه فارغاً إذا بدون حد أدنى)"
+                    value={couponMinOrderAmount}
+                    onChange={(e) => setCouponMinOrderAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold font-mono text-slate-900 focus:border-amber-500"
+                  />
+                  <span className="text-[11px] font-bold text-slate-600 shrink-0">د.ع</span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  وصف الكوبون (داخلي للإدارة والترويج):
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: كود ترويجي لعيد الفطر / خصم الماركتات"
+                  value={couponDescription}
+                  onChange={(e) => setCouponDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCouponModalOpen(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Ticket className="w-4 h-4" />
+                  <span>{editingCoupon ? 'حفظ تعديلات الكوبون' : 'إصدار وتفعيل الكود 🚀'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
