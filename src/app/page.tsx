@@ -25,27 +25,80 @@ import MerchantStatsCard from '@/components/MerchantStatsCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import CompetitionLeaderboard from '@/components/CompetitionLeaderboard';
 import { Product, Category } from '@/types';
+import { initialCategories, initialSettings } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [settings, setSettings] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_products_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_categories_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return initialCategories;
+  });
+  const [settings, setSettings] = useState<any>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_settings_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return initialSettings;
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_products_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return false;
+  });
 
   const { user, isApprovedMerchant } = useAuth();
 
   useEffect(() => {
-    setIsLoading(true);
     Promise.all([
-      fetch('/api/products').then((r) => r.json()),
-      fetch('/api/categories').then((r) => r.json()),
-      fetch('/api/settings').then((r) => r.json()).catch(() => ({ success: false })),
+      fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
     ])
       .then(([prodData, catData, settingsData]) => {
-        if (prodData.success) setProducts(prodData.products || []);
-        if (catData.success) setCategories(catData.categories || []);
-        if (settingsData?.success && settingsData?.settings) setSettings(settingsData.settings);
+        if (prodData.success && Array.isArray(prodData.products)) {
+          setProducts(prodData.products);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_products_cache', JSON.stringify(prodData.products));
+          }
+        }
+        if (catData.success && Array.isArray(catData.categories)) {
+          setCategories(catData.categories);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_categories_cache', JSON.stringify(catData.categories));
+          }
+        }
+        if (settingsData?.success && settingsData?.settings) {
+          setSettings(settingsData.settings);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_settings_cache', JSON.stringify(settingsData.settings));
+          }
+        }
         setIsLoading(false);
       })
       .catch((err) => {

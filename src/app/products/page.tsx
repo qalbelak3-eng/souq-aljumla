@@ -7,6 +7,7 @@ import { Search, ArrowRight, Building, Layers, Sparkles, Store, Package } from '
 import ProductCard from '@/components/ProductCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import { Product, Category, Company } from '@/types';
+import { initialCategories } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 // Intelligent product-to-company matcher
@@ -107,10 +108,10 @@ function checkProductMatchesCompany(product: Product, companyName: string): bool
     }
   }
 
-  if (cName.includes('وايلد تايجر') || cName.includes('tiger')) {
+  if (cName.includes('وايلد تايجر') || cName.includes('wild tiger') || cName.includes('تايجر')) {
     if (
-      pComp.includes('تايجر') || pComp.includes('tiger') ||
-      pName.includes('وايلد تايجر') || pName.includes('تايجر') || pName.includes('tiger')
+      pComp.includes('وايلد') || pComp.includes('wild') || pComp.includes('تايجر') ||
+      pName.includes('وايلد') || pName.includes('wild') || pName.includes('تايجر')
     ) {
       return true;
     }
@@ -188,14 +189,52 @@ function ProductsCatalog() {
   const queryParam = searchParams.get('query') || '';
   const filterParam = searchParams.get('filter') || '';
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [dbCompanies, setDbCompanies] = useState<Company[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_products_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_categories_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return initialCategories;
+  });
+  const [dbCompanies, setDbCompanies] = useState<Company[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_companies_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>(categoryParam);
   const [selectedCompany, setSelectedCompany] = useState<string>(companyParam);
   const [selectedFilter, setSelectedFilter] = useState<string>(filterParam);
   const [searchQuery, setSearchQuery] = useState<string>(queryParam);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_products_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (categoryParam) setSelectedCategory(categoryParam);
@@ -205,16 +244,30 @@ function ProductsCatalog() {
   }, [categoryParam, companyParam, queryParam, filterParam]);
 
   useEffect(() => {
-    setIsLoading(true);
     Promise.all([
-      fetch('/api/products').then((r) => r.json()),
-      fetch('/api/categories').then((r) => r.json()),
-      fetch('/api/companies').then((r) => r.json()),
+      fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
     ])
       .then(([prodData, catData, compData]) => {
-        if (prodData.success) setProducts(prodData.products || []);
-        if (catData.success) setCategories(catData.categories || []);
-        if (compData.success) setDbCompanies(compData.companies || []);
+        if (prodData.success && Array.isArray(prodData.products)) {
+          setProducts(prodData.products);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_products_cache', JSON.stringify(prodData.products));
+          }
+        }
+        if (catData.success && Array.isArray(catData.categories)) {
+          setCategories(catData.categories);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_categories_cache', JSON.stringify(catData.categories));
+          }
+        }
+        if (compData.success && Array.isArray(compData.companies)) {
+          setDbCompanies(compData.companies);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_companies_cache', JSON.stringify(compData.companies));
+          }
+        }
         setIsLoading(false);
       })
       .catch((err) => {
@@ -430,7 +483,7 @@ function ProductsCatalog() {
           </div>
 
           {/* Products 2-Column Mobile Grid */}
-          {isLoading ? (
+          {isLoading && products.length === 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div key={i} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-sm animate-pulse space-y-2">
