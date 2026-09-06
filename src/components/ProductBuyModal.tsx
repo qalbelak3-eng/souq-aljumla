@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Plus, Minus, ShoppingBag, Check, Gift } from 'lucide-react';
-import { Product, SaleType } from '@/types';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Minus, ShoppingBag, Check, Gift, Sparkles } from 'lucide-react';
+import { Product, SaleType, StoreSettings } from '@/types';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
-import { getProductPriceForUser } from '@/lib/pricing';
+import { getProductPriceForUser, getUserCashbackRate } from '@/lib/pricing';
 
 interface ProductBuyModalProps {
   product: Product;
@@ -22,6 +22,16 @@ export default function ProductBuyModal({
 }: ProductBuyModalProps) {
   const { addToCart, freeDeliveryThreshold } = useCart();
   const { user, isApprovedMerchant } = useAuth();
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.settings) setStoreSettings(d.settings);
+      })
+      .catch(() => {});
+  }, []);
 
   const [saleType, setSaleType] = useState<SaleType>(
     initialSaleType || (isApprovedMerchant ? 'wholesale' : 'retail')
@@ -39,6 +49,13 @@ export default function ProductBuyModal({
   const hasDiscount = Boolean(oldPrice && oldPrice > currentPrice);
   const total = currentPrice * quantity;
   const availableStock = product.stock || 24;
+
+  // 🎁 حساب مكافأة وهدية رصيد الأرباح
+  const isCashbackRewardEnabled = product.enableCashbackReward !== false;
+  const defaultRate = getUserCashbackRate(user, storeSettings);
+  const cashbackPerPiece = product.customCashbackAmount ? Number(product.customCashbackAmount) : defaultRate;
+  const piecesCount = (saleType === 'wholesale' ? (product.itemsPerWholesaleUnit || 1) : 1) * quantity;
+  const cashbackTotalReward = cashbackPerPiece * piecesCount;
 
   const handleConfirmBuy = () => {
     addToCart(product, quantity, saleType);
@@ -206,6 +223,16 @@ export default function ProductBuyModal({
           <Gift className="w-3.5 h-3.5" />
           <span>توصيل مجاني للطلبيات فوق {(freeDeliveryThreshold || 50000).toLocaleString()} د.ع لكافة مناطق كربلاء 🚚</span>
         </div>
+
+        {/* 🎁 سطر مكافأة وهدية رصيد الأرباح (يظهر فقط إذا كان الصنف مفعلاً فيه الهدية) */}
+        {isCashbackRewardEnabled && cashbackTotalReward > 0 && (
+          <div className="bg-emerald-50 border border-emerald-300/90 rounded-2xl py-2 px-3 text-center flex items-center justify-center gap-1.5 text-[11px] font-black text-emerald-800 shadow-2xs animate-fadeIn">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0 animate-pulse" />
+            <span>
+              🎁 احصل على خصم هدية <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong> {saleType === 'wholesale' ? `(${cashbackPerPiece.toLocaleString()} د.ع × ${piecesCount} قطعة)` : `(${cashbackPerPiece.toLocaleString()} د.ع للقطعة)`} في رصيد أرباحك!
+            </span>
+          </div>
+        )}
 
         {/* Total Summary Row */}
         <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">

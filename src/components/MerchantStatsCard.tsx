@@ -68,15 +68,15 @@ export default function MerchantStatsCard() {
   return (
     <div className="space-y-2.5 w-full select-none max-w-5xl mx-auto">
       
-      {/* 1. TOP ORANGE CARD: رصيد أرباحك (مطابق تماماً لـ جملتي media_1787414525069.png) */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-[#ef533a] via-[#f16340] to-[#f47348] text-white rounded-2xl md:rounded-3xl p-3 sm:p-4 md:py-3.5 md:px-6 shadow-sm flex items-center justify-between">
+      {/* 1. TOP CARD: رصيد أرباحك (#6dbd44) */}
+      <div className="relative overflow-hidden bg-[#6dbd44] text-white rounded-2xl md:rounded-3xl p-3 sm:p-4 md:py-3.5 md:px-6 shadow-sm flex items-center justify-between">
         
-        {/* Left Side: Pill Button "عرض ومسحب ←" */}
+        {/* Left Side: Pill Button "عرض حسابي" */}
         <Link
           href={user ? "/profile" : "/login"}
-          className="bg-white/20 hover:bg-white/30 active:scale-95 text-white text-[10px] sm:text-xs font-bold py-1.5 px-3 rounded-full backdrop-blur-xs transition flex items-center gap-1 border border-white/20 shadow-xs"
+          className="bg-white/20 hover:bg-white/30 active:scale-95 text-white text-[10px] sm:text-xs font-bold py-1.5 px-3.5 rounded-full backdrop-blur-xs transition flex items-center gap-1 border border-white/25 shadow-xs"
         >
-          <span>عرض ومسحب ←</span>
+          <span>عرض حسابي</span>
         </Link>
 
         {/* Right Side: Title + Number + Currency note */}
@@ -90,7 +90,7 @@ export default function MerchantStatsCard() {
             {profitBalance.toLocaleString()}
           </span>
 
-          <span className="text-[9px] sm:text-[10px] text-white/80 font-medium">
+          <span className="text-[9px] sm:text-[10px] text-white/90 font-medium">
             دينار عراقي : {cashbackRate.toLocaleString()} د.ع لكل قطعة
           </span>
         </div>
@@ -114,10 +114,10 @@ export default function MerchantStatsCard() {
           </span>
         </Link>
 
-        {/* 2: Dark Green - الطلبات السابقة */}
+        {/* 2 (Second from Right): Green #209049 - الطلبات السابقة */}
         <Link
           href={user ? "/profile" : "/login"}
-          className="bg-[#2a453b] hover:bg-[#233b32] active:scale-98 rounded-2xl p-3 md:p-3.5 shadow-xs transition flex flex-col justify-between aspect-[16/9] min-h-[66px] md:aspect-auto md:h-22"
+          className="bg-[#209049] hover:bg-[#1b7a3e] active:scale-98 rounded-2xl p-3 md:p-3.5 shadow-xs transition flex flex-col justify-between aspect-[16/9] min-h-[66px] md:aspect-auto md:h-22"
         >
           <div className="flex items-center justify-end gap-1.5 text-white text-right">
             <span className="text-[10px] sm:text-[11px] font-bold">الطلبات السابقة</span>
@@ -142,10 +142,10 @@ export default function MerchantStatsCard() {
           </span>
         </Link>
 
-        {/* 4 (Left): Slate Grey - المبلغ المتبقي */}
+        {/* 4 (First from Left): Purple #4f479d - المبلغ المتبقي */}
         <Link
           href={user ? "/profile" : "/login"}
-          className="bg-[#4d666e] hover:bg-[#435960] active:scale-98 rounded-2xl p-3 md:p-3.5 shadow-xs transition flex flex-col justify-between aspect-[16/9] min-h-[66px] md:aspect-auto md:h-22"
+          className="bg-[#4f479d] hover:bg-[#433c87] active:scale-98 rounded-2xl p-3 md:p-3.5 shadow-xs transition flex flex-col justify-between aspect-[16/9] min-h-[66px] md:aspect-auto md:h-22"
         >
           <div className="flex items-center justify-end gap-1.5 text-white text-right">
             <span className="text-[10px] sm:text-[11px] font-bold">المبلغ المتبقي</span>

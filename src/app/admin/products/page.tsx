@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Package, Plus, Edit2, Trash2, Search, X, Check, Star, DollarSign, Sparkles, Building2, AlertTriangle, TrendingDown } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Search, X, Check, Star, DollarSign, Sparkles, Building2, AlertTriangle, TrendingDown, Gift } from 'lucide-react';
 import { Product, Category, Company } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
@@ -67,6 +67,8 @@ export default function AdminProductsPage() {
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isOnOffer, setIsOnOffer] = useState(false);
   const [isNew, setIsNew] = useState(true);
+  const [enableCashbackReward, setEnableCashbackReward] = useState<boolean>(true);
+  const [customCashbackAmount, setCustomCashbackAmount] = useState<number | ''>('');
 
   const fetchProducts = async () => {
     setIsLoading(true);
@@ -1190,6 +1192,57 @@ export default function AdminProductsPage() {
                     قسم إدارة العروض والتخفيضات 🏷️ ←
                   </Link>
                 </div>
+              </div>
+
+              {/* 🎁 خيار مكافأة وهدية رصيد الأرباح (كاشباك القطعة) */}
+              <div className="bg-emerald-50/70 border-2 border-emerald-200/80 p-3.5 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-emerald-950 text-xs flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-emerald-600" />
+                    <span>مكافأة وهدية رصيد الأرباح (كاشباك القطعة) 🎁:</span>
+                  </span>
+                  
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={enableCashbackReward}
+                      onChange={(e) => setEnableCashbackReward(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {enableCashbackReward ? (
+                  <div className="space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-emerald-200 text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <label className="font-bold text-emerald-950 block">
+                        مبلغ الهدية المخصص للقطعة (اختياري):
+                      </label>
+                      <span className="text-[10px] text-emerald-700 font-medium">
+                        إذا تُرك فارغاً يُطبق المعدل العام من إعدادات المتجر
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        value={customCashbackAmount}
+                        onChange={(e) => setCustomCashbackAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="افتراضي (100 / 150 د.ع)"
+                        className="w-full bg-white border border-emerald-300 rounded-xl py-1.5 px-3 text-xs font-bold text-slate-900 focus:border-emerald-600 font-mono"
+                      />
+                      <span className="text-xs font-bold text-emerald-900 shrink-0">د.ع / قطعة</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-700">
+                      💡 سيظهر شريط الهدية الأخضر للزبون عند فتح صفحة هذا المنتج لتحفيزه على الشراء.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-rose-50 border border-rose-200 p-2 rounded-xl text-[11px] font-bold text-rose-800">
+                    ⚠️ تم إيقاف هدية الأرباح لهذا الصنف لأن هامش ربحه قليل ولا يتحمل إعطاء خصم/هدية. (لن يظهر شريط الهدية في صفحة الشراء).
+                  </div>
+                )}
               </div>
 
               {/* Description */}
