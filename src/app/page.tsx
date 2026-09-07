@@ -26,7 +26,7 @@ import MerchantStatsCard from '@/components/MerchantStatsCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import CompetitionLeaderboard from '@/components/CompetitionLeaderboard';
 import { Product, Category } from '@/types';
-import { initialCategories, initialSettings } from '@/data/initialData';
+import { initialCategories, initialSettings, initialProducts } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
@@ -40,7 +40,7 @@ export default function HomePage() {
         }
       } catch (e) {}
     }
-    return [];
+    return initialProducts;
   });
   const [categories, setCategories] = useState<Category[]>(() => {
     if (typeof window !== 'undefined') {
@@ -357,8 +357,8 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Loading state skeleton if data is loading */}
-      {isLoading && (
+      {/* Loading state skeleton if data is loading and no products in cache */}
+      {isLoading && products.length === 0 && (
         <section className="max-w-5xl mx-auto px-4 sm:px-6 space-y-3">
           <div className="h-6 bg-slate-200 rounded w-48 animate-pulse mb-3" />
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
