@@ -143,38 +143,40 @@ export default function AdminOffersPage() {
   const [prizeColor, setPrizeColor] = useState('#16a34a');
   const [prizeProbability, setPrizeProbability] = useState<number>(20);
 
-  const fetchData = async () => {
-    if (offers.length === 0) setIsLoading(true);
-    if (offers.length > 0) setIsRefreshing(true);
+  const fetchData = async (isSilent = false) => {
+    if (!isSilent) {
+      if (offers.length === 0) setIsLoading(true);
+      if (offers.length > 0) setIsRefreshing(true);
+    }
     try {
       const [offersRes, productsRes, couponsRes, wheelRes, settingsRes] = await Promise.all([
-        fetch('/api/offers', { cache: 'no-store' }).then((r) => r.json()),
-        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/offers', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
         fetch('/api/coupons', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
         fetch('/api/lucky-wheel', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
         fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
-      if (offersRes.success) {
+      if (offersRes?.success) {
         setOffers(offersRes.offers || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_offers_cache', JSON.stringify(offersRes.offers || []));
         }
       }
-      if (productsRes.success) {
+      if (productsRes?.success) {
         setProducts(productsRes.products || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_products_cache', JSON.stringify(productsRes.products || []));
         }
       }
-      if (couponsRes.success) {
+      if (couponsRes?.success) {
         setCoupons(couponsRes.coupons || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(couponsRes.coupons || []));
         }
       }
-      if (wheelRes.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);
-      if (settingsRes.success && settingsRes.settings) {
+      if (wheelRes?.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);
+      if (settingsRes?.success && settingsRes.settings) {
         setStoreSettings(settingsRes.settings);
         setEnableSuggested(settingsRes.settings.enableSuggestedProducts ?? true);
         setSuggestedTitle(settingsRes.settings.suggestedProductsTitle || 'أضف إلى طلبك ✨');
@@ -182,7 +184,9 @@ export default function AdminOffersPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
+      if (!isSilent) {
+        toast.error('حدث خطأ أثناء تحميل بيانات العروض والكوبونات');
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -401,6 +405,16 @@ export default function AdminOffersPage() {
       return;
     }
 
+    let validExpiresAt: string | undefined = undefined;
+    if (couponExpiresAt) {
+      try {
+        const d = new Date(couponExpiresAt);
+        if (!isNaN(d.getTime())) {
+          validExpiresAt = d.toISOString();
+        }
+      } catch (e) {}
+    }
+
     const payload = {
       id: editingCoupon?.id,
       code: couponCode.trim().toUpperCase(),
@@ -409,7 +423,7 @@ export default function AdminOffersPage() {
       minOrderAmount: couponMinOrderAmount !== '' ? Number(couponMinOrderAmount) : undefined,
       targetAudience: couponTargetAudience,
       description: couponDescription.trim(),
-      expiresAt: couponExpiresAt ? new Date(couponExpiresAt).toISOString() : undefined,
+      expiresAt: validExpiresAt,
       isActive: couponIsActive,
     };
 
@@ -421,10 +435,23 @@ export default function AdminOffersPage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.coupon) {
+        if (editingCoupon) {
+          setCoupons((prev) => prev.map((c) => (c.id === data.coupon.id || c.code === data.coupon.code ? data.coupon : c)));
+        } else {
+          setCoupons((prev) => [data.coupon, ...prev.filter((c) => c.code !== data.coupon.code)]);
+        }
+        if (typeof window !== 'undefined') {
+          try {
+            const cached = localStorage.getItem('souq_admin_coupons_cache');
+            const list = cached ? JSON.parse(cached) : [];
+            const updated = [data.coupon, ...list.filter((c: any) => c.code !== data.coupon.code && c.id !== data.coupon.id)];
+            localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(updated));
+          } catch (e) {}
+        }
         setIsCouponModalOpen(false);
         toast.success(editingCoupon ? 'تم حفظ تعديلات كود الخصم بنجاح ✨' : 'تم إنشاء كود الخصم الجديد بنجاح 🚀');
-        fetchData();
+        fetchData(true);
       } else {
         toast.error(data.error || 'حدث خطأ أثناء حفظ الكوبون');
       }
@@ -436,6 +463,7 @@ export default function AdminOffersPage() {
 
   const handleToggleCouponActive = async (c: Coupon) => {
     const newStatus = !c.isActive;
+    setCoupons((prev) => prev.map((item) => (item.code === c.code ? { ...item, isActive: newStatus } : item)));
     try {
       const res = await fetch('/api/coupons', {
         method: 'PUT',
@@ -444,11 +472,23 @@ export default function AdminOffersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setCoupons((prev) => prev.map((item) => (item.code === c.code ? { ...item, isActive: newStatus } : item)));
         toast.success(newStatus ? `تم تفعيل كود الخصم ${c.code} ✅` : `تم إيقاف كود الخصم ${c.code} ⏸️`);
+        if (typeof window !== 'undefined') {
+          try {
+            const cached = localStorage.getItem('souq_admin_coupons_cache');
+            if (cached) {
+              const list = JSON.parse(cached);
+              const updated = list.map((item: any) => (item.code === c.code ? { ...item, isActive: newStatus } : item));
+              localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(updated));
+            }
+          } catch (e) {}
+        }
+      } else {
+        setCoupons((prev) => prev.map((item) => (item.code === c.code ? { ...item, isActive: !newStatus } : item)));
       }
     } catch (err) {
       console.error(err);
+      setCoupons((prev) => prev.map((item) => (item.code === c.code ? { ...item, isActive: !newStatus } : item)));
     }
   };
 
@@ -463,16 +503,29 @@ export default function AdminOffersPage() {
 
     if (!isConfirmed) return;
 
+    setCoupons((prev) => prev.filter((item) => item.code !== c.code));
     try {
       const res = await fetch(`/api/coupons?code=${encodeURIComponent(c.code)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        setCoupons((prev) => prev.filter((item) => item.code !== c.code));
         toast.info('تم حذف كود الخصم بنجاح');
+        if (typeof window !== 'undefined') {
+          try {
+            const cached = localStorage.getItem('souq_admin_coupons_cache');
+            if (cached) {
+              const list = JSON.parse(cached);
+              const updated = list.filter((item: any) => item.code !== c.code);
+              localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(updated));
+            }
+          } catch (e) {}
+        }
+      } else {
+        fetchData(true);
       }
     } catch (err) {
       console.error(err);
       toast.error('حدث خطأ أثناء حذف الكوبون');
+      fetchData(true);
     }
   };
 
