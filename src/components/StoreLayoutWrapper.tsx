@@ -32,6 +32,7 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
           {children}
         </main>
         <CartDrawer />
+        <WhatsAppFloatingButton />
       </>
     );
   }

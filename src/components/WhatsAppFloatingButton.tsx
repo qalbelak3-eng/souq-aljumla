@@ -9,9 +9,8 @@ export default function WhatsAppFloatingButton() {
   const pathname = usePathname();
   const { totalItemsCount, setIsCartDrawerOpen } = useCart();
 
-  // Floating Cart icon only appears on the Home Page ('/')
-  // Inside categories/sections it stays hidden until user buys/adds a product
-  if (pathname !== '/') {
+  // Floating Cart icon appears on the Home Page ('/') always, and on other pages whenever there are items in the cart
+  if (pathname !== '/' && totalItemsCount === 0) {
     return null;
   }
 

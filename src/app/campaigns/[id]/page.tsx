@@ -3,14 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, Search, Sparkles, ShoppingCart } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import { Banner, Product } from '@/types';
+import { useCart } from '@/context/CartContext';
 
 export default function CampaignPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params?.id as string;
+  const { totalItemsCount, subtotal, setIsCartDrawerOpen } = useCart();
 
   const [campaign, setCampaign] = useState<Banner | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -122,16 +124,37 @@ export default function CampaignPage() {
           </div>
         </div>
 
-        {/* Search inside this campaign */}
-        <div className="relative w-full sm:w-72">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث داخل هذه المنتجات..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pr-9 pl-3 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+        {/* Right side controls: Search + Cart Button */}
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          {/* Search inside this campaign */}
+          <div className="relative flex-1 sm:w-64">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ابحث داخل هذه المنتجات..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pr-9 pl-3 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          </div>
+
+          {/* Cart Header Button */}
+          <button
+            type="button"
+            onClick={() => setIsCartDrawerOpen(true)}
+            className="relative flex items-center gap-2 bg-[#ef533a] hover:bg-[#e0452c] text-white px-3.5 py-2 rounded-xl shadow-xs transition active:scale-95 cursor-pointer shrink-0 font-black text-xs"
+            title="سلة التسوق"
+          >
+            <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
+            <span className="hidden sm:inline">السلة</span>
+            {totalItemsCount > 0 ? (
+              <span className="bg-white text-[#ef533a] text-[10px] font-mono font-black w-5 h-5 rounded-full flex items-center justify-center shadow-xs">
+                {totalItemsCount}
+              </span>
+            ) : (
+              <span className="text-[10px] text-white/80 font-mono">0</span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -145,10 +168,38 @@ export default function CampaignPage() {
           <p className="text-[11px] text-slate-400">جرب كتابة اسم منتج آخر</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-20">
           {filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
+        </div>
+      )}
+
+      {/* Floating Bottom Cart Bar when items are present */}
+      {totalItemsCount > 0 && (
+        <div className="fixed bottom-4 inset-x-4 max-w-lg mx-auto z-40 bg-slate-950/95 hover:bg-slate-950 backdrop-blur-md text-white p-3.5 rounded-2xl sm:rounded-3xl shadow-[0_10px_30px_rgba(0,0,0,0.35)] flex items-center justify-between gap-3 border border-slate-800 transition transform animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#ef533a] text-white flex items-center justify-center font-black shadow-sm shrink-0">
+              <ShoppingCart className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black">{totalItemsCount} منتج في السلة</span>
+              </div>
+              <div className="text-sm font-black text-amber-400 font-mono">
+                {subtotal.toLocaleString()} د.ع
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsCartDrawerOpen(true)}
+            className="bg-brand-blue hover:bg-brand-blueDark active:scale-95 text-white text-xs font-black py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+          >
+            <span>عرض السلة وإتمام الطلب</span>
+            <ArrowRight className="w-4 h-4 rotate-180" />
+          </button>
         </div>
       )}
 
