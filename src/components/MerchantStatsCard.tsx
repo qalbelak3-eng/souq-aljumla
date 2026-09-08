@@ -15,7 +15,11 @@ import {
   Wallet,
   ChevronLeft,
   TrendingUp,
-  CheckCircle2
+  CheckCircle2,
+  Truck,
+  ShieldCheck,
+  CreditCard,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Order } from '@/types';
@@ -100,114 +104,151 @@ export default function MerchantStatsCard() {
     : '/login';
 
   return (
-    <div className="space-y-2.5 w-full select-none max-w-5xl mx-auto">
+    <div className="w-full select-none max-w-5xl mx-auto">
       
-      {/* 1. HERO WALLET CARD: رصيد أرباحك - Modern Luxury Crimson Design */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-rose-700 via-red-600 to-rose-800 text-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-4 md:py-4 md:px-6 shadow-[0_8px_25px_rgba(225,29,72,0.18)] border border-rose-500/30 flex items-center justify-between group transition-all">
+      {/* 2-CARD SPLIT EXECUTIVE DASHBOARD: Financial Card + Orders Pulse */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         
-        {/* Subtle Ambient Decorative Glow Circles */}
-        <div className="absolute -left-12 -top-12 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -right-8 -bottom-8 w-28 h-28 bg-amber-400/15 rounded-full blur-xl pointer-events-none" />
+        {/* ═══ CARD 1: المحفظة والحساب المالي (Executive Dark Glass Card) ═══ */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-[#131d2e] to-[#0b1320] text-white rounded-3xl p-4 sm:p-5 border border-slate-700/60 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex flex-col justify-between space-y-3.5 group">
+          
+          {/* Subtle Ambient Radial Lights */}
+          <div className="absolute -left-12 -top-12 w-32 h-32 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -right-8 -bottom-8 w-28 h-28 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
 
-        {/* Left Side: Statement / Account Action Button */}
-        <Link
-          href={statementUrl}
-          className="relative z-10 bg-white/15 hover:bg-white/25 active:scale-95 text-white text-[11px] sm:text-xs font-black py-2 px-3.5 sm:px-4 rounded-xl sm:rounded-2xl backdrop-blur-md transition-all flex items-center gap-1.5 border border-white/20 shadow-xs group-hover:border-white/40"
-        >
-          <span>عرض كشف الحساب</span>
-          <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-        </Link>
+          {/* Top Row: Title Badge & Statement Button */}
+          <div className="relative z-10 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 bg-white/10 text-amber-300 text-[10px] sm:text-[11px] font-black px-2.5 py-1 rounded-full border border-white/15 backdrop-blur-xs">
+              <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+              <span>محفظة الأرباح والحساب</span>
+            </div>
 
-        {/* Right Side: Badge + Balance Number + Note */}
-        <div className="relative z-10 flex flex-col items-end text-right space-y-0.5">
-          <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-rose-100 font-bold">
-            <span>محفظة أرباحك والكاش باك</span>
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <Link
+              href={statementUrl}
+              className="bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[10px] sm:text-[11px] font-bold py-1 px-3 rounded-full border border-white/15 backdrop-blur-xs transition flex items-center gap-1 group-hover:border-white/30"
+            >
+              <Receipt className="w-3 h-3 text-sky-300" />
+              <span>كشف الحساب 🧾</span>
+              <ChevronLeft className="w-3 h-3 transition-transform group-hover:-translate-x-0.5" />
+            </Link>
           </div>
 
-          <div className="flex items-baseline gap-1">
-            <span className="text-[11px] sm:text-xs font-bold text-rose-100 font-sans">د.ع</span>
-            <span className="text-2xl sm:text-3xl md:text-4xl font-black font-mono leading-none tracking-tight text-white drop-shadow-xs">
-              {profitBalance.toLocaleString()}
-            </span>
+          {/* Center: Financial Two Pillars (رصيد أرباحك + المبلغ المتبقي) */}
+          <div className="relative z-10 grid grid-cols-2 gap-3 pt-1">
+            
+            {/* Pillar 1: رصيد أرباح الكاش باك */}
+            <div className="bg-white/5 hover:bg-white/10 rounded-2xl p-2.5 sm:p-3 border border-white/10 transition space-y-1 text-right">
+              <span className="text-[10px] sm:text-[11px] text-slate-300 font-bold block">رصيد أرباحك</span>
+              <div className="flex items-baseline justify-end gap-1">
+                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400 leading-none">
+                  {profitBalance.toLocaleString()}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 font-sans">د.ع</span>
+              </div>
+              <span className="text-[9px] text-amber-300/90 font-medium block">
+                ✦ {cashbackRate.toLocaleString()} د.ع/قطعة
+              </span>
+            </div>
+
+            {/* Pillar 2: المبلغ المتبقي (المطلوب) */}
+            <Link
+              href={statementUrl}
+              className="bg-white/5 hover:bg-white/10 rounded-2xl p-2.5 sm:p-3 border border-white/10 transition space-y-1 text-right block"
+            >
+              <div className="flex items-center justify-between">
+                <ChevronLeft className="w-3 h-3 text-slate-400" />
+                <span className="text-[10px] sm:text-[11px] text-slate-300 font-bold">المبلغ المتبقي</span>
+              </div>
+              <div className="flex items-baseline justify-end gap-1">
+                <span className={`text-xl sm:text-2xl font-black font-mono leading-none ${statementBalance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {statementBalance.toLocaleString()}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 font-sans">د.ع</span>
+              </div>
+              <span className="text-[9px] text-slate-400 font-medium block">
+                {statementBalance > 0 ? '⚠️ رصيد مطلوب سداده' : '✅ حسابك مسدد بالكامل'}
+              </span>
+            </Link>
+
           </div>
 
-          <span className="text-[9px] sm:text-[10px] text-rose-100/90 font-medium">
-            💰 كاش باك {cashbackRate.toLocaleString()} د.ع لكل قطعة
-          </span>
         </div>
 
-      </div>
-
-      {/* 2. THE 4 SLEEK STAT CARDS: 2 Cols on mobile, 4 Columns on desktop */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3">
-        
-        {/* 1 (Right): Blue - طلباتي اليوم */}
-        <Link
-          href={user ? "/profile" : "/login"}
-          className="relative overflow-hidden bg-gradient-to-br from-[#0284c7] to-[#0369a1] text-white hover:shadow-md active:scale-98 rounded-2xl p-3 sm:p-3.5 border border-sky-400/20 shadow-xs transition-all flex flex-col justify-between aspect-[16/9] min-h-[72px] md:aspect-auto md:h-[90px] group"
-        >
-          <div className="flex items-center justify-between gap-1 text-white">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/15 flex items-center justify-center">
-              <Calendar className="w-3.5 h-3.5 text-sky-100" />
+        {/* ═══ CARD 2: حركة ونشاط الطلبات (Clean Modern Slate Card) ═══ */}
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/90 shadow-[0_4px_20px_rgba(0,0,0,0.04)] flex flex-col justify-between space-y-3.5">
+          
+          {/* Top Row: Section Title & Orders Link */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-slate-900 text-xs sm:text-sm font-black">
+              <div className="w-6 h-6 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center">
+                <Package className="w-3.5 h-3.5" />
+              </div>
+              <span>نشاط وحالة الطلبيات</span>
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-sky-100">طلباتي اليوم</span>
-          </div>
-          <span className="text-xl sm:text-2xl font-black font-mono text-right leading-none mt-1">
-            {todayOrders}
-          </span>
-        </Link>
 
-        {/* 2 (Second from Right): Green - الطلبات السابقة */}
-        <Link
-          href={user ? "/profile" : "/login"}
-          className="relative overflow-hidden bg-gradient-to-br from-[#16a34a] to-[#15803d] text-white hover:shadow-md active:scale-98 rounded-2xl p-3 sm:p-3.5 border border-emerald-400/20 shadow-xs transition-all flex flex-col justify-between aspect-[16/9] min-h-[72px] md:aspect-auto md:h-[90px] group"
-        >
-          <div className="flex items-center justify-between gap-1 text-white">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/15 flex items-center justify-center">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-emerald-100">الطلبات السابقة</span>
+            <Link
+              href={user ? "/profile" : "/login"}
+              className="text-[11px] font-bold text-brand-blue hover:text-brand-blueDark flex items-center gap-0.5 bg-blue-50/80 hover:bg-blue-100/80 px-2.5 py-1 rounded-full transition"
+            >
+              <span>سجل الطلبات</span>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <span className="text-xl sm:text-2xl font-black font-mono text-right leading-none mt-1">
-            {previousOrders}
-          </span>
-        </Link>
 
-        {/* 3: Amber/Gold - قيد المعالجة */}
-        <Link
-          href={user ? "/profile" : "/login"}
-          className="relative overflow-hidden bg-gradient-to-br from-[#d97706] to-[#b45309] text-white hover:shadow-md active:scale-98 rounded-2xl p-3 sm:p-3.5 border border-amber-400/20 shadow-xs transition-all flex flex-col justify-between aspect-[16/9] min-h-[72px] md:aspect-auto md:h-[90px] group"
-        >
-          <div className="flex items-center justify-between gap-1 text-white">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/15 flex items-center justify-center">
-              <Package className="w-3.5 h-3.5 text-amber-100" />
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-amber-100">قيد المعالجة</span>
-          </div>
-          <span className="text-xl sm:text-2xl font-black font-mono text-right leading-none mt-1">
-            {processingOrders}
-          </span>
-        </Link>
+          {/* 3 Metric Tiles (طلبات اليوم + قيد التجهيز + الطلبات السابقة) */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-1">
+            
+            {/* Metric 1: طلباتي اليوم */}
+            <Link
+              href={user ? "/profile" : "/login"}
+              className="bg-slate-50 hover:bg-sky-50/70 rounded-2xl p-2.5 sm:p-3 border border-slate-100 hover:border-sky-200 transition text-center space-y-1 block active:scale-98"
+            >
+              <div className="w-7 h-7 mx-auto rounded-full bg-sky-100/80 text-sky-700 flex items-center justify-center">
+                <Calendar className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-lg sm:text-xl font-black font-mono text-slate-900 block leading-tight">
+                {todayOrders}
+              </span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 block">
+                طلبات اليوم
+              </span>
+            </Link>
 
-        {/* 4 (First from Left): Deep Purple/Indigo - المبلغ المتبقي (مربوط بكشف الحساب الفعلي) */}
-        <Link
-          href={statementUrl}
-          className="relative overflow-hidden bg-gradient-to-br from-[#6366f1] to-[#4f46e5] text-white hover:shadow-md active:scale-98 rounded-2xl p-3 sm:p-3.5 border border-indigo-400/20 shadow-xs transition-all flex flex-col justify-between aspect-[16/9] min-h-[72px] md:aspect-auto md:h-[90px] group"
-        >
-          <div className="flex items-center justify-between gap-1 text-white">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/15 flex items-center justify-center">
-              <Receipt className="w-3.5 h-3.5 text-indigo-100" />
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-indigo-100">المبلغ المتبقي</span>
+            {/* Metric 2: قيد التجهيز */}
+            <Link
+              href={user ? "/profile" : "/login"}
+              className="bg-slate-50 hover:bg-amber-50/70 rounded-2xl p-2.5 sm:p-3 border border-slate-100 hover:border-amber-200 transition text-center space-y-1 block active:scale-98"
+            >
+              <div className="w-7 h-7 mx-auto rounded-full bg-amber-100/80 text-amber-700 flex items-center justify-center">
+                <Clock className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-lg sm:text-xl font-black font-mono text-amber-600 block leading-tight">
+                {processingOrders}
+              </span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 block">
+                قيد التجهيز
+              </span>
+            </Link>
+
+            {/* Metric 3: الطلبات السابقة */}
+            <Link
+              href={user ? "/profile" : "/login"}
+              className="bg-slate-50 hover:bg-emerald-50/70 rounded-2xl p-2.5 sm:p-3 border border-slate-100 hover:border-emerald-200 transition text-center space-y-1 block active:scale-98"
+            >
+              <div className="w-7 h-7 mx-auto rounded-full bg-emerald-100/80 text-emerald-700 flex items-center justify-center">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-lg sm:text-xl font-black font-mono text-emerald-600 block leading-tight">
+                {previousOrders}
+              </span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 block">
+                الطلبات السابقة
+              </span>
+            </Link>
+
           </div>
-          <div className="text-right flex items-baseline justify-end gap-1 leading-none mt-1">
-            <span className="text-[9px] sm:text-[10px] font-bold text-indigo-200">د.ع</span>
-            <span className="text-xl sm:text-2xl font-black font-mono tracking-tight">
-              {statementBalance.toLocaleString()}
-            </span>
-          </div>
-        </Link>
+
+        </div>
 
       </div>
 
