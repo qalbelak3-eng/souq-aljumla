@@ -19,9 +19,22 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   const isStatementRoute = pathname === '/statement';
   const isCheckoutRoute = pathname === '/checkout';
   const isOrderSuccessRoute = pathname.startsWith('/order-success');
+  const isCampaignRoute = pathname.startsWith('/campaigns');
   
   // Hide main home header on dedicated sub-pages like /products catalog where category header takes over
   const isProductsCatalog = pathname === '/products' || pathname.startsWith('/products/');
+
+  if (isCampaignRoute) {
+    // Completely Clean Isolated Showcase View: No store header, no footer, no announcement bar, just products and cart
+    return (
+      <>
+        <main className="flex-1 min-h-screen bg-[#f3f8fc]">
+          {children}
+        </main>
+        <CartDrawer />
+      </>
+    );
+  }
 
   if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isCheckoutRoute || isOrderSuccessRoute) {
     // Isolated Dedicated View: No customer header, no announcement bar, no floating widgets, no footer
