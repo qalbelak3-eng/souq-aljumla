@@ -66,7 +66,7 @@ export default function ProductBuyModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 text-xs select-none">
+    <div className="fixed inset-0 z-[70] overflow-y-auto flex items-center justify-center p-3 sm:p-4 text-xs select-none">
       
       {/* Dark Translucent Backdrop */}
       <div
