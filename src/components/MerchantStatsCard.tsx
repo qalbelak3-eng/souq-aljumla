@@ -56,11 +56,14 @@ export default function MerchantStatsCard() {
 
         if (ordersData?.success && Array.isArray(ordersData.orders)) {
           if (user) {
-            const userOrders = ordersData.orders.filter(
-              (o: Order) =>
+            const userPhoneClean = user.phone ? user.phone.replace(/\D/g, '') : '';
+            const userOrders = ordersData.orders.filter((o: Order) => {
+              const oPhoneClean = o.customer.phone ? o.customer.phone.replace(/\D/g, '') : '';
+              return (
                 (o.customer.userId && o.customer.userId === user.id) ||
-                (o.customer.phone && o.customer.phone === user.phone)
-            );
+                (userPhoneClean && oPhoneClean && (oPhoneClean === userPhoneClean || oPhoneClean.endsWith(userPhoneClean) || userPhoneClean.endsWith(oPhoneClean)))
+              );
+            });
             setOrders(userOrders);
           } else {
             setOrders([]);
@@ -84,7 +87,7 @@ export default function MerchantStatsCard() {
   // Calculate live order stats
   const today = new Date().toDateString();
   const todayOrders = orders.filter(
-    (o) => new Date(o.createdAt).toDateString() === today
+    (o) => new Date(o.createdAt).toDateString() === today && o.status !== 'cancelled'
   ).length;
   const previousOrders = orders.filter((o) => o.status === 'delivered').length;
   const processingOrders = orders.filter(
