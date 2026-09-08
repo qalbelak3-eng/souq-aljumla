@@ -28,11 +28,13 @@ export default function AdminBannersPage() {
   const [badge, setBadge] = useState('عرض خاص ✦');
   const [position, setPosition] = useState<'top' | 'middle' | 'bottom' | 'category' | 'all'>('top');
   const [category, setCategory] = useState('');
+  const [order, setOrder] = useState<number>(1);
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   // Showcase Campaign Specific State
   const [isCampaignShowcase, setIsCampaignShowcase] = useState(false);
+  const [isTextShelf, setIsTextShelf] = useState(false);
   const [campaignBgColor, setCampaignBgColor] = useState('#15803d');
   const [campaignProductsTitle, setCampaignProductsTitle] = useState('منتجاتنا الطازجة');
   const [campaignProductIds, setCampaignProductIds] = useState<string[]>([]);
@@ -107,8 +109,10 @@ export default function AdminBannersPage() {
     setBadge('توصيل سريع 🚚');
     setPosition('top');
     setCategory(categories[0]?.name || '');
+    setOrder(banners.length + 1);
     setIsActive(true);
     setIsCampaignShowcase(false);
+    setIsTextShelf(false);
     setCampaignBgColor('#15803d');
     setCampaignProductsTitle('منتجاتنا الطازجة');
     setCampaignProductIds([]);
@@ -121,13 +125,35 @@ export default function AdminBannersPage() {
     setTitle('');
     setSubtitle('');
     setImage('');
-    setLinkUrl('/products');
+    setLinkUrl('');
     setBadge('');
-    setPosition('middle');
+    setPosition('top');
     setCategory(categories[0]?.name || '');
+    setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
     setIsActive(true);
     setIsCampaignShowcase(true);
+    setIsTextShelf(false);
     setCampaignBgColor('#15803d');
+    setCampaignProductsTitle('');
+    setCampaignProductIds([]);
+    setProductSearchFilter('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenAddTextShelf = () => {
+    setEditingBanner(null);
+    setTitle('');
+    setSubtitle('');
+    setImage('');
+    setLinkUrl('');
+    setBadge('');
+    setPosition('top');
+    setCategory(categories[0]?.name || '');
+    setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
+    setIsActive(true);
+    setIsCampaignShowcase(true);
+    setIsTextShelf(true);
+    setCampaignBgColor('');
     setCampaignProductsTitle('');
     setCampaignProductIds([]);
     setProductSearchFilter('');
@@ -138,15 +164,17 @@ export default function AdminBannersPage() {
     setEditingBanner(banner);
     setTitle(banner.title);
     setSubtitle(banner.subtitle || '');
-    setImage(banner.image);
-    setLinkUrl(banner.linkUrl || '/products');
+    setImage(banner.image || '');
+    setLinkUrl(banner.linkUrl || '');
     setBadge(banner.badge || '');
     setPosition(banner.position || 'top');
     setCategory(banner.category || (categories[0]?.name || ''));
+    setOrder(banner.order || 1);
     setIsActive(banner.isActive);
     setIsCampaignShowcase(Boolean(banner.isCampaignShowcase));
+    setIsTextShelf(Boolean(banner.isTextShelf));
     setCampaignBgColor(banner.campaignBgColor || '#15803d');
-    setCampaignProductsTitle(banner.campaignProductsTitle || 'منتجاتنا الطازجة');
+    setCampaignProductsTitle(banner.campaignProductsTitle || banner.title || '');
     setCampaignProductIds(Array.isArray(banner.campaignProductIds) ? banner.campaignProductIds : []);
     setProductSearchFilter('');
     setIsModalOpen(true);
@@ -160,6 +188,22 @@ export default function AdminBannersPage() {
 
   const handleSaveBanner = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!title.trim()) {
+      toast.error('يرجى كتابة عنوان للقسم أو البنر');
+      return;
+    }
+
+    if (!isCampaignShowcase && !image.trim()) {
+      toast.error('يرجى إضافة صورة للبنر المتحرك');
+      return;
+    }
+
+    if (isCampaignShowcase && !isTextShelf && !image.trim()) {
+      toast.error('يرجى رفع أو إضافة صورة التصميم الإعلاني الكامل للحملة');
+      return;
+    }
+
     setIsSaving(true);
 
     const payload = {
@@ -170,9 +214,11 @@ export default function AdminBannersPage() {
       badge: badge.trim(),
       position,
       category: position === 'category' || category ? category.trim() : '',
+      order: Number(order) || 1,
       isCampaignShowcase,
+      isTextShelf,
       campaignBgColor: isCampaignShowcase ? campaignBgColor : undefined,
-      campaignProductsTitle: isCampaignShowcase ? campaignProductsTitle.trim() : undefined,
+      campaignProductsTitle: isCampaignShowcase ? (campaignProductsTitle.trim() || title.trim()) : undefined,
       campaignProductIds: isCampaignShowcase ? campaignProductIds : undefined,
       isActive,
     };
@@ -187,7 +233,7 @@ export default function AdminBannersPage() {
         const data = await res.json();
         if (data.success && data.banner) {
           setBanners((prev) => prev.map((b) => (b.id === editingBanner.id ? data.banner : b)));
-          toast.success('تم تحديث بيانات البنر الإعلاني بنجاح ✨');
+          toast.success('تم تحديث البيانات بنجاح ✨');
         }
       } else {
         const res = await fetch('/api/banners', {
@@ -198,13 +244,13 @@ export default function AdminBannersPage() {
         const data = await res.json();
         if (data.success && data.banner) {
           setBanners((prev) => [...prev, data.banner]);
-          toast.success('تمت إضافة البنر الإعلاني الجديد بنجاح ✨');
+          toast.success(isTextShelf ? 'تمت إضافة القسم الكتابي الفاصل بنجاح ✨' : 'تمت إضافة الحملة بنجاح ✨');
         }
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
-      toast.error('حدث خطأ أثناء حفظ البنر');
+      toast.error('حدث خطأ أثناء حفظ البيانات');
     }
     setIsSaving(false);
   };
@@ -594,28 +640,36 @@ export default function AdminBannersPage() {
         </>
       )}
 
-      {/* TAB 2: SHOWCASE CAMPAIGNS (حملات العروض وشريط المنتجات) */}
+      {/* TAB 2: SHOWCASE CAMPAIGNS & TEXT SHELVES (حملات العروض وأشرطة المنتجات الفاصلة) */}
       {activeTab === 'campaigns' && (
         <>
-          {/* Header for Showcase Campaigns */}
-          <div className="bg-gradient-to-r from-emerald-700 to-teal-800 text-white p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header for Showcase Campaigns & Text Shelves */}
+          <div className="bg-gradient-to-r from-emerald-700 via-teal-800 to-slate-900 text-white p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl">🍏</span>
-                <h2 className="text-base font-black">حملات العروض المميزة مع شريط منتجات (Showcase Campaigns)</h2>
+                <h2 className="text-base font-black">حملات العروض والأقسام الكتابية الفاصلة (Showcases & Text Shelves)</h2>
               </div>
-              <p className="text-xs text-emerald-100 mt-1 max-w-2xl">
-                إضافة حملات إعلانية بتصاميم جرافيك كاملة (مثل منتجاتنا الطازجة، العودة للمدارس، عروض الألبان...) يظهر أسفل التصميم مباشرة شريط أفقي للمنتجات المحددة في الرئيسية أو داخل قسم معين.
+              <p className="text-xs text-emerald-100 mt-1 max-w-2xl leading-relaxed">
+                يمكنك إنشاء بنرات حملات مصممة كاملة (مع منتجات متداخلة)، أو إنشاء <strong>أقسام وأشرطة منتجات كتابية فاصلة</strong> (مثل: "الآيس كريم والحلويات") بدون صورة بنر لتفصل بين البنرات برتابة وجمالية متناسقة.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center flex-wrap gap-2 shrink-0">
               <button
                 onClick={handleOpenAddCampaign}
-                className="bg-white hover:bg-emerald-50 text-emerald-800 font-black text-xs py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="bg-white hover:bg-emerald-50 text-emerald-800 font-black text-xs py-2.5 px-3.5 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة حملة عروض جديدة</span>
+                <span>➕ بنر حملة مصمم</span>
+              </button>
+
+              <button
+                onClick={handleOpenAddTextShelf}
+                className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2.5 px-3.5 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>📝 قسم كتابي فاصل</span>
               </button>
 
               <button
@@ -628,29 +682,40 @@ export default function AdminBannersPage() {
             </div>
           </div>
 
-          {/* Campaign Banners List */}
+          {/* Campaign Banners & Text Shelves List */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {isLoading ? (
               <div className="col-span-full py-16 text-center">
                 <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs text-slate-500">جاري تحميل حملات العروض...</p>
+                <p className="text-xs text-slate-500">جاري تحميل حملات العروض والأقسام الفاصلة...</p>
               </div>
             ) : campaignBanners.length === 0 ? (
-              <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
+              <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-4">
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-2xl font-black">
                   🍏
                 </div>
-                <h3 className="text-sm font-black text-slate-800">لا توجد حملات عروض مدمجة حالياً</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  قم بإنشاء أول حملة عروض مصممة من الجرافيك دزاين تظهر مع شريط منتجات في الرئيسية أو داخل الأقسام
-                </p>
-                <button
-                  onClick={handleOpenAddCampaign}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-5 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إنشاء حملة جديدة الآن</span>
-                </button>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-black text-slate-800">لا توجد حملات عروض أو أقسام فاصلة حالياً</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    قم بإنشاء بنر حملة مصمم أو قسم كتابي فاصل (مثل الآيس كريم والحلويات) يظهر مع شريط منتجات في الرئيسية
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    onClick={handleOpenAddCampaign}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>إنشاء بنر مصمم</span>
+                  </button>
+                  <button
+                    onClick={handleOpenAddTextShelf}
+                    className="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>إنشاء قسم كتابي فاصل</span>
+                  </button>
+                </div>
               </div>
             ) : (
               campaignBanners.map((banner) => (
@@ -660,33 +725,60 @@ export default function AdminBannersPage() {
                     banner.isActive ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50'
                   }`}
                 >
-                  {/* Campaign Image Header Preview */}
-                  <div className="relative aspect-[21/9] w-full overflow-hidden bg-slate-100">
-                    <img
-                      src={banner.image}
-                      alt={banner.title}
-                      className="w-full h-full object-cover"
-                    />
+                  {/* Top Preview */}
+                  {banner.isTextShelf ? (
+                    <div className="p-4 bg-gradient-to-r from-slate-50 to-amber-50/50 border-b border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="bg-amber-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                          <span>📝 قسم كتابي فاصل</span>
+                        </span>
 
-                    {/* Products Count Badge */}
-                    <span className="absolute top-3 left-3 bg-emerald-700/90 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1.5 border border-white/30 backdrop-blur-xs">
-                      <Sparkles className="w-3 h-3" />
-                      <span>{banner.campaignProductIds?.length || 0} منتج معروض بالشريط</span>
-                    </span>
+                        <span className="bg-slate-800 text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full font-mono">
+                          الترتيب: #{banner.order || 1}
+                        </span>
+                      </div>
 
-                    {/* Position Badge */}
-                    <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
-                      {(!banner.position || banner.position === 'top')
-                        ? '🔝 في أعلى الرئيسية'
-                        : banner.position === 'middle'
-                        ? ' وسط الصفحة الرئيسية'
-                        : banner.position === 'bottom'
-                        ? '🔽 أسفل الصفحة الرئيسية'
-                        : banner.position === 'category'
-                        ? `📂 داخل قسم: ${banner.category || 'عام'}`
-                        : '🌐 في كل الأماكن'}
-                    </span>
-                  </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <h3 className="text-base font-black text-slate-900 leading-tight">
+                          {banner.title || banner.campaignProductsTitle || 'قسم كتابي'}
+                        </h3>
+                        <div className="w-7 h-7 rounded-full bg-slate-200/80 text-slate-700 flex items-center justify-center font-bold text-xs">
+                          ←
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative aspect-[21/9] w-full overflow-hidden bg-slate-100">
+                      <img
+                        src={banner.image}
+                        alt={banner.title}
+                        className="w-full h-full object-cover"
+                      />
+
+                      {/* Designer Badge */}
+                      <span className="absolute top-3 right-3 bg-emerald-700/90 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-white/30 backdrop-blur-xs">
+                        <span>🎨 بنر مصمم</span>
+                      </span>
+
+                      {/* Order Badge */}
+                      <span className="absolute top-3 left-3 bg-slate-900/90 text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full shadow-md font-mono border border-white/20">
+                        الترتيب: #{banner.order || 1}
+                      </span>
+
+                      {/* Position Badge */}
+                      <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
+                        {(!banner.position || banner.position === 'top')
+                          ? '🔝 في أعلى الرئيسية'
+                          : banner.position === 'middle'
+                          ? ' وسط الصفحة الرئيسية'
+                          : banner.position === 'bottom'
+                          ? '🔽 أسفل الصفحة الرئيسية'
+                          : banner.position === 'category'
+                          ? `📂 داخل قسم: ${banner.category || 'عام'}`
+                          : '🌐 في كل الأماكن'}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Campaign Content Details */}
                   <div className="p-4 space-y-2">
@@ -697,7 +789,7 @@ export default function AdminBannersPage() {
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                         banner.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
                       }`}>
-                        {banner.isActive ? '🟢 نشطة وتظهر' : '⚪ معطلة'}
+                        {banner.isActive ? '🟢 نشط ويظهر' : '⚪ معطل'}
                       </span>
                     </div>
 
@@ -710,6 +802,12 @@ export default function AdminBannersPage() {
                         {banner.campaignProductIds?.length || 0} منتجات
                       </span>
                     </div>
+
+                    {banner.linkUrl && (
+                      <span className="text-[10px] text-slate-400 font-mono block truncate">
+                        الرابط: {banner.linkUrl}
+                      </span>
+                    )}
                   </div>
 
                   {/* Actions Footer */}
@@ -730,7 +828,7 @@ export default function AdminBannersPage() {
                       <button
                         onClick={() => handleOpenEdit(banner)}
                         className="bg-slate-100 hover:bg-slate-200 text-brand-blue p-2 rounded-xl transition cursor-pointer"
-                        title="تعديل الحملة"
+                        title="تعديل"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -738,7 +836,7 @@ export default function AdminBannersPage() {
                       <button
                         onClick={() => handleDeleteBanner(banner.id, banner.title)}
                         className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition cursor-pointer"
-                        title="حذف الحملة"
+                        title="حذف"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -759,10 +857,17 @@ export default function AdminBannersPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 {isCampaignShowcase ? (
-                  <>
-                    <span className="text-base">🍏</span>
-                    <span>{editingBanner ? 'تعديل حملة العروض وشريط المنتجات' : 'إضافة حملة عروض جديدة مدمجة مع شريط منتجات'}</span>
-                  </>
+                  isTextShelf ? (
+                    <>
+                      <span className="text-base">📝</span>
+                      <span>{editingBanner ? 'تعديل القسم الكتابي الفاصل' : 'إضافة قسم كتابي فاصل (شريط منتجات)'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base">🎨</span>
+                      <span>{editingBanner ? 'تعديل بنر الحملة المصمم' : 'إضافة بنر حملة ترويجية مصممة'}</span>
+                    </>
+                  )
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 text-brand-blue" />
@@ -777,14 +882,48 @@ export default function AdminBannersPage() {
 
             <form onSubmit={handleSaveBanner} className="space-y-4">
               
-              {/* Campaign guidance note */}
+              {/* Type Switcher for Campaigns/Shelves */}
               {isCampaignShowcase && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-[11px] text-emerald-900 space-y-1">
+                <div className="bg-slate-100 p-1 rounded-2xl grid grid-cols-2 gap-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setIsTextShelf(false)}
+                    className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      !isTextShelf
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    <span>🎨 بنر مصمم كامل</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsTextShelf(true)}
+                    className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isTextShelf
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    <span>📝 قسم كتابي فاصل</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Guidance note */}
+              {isCampaignShowcase && (
+                <div className={`p-3 rounded-2xl text-[11px] space-y-1 border ${
+                  isTextShelf 
+                    ? 'bg-amber-50/80 border-amber-200 text-amber-950' 
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}>
                   <div className="font-black flex items-center gap-1.5">
-                    <span>💡 معلومة للمصمم والإدارة:</span>
+                    <span>{isTextShelf ? '📝 ميزة القسم الكتابي الفاصل:' : '🎨 معلومة للمصمم والإدارة:'}</span>
                   </div>
-                  <p className="text-emerald-800 leading-relaxed font-medium">
-                    صورة الحملة هي عبارة عن تصميم إعلاني كامل ومصمم جاهز من الجرافيك دزاين (يحتوي على النصوص والرسومات والعنوان والشعار)، وتحته يتم عرض شريط المنتجات المحددة أدناه تلقائياً بأسعارها وزر الإضافة.
+                  <p className="leading-relaxed font-medium">
+                    {isTextShelf
+                      ? 'هذا القسم يظهر كعنوان كتابي فاصل وأنيق (مثل: "الآيس كريم والحلويات") مع سهم الانتقال للقسم وشريط المنتجات، بدون صورة بنر، ليفصل بين البنرات المصممة بسلاسة واحترافية مثل تطبيق هنقرستيشن.'
+                      : 'صورة الحملة هي عبارة عن تصميم إعلاني كامل ومصمم جاهز من الجرافيك دزاين (يحتوي على النصوص والرسومات والعنوان والشعار)، وتحته يتم عرض شريط المنتجات المحددة أدناه بأسعارها وزر الإضافة.'}
                   </p>
                 </div>
               )}
@@ -792,14 +931,20 @@ export default function AdminBannersPage() {
               {/* Title / Name */}
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  {isCampaignShowcase ? 'اسم الحملة (للإدارة والتنظيم):' : 'عنوان البنر الرئيسي:'}
+                  {isCampaignShowcase
+                    ? (isTextShelf ? 'عنوان القسم الكتابي (يظهر كعنوان رئيسي للشريط): *' : 'اسم الحملة (للإدارة والتنظيم): *')
+                    : 'عنوان البنر الرئيسي: *'}
                 </label>
                 <input
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={isCampaignShowcase ? 'مثال: حملة منتجاتنا الطازجة | أو عروض أمريكانا' : 'مثال: سبرايت حمضيات ونعناع'}
+                  placeholder={
+                    isCampaignShowcase
+                      ? (isTextShelf ? 'مثال: الآيس كريم والحلويات | أو معجنات ومخبوزات' : 'مثال: حملة منتجاتنا الطازجة | أو بسيط SNACKS')
+                      : 'مثال: سبرايت حمضيات ونعناع'
+                  }
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
                 />
               </div>
@@ -817,79 +962,81 @@ export default function AdminBannersPage() {
                 </div>
               )}
 
-              {/* Banner Image Upload & Preview */}
-              <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <label className="font-black text-slate-800 block text-xs flex items-center justify-between">
-                  <span>{isCampaignShowcase ? 'صورة التصميم الإعلاني الكامل للحملة *:' : 'صورة البنر الإعلاني *:'}</span>
-                  <span className="text-[10px] text-slate-400 font-normal">رفع من الجهاز أو رابط صورة</span>
-                </label>
+              {/* Banner Image Upload & Preview (Only for normal banners or designer showcase banners) */}
+              {(!isCampaignShowcase || !isTextShelf) && (
+                <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <label className="font-black text-slate-800 block text-xs flex items-center justify-between">
+                    <span>{isCampaignShowcase ? 'صورة التصميم الإعلاني الكامل للحملة *:' : 'صورة البنر الإعلاني *:'}</span>
+                    <span className="text-[10px] text-slate-400 font-normal">رفع من الجهاز أو رابط صورة</span>
+                  </label>
 
-                <div className="space-y-3">
-                  {/* Banner Preview */}
-                  {image && (
-                    <div className="w-full h-32 rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-xs relative">
-                      <img
-                        src={image}
-                        alt="Banner Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-
-                  {/* Upload from Device Button & URL Input */}
-                  <div className="flex items-center gap-2">
-                    <label className={`${isCampaignShowcase ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-blue hover:bg-brand-blueDark'} text-white text-xs font-black py-2 px-3.5 rounded-xl cursor-pointer transition shadow-xs flex items-center gap-1.5 active:scale-95`}>
-                      <span>📁 رفع صورة التصميم من جهازك</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            try {
-                              const compressedDataUrl = await compressImageFile(file, 1920, 1080, 0.88);
-                              setImage(compressedDataUrl);
-                              toast.success('تم رفع وتجهيز صورة التصميم بنجاح ✨');
-                            } catch (err) {
-                              toast.error('تعذر معالجة الصورة، يرجى اختيار ملف صورة صالح');
-                            }
-                          }
-                        }}
-                      />
-                    </label>
-
+                  <div className="space-y-3">
+                    {/* Banner Preview */}
                     {image && (
-                      <button
-                        type="button"
-                        onClick={() => setImage('')}
-                        className="text-red-500 hover:text-red-700 text-[11px] font-bold py-1.5 px-2.5 rounded-xl bg-red-50 border border-red-200 transition cursor-pointer"
-                      >
-                        ✕ حذف الصورة
-                      </button>
+                      <div className="w-full h-32 rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-xs relative">
+                        <img
+                          src={image}
+                          alt="Banner Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                     )}
+
+                    {/* Upload from Device Button & URL Input */}
+                    <div className="flex items-center gap-2">
+                      <label className={`${isCampaignShowcase ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-blue hover:bg-brand-blueDark'} text-white text-xs font-black py-2 px-3.5 rounded-xl cursor-pointer transition shadow-xs flex items-center gap-1.5 active:scale-95`}>
+                        <span>📁 رفع صورة التصميم من جهازك</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const compressedDataUrl = await compressImageFile(file, 1920, 1080, 0.88);
+                                setImage(compressedDataUrl);
+                                toast.success('تم رفع وتجهيز صورة التصميم بنجاح ✨');
+                              } catch (err) {
+                                toast.error('تعذر معالجة الصورة، يرجى اختيار ملف صورة صالح');
+                              }
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {image && (
+                        <button
+                          type="button"
+                          onClick={() => setImage('')}
+                          className="text-red-500 hover:text-red-700 text-[11px] font-bold py-1.5 px-2.5 rounded-xl bg-red-50 border border-red-200 transition cursor-pointer"
+                        >
+                          ✕ حذف الصورة
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={image.startsWith('data:') ? '✅ تم رفع صورة التصميم من جهازك بنجاح' : image}
+                      onChange={(e) => {
+                        if (!image.startsWith('data:')) {
+                          setImage(e.target.value);
+                        }
+                      }}
+                      readOnly={image.startsWith('data:')}
+                      placeholder="أو الصق رابط صورة إنترنت هنا (https://...)"
+                      className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-3 text-[11px] font-mono text-slate-800 focus:border-brand-blue"
+                      dir="ltr"
+                    />
                   </div>
-
-                  <input
-                    type="text"
-                    value={image.startsWith('data:') ? '✅ تم رفع صورة التصميم من جهازك بنجاح' : image}
-                    onChange={(e) => {
-                      if (!image.startsWith('data:')) {
-                        setImage(e.target.value);
-                      }
-                    }}
-                    readOnly={image.startsWith('data:')}
-                    placeholder="أو الصق رابط صورة إنترنت هنا (https://...)"
-                    className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-3 text-[11px] font-mono text-slate-800 focus:border-brand-blue"
-                    dir="ltr"
-                  />
                 </div>
-              </div>
+              )}
 
-              {/* Banner Placement & Category Selector */}
+              {/* Placement & Order Controls */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">موقع عرض {isCampaignShowcase ? 'الحملة' : 'البنر'}:</label>
+                  <label className="block text-slate-700 font-bold mb-1">موقع عرض {isCampaignShowcase ? 'السكشن' : 'البنر'}:</label>
                   <select
                     value={position}
                     onChange={(e) => setPosition(e.target.value as any)}
@@ -903,33 +1050,48 @@ export default function AdminBannersPage() {
                   </select>
                 </div>
 
-                {position === 'category' && (
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">القسم المستهدف:</label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
-                    >
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">ترتيب الظهور التسلسلي (Order):</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={order}
+                    onChange={(e) => setOrder(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    الرقم الأصغر يظهر أولاً (مثال: 1 للبنر الأول، 2 للقسم الفاصل، 3 للبنر الثاني)
+                  </span>
+                </div>
               </div>
 
-              {/* Badge for normal banners */}
-              {!isCampaignShowcase && (
+              {position === 'category' && (
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">شارة البنر (Badge):</label>
+                  <label className="block text-slate-700 font-bold mb-1">القسم المستهدف:</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Badge for normal banners or text shelves */}
+              {(!isCampaignShowcase || isTextShelf) && (
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">شارة جانبية اختيارية (Badge):</label>
                   <input
                     type="text"
                     value={badge}
                     onChange={(e) => setBadge(e.target.value)}
-                    placeholder="مثال: توصيل سريع 🚚 أو عرض حصري 🔥"
+                    placeholder="مثال: مميز ✨ أو جديد 🔥"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
                   />
                 </div>
@@ -937,12 +1099,14 @@ export default function AdminBannersPage() {
 
               {/* Link */}
               <div>
-                <label className="block text-slate-700 font-bold mb-1">رابط الوجهة عند النقر على التصميم (اختياري):</label>
+                <label className="block text-slate-700 font-bold mb-1">
+                  رابط الوجهة عند النقر على السهم أو البنر (اتركه فارغاً ليفتح الصفحة المخصصة تلقائياً):
+                </label>
                 <input
                   type="text"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="/products"
+                  placeholder="تلقائي (/campaigns/...) أو مخصص"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-mono"
                   dir="ltr"
                 />

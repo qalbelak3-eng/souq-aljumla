@@ -7,6 +7,7 @@ import { Banner, Product, SaleType } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { getProductPriceForUser } from '@/lib/pricing';
 import ProductBuyModal from '@/components/ProductBuyModal';
+import TextProductShelf from '@/components/TextProductShelf';
 
 interface CampaignShowcaseCardProps {
   banner: Banner;
@@ -15,6 +16,9 @@ interface CampaignShowcaseCardProps {
 }
 
 export default function CampaignShowcaseCard({ banner, allProducts = [], className = '' }: CampaignShowcaseCardProps) {
+  if (banner.isTextShelf || !banner.image) {
+    return <TextProductShelf banner={banner} allProducts={allProducts} className={className} />;
+  }
   const { user, isApprovedMerchant } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);

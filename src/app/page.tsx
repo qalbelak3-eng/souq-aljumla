@@ -206,8 +206,10 @@ export default function HomePage() {
   const newArrivalsTitle = settings?.newArrivalsSectionTitle || 'وصل حديثاً للمستودع ✨';
   const newArrivalsLimit = Number(settings?.newArrivalsLimit) || 8;
 
-  // Active Promotional Campaign Showcases for Home
-  const activeShowcases = banners.filter((b) => b.isActive && b.isCampaignShowcase);
+  // Active Promotional Campaign Showcases for Home (sorted by configured order)
+  const activeShowcases = banners
+    .filter((b) => b.isActive && b.isCampaignShowcase)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
   const topShowcases = activeShowcases.filter((b) => !b.position || b.position === 'top' || b.position === 'all');
   const middleShowcases = activeShowcases.filter((b) => b.position === 'middle');
   const bottomShowcases = activeShowcases.filter((b) => b.position === 'bottom');

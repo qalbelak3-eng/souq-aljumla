@@ -16,6 +16,7 @@ export interface Banner {
   campaignBgColor?: string; // لون ثيم خلفية الحملة (مثال: "#15803d" للأخضر أو ألوان مخصصة)
   campaignProductsTitle?: string; // عنوان سكشن المنتجات داخل الحملة (مثال: "منتجاتنا الطازجة")
   campaignProductIds?: string[]; // قائمة معرفات المنتجات المعروضة في الحملة
+  isTextShelf?: boolean; // هل هو قسم/شريط منتجات كتابي فاصل بدون بنر؟ (مثل "الآيس كريم والحلويات")
 }
 
 export interface Company {
