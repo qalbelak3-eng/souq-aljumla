@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { Search, ArrowRight, Building, Layers, Sparkles, Store, Package } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import CategoryIcon from '@/components/CategoryIcon';
-import { Product, Category, Company } from '@/types';
-import { initialCategories, initialCompanies } from '@/data/initialData';
+import BannerSlider from '@/components/BannerSlider';
+import CampaignShowcaseCard from '@/components/CampaignShowcaseCard';
+import { Product, Category, Company, Banner } from '@/types';
+import { initialCategories, initialCompanies, initialBanners } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 // Intelligent product-to-company matcher
@@ -225,6 +227,9 @@ function ProductsCatalog() {
     }
     return initialCompanies;
   });
+  const [banners, setBanners] = useState<Banner[]>(() => {
+    return initialBanners;
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>(categoryParam);
   const [selectedCompany, setSelectedCompany] = useState<string>(companyParam);
   const [selectedFilter, setSelectedFilter] = useState<string>(filterParam);
@@ -251,8 +256,9 @@ function ProductsCatalog() {
       fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/banners?all=false', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
     ])
-      .then(([prodData, catData, compData]) => {
+      .then(([prodData, catData, compData, bannerData]) => {
         if (prodData.success && Array.isArray(prodData.products)) {
           setProducts(prodData.products);
           if (typeof window !== 'undefined') {
@@ -270,6 +276,9 @@ function ProductsCatalog() {
           if (typeof window !== 'undefined') {
             localStorage.setItem('souq_store_companies_cache', JSON.stringify(compData.companies));
           }
+        }
+        if (bannerData?.success && Array.isArray(bannerData.banners)) {
+          setBanners(bannerData.banners);
         }
         setIsLoading(false);
       })
@@ -401,6 +410,14 @@ function ProductsCatalog() {
     !queryParam &&
     dynamicCompanies.length > 0;
 
+  // Category specific showcase campaigns
+  const categoryCampaigns = banners.filter(
+    (b) =>
+      b.isActive &&
+      b.isCampaignShowcase &&
+      (b.position === 'category' || b.position === 'all' || (b.category && normalizeCat(b.category) === normalizeCat(selectedCategory)))
+  );
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3 select-none">
       {isShowingCompanies ? (
@@ -430,6 +447,16 @@ function ProductsCatalog() {
               <Search className="w-4 h-4 text-slate-600 absolute right-3.5 top-1/2 -translate-y-1/2" />
             </div>
           </div>
+
+          {/* Category Promotional Sliding Banner (e.g. Sprite or Drinks promotion) */}
+          {selectedCategory && selectedCategory !== 'الكل' && (
+            <BannerSlider position="category" category={selectedCategory} className="mb-2" />
+          )}
+
+          {/* Category Showcase Campaigns (e.g. منتجاتنا الطازجة or special themed product carousel) */}
+          {categoryCampaigns.map((camp) => (
+            <CampaignShowcaseCard key={camp.id} banner={camp} allProducts={products} className="mb-2" />
+          ))}
 
           {/* Subtitle */}
           <p className="text-xs text-slate-500 font-bold text-center sm:text-right pt-0.5">
@@ -504,6 +531,11 @@ function ProductsCatalog() {
               <Search className="w-4 h-4 text-slate-600 absolute right-3.5 top-1/2 -translate-y-1/2" />
             </div>
           </div>
+
+          {/* Category Promotional Sliding Banner if viewing category without company filter */}
+          {!selectedCompany && selectedCategory && selectedCategory !== 'الكل' && (
+            <BannerSlider position="category" category={selectedCategory} className="mb-2" />
+          )}
 
           {/* Products 2-Column Mobile Grid */}
           {isLoading && products.length === 0 ? (

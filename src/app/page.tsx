@@ -22,11 +22,12 @@ import {
 } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import BannerSlider from '@/components/BannerSlider';
+import CampaignShowcaseCard from '@/components/CampaignShowcaseCard';
 import MerchantStatsCard from '@/components/MerchantStatsCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import CompetitionLeaderboard from '@/components/CompetitionLeaderboard';
-import { Product, Category } from '@/types';
-import { initialCategories, initialSettings, initialProducts } from '@/data/initialData';
+import { Product, Category, Banner } from '@/types';
+import { initialCategories, initialSettings, initialProducts, initialBanners } from '@/data/initialData';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
@@ -53,6 +54,9 @@ export default function HomePage() {
       } catch (e) {}
     }
     return initialCategories;
+  });
+  const [banners, setBanners] = useState<Banner[]>(() => {
+    return initialBanners;
   });
   const [settings, setSettings] = useState<any>(() => {
     if (typeof window !== 'undefined') {
@@ -84,10 +88,11 @@ export default function HomePage() {
     Promise.all([
       fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/banners?all=false', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
     ])
-      .then(([prodData, catData, compData, settingsData]) => {
+      .then(([prodData, catData, bannerData, compData, settingsData]) => {
         if (prodData.success && Array.isArray(prodData.products)) {
           setProducts(prodData.products);
           if (typeof window !== 'undefined') {
@@ -99,6 +104,9 @@ export default function HomePage() {
           if (typeof window !== 'undefined') {
             localStorage.setItem('souq_store_categories_cache', JSON.stringify(catData.categories));
           }
+        }
+        if (bannerData?.success && Array.isArray(bannerData.banners)) {
+          setBanners(bannerData.banners);
         }
         if (compData.success && Array.isArray(compData.companies)) {
           if (typeof window !== 'undefined') {
@@ -219,6 +227,12 @@ export default function HomePage() {
   const newArrivalsTitle = settings?.newArrivalsSectionTitle || 'وصل حديثاً للمستودع ✨';
   const newArrivalsLimit = Number(settings?.newArrivalsLimit) || 8;
 
+  // Active Promotional Campaign Showcases for Home
+  const activeShowcases = banners.filter((b) => b.isActive && b.isCampaignShowcase);
+  const topShowcases = activeShowcases.filter((b) => !b.position || b.position === 'top' || b.position === 'all');
+  const middleShowcases = activeShowcases.filter((b) => b.position === 'middle');
+  const bottomShowcases = activeShowcases.filter((b) => b.position === 'bottom');
+
   return (
     <div className="space-y-5 sm:space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
       
@@ -227,10 +241,17 @@ export default function HomePage() {
         <MerchantStatsCard />
       </section>
 
-      {/* 2. AUTO-SLIDING BANNERS */}
+      {/* 2. AUTO-SLIDING BANNERS (TOP) */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
-        <BannerSlider />
+        <BannerSlider position="top" />
       </section>
+
+      {/* 2.5. TOP THEMED CAMPAIGN SHOWCASES (e.g. منتجاتنا الطازجة) */}
+      {topShowcases.map((showcase) => (
+        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+          <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
+        </section>
+      ))}
 
       {/* 3. DYNAMIC CATEGORIES - JUMLATY STYLE WITH ANIMATED ICONS */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -331,6 +352,13 @@ export default function HomePage() {
         <BannerSlider position="middle" />
       </section>
 
+      {/* 5.6 MIDDLE THEMED CAMPAIGN SHOWCASES */}
+      {middleShowcases.map((showcase) => (
+        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+          <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
+        </section>
+      ))}
+
       {/* 6. SECTION 3: NEW ARRIVALS / LATEST PRODUCTS (وصل حديثاً للمستودع) */}
       {showNewArrivals && (
         <section className="max-w-5xl mx-auto px-4 sm:px-6 space-y-3">
@@ -356,6 +384,17 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      {/* 6.5 BOTTOM BANNER SLIDER & BOTTOM CAMPAIGN SHOWCASES */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6">
+        <BannerSlider position="bottom" />
+      </section>
+
+      {bottomShowcases.map((showcase) => (
+        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+          <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
+        </section>
+      ))}
 
       {/* Loading state skeleton if data is loading and no products in cache */}
       {isLoading && products.length === 0 && (

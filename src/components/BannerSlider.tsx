@@ -6,11 +6,18 @@ import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { Banner } from '@/types';
 
 interface BannerSliderProps {
-  position?: 'top' | 'middle' | 'all';
+  position?: 'top' | 'middle' | 'bottom' | 'category' | 'all';
+  category?: string;
   className?: string;
+  aspectRatio?: 'standard' | 'compact' | 'wide';
 }
 
-export default function BannerSlider({ position = 'top', className = '' }: BannerSliderProps) {
+export default function BannerSlider({ 
+  position = 'top', 
+  category = '', 
+  className = '',
+  aspectRatio
+}: BannerSliderProps) {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,11 +30,18 @@ export default function BannerSlider({ position = 'top', className = '' }: Banne
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`/api/banners?position=${encodeURIComponent(position)}`)
+    let url = `/api/banners?position=${encodeURIComponent(position)}`;
+    if (category) {
+      url += `&category=${encodeURIComponent(category)}`;
+    }
+
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.banners)) {
-          setBanners(data.banners);
+          // Filter out campaign showcases that have products slider (they are rendered via CampaignShowcaseCard)
+          const regularBanners = data.banners.filter((b: Banner) => !b.isCampaignShowcase);
+          setBanners(regularBanners);
         }
         setIsLoading(false);
       })
@@ -35,7 +49,7 @@ export default function BannerSlider({ position = 'top', className = '' }: Banne
         console.error(err);
         setIsLoading(false);
       });
-  }, [position]);
+  }, [position, category]);
 
   // Auto slide every 4.5 seconds (paused while user is touching/swiping)
   useEffect(() => {
@@ -112,10 +126,10 @@ export default function BannerSlider({ position = 'top', className = '' }: Banne
     setDragOffset(0);
   };
 
-  const isMiddle = position === 'middle';
-  const aspectClass = isMiddle
-    ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[140px] sm:min-h-[200px] md:min-h-[250px]'
-    : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
+  const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category';
+  const aspectClass = isCompact
+    ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[135px] sm:min-h-[190px] md:min-h-[230px]'
+    : 'aspect-[16/9] sm:aspect-[21/9] min-h-[200px] sm:min-h-[300px] md:min-h-[380px] lg:min-h-[420px]';
 
   if (isLoading) {
     return (

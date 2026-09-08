@@ -1264,18 +1264,30 @@ export function updateLuckyWheelSettings(updates: Partial<LuckyWheelSettings>): 
 }
 
 // Banners
-export function getBanners(onlyActive = true, position?: string): Banner[] {
+export function getBanners(onlyActive = true, position?: string, category?: string): Banner[] {
   const db = ensureDbExists();
   let list = db.banners || initialBanners;
   if (onlyActive) {
     list = list.filter(b => b.isActive);
   }
-  if (position && position !== 'all') {
+  
+  if (category && category !== 'الكل') {
+    const normCat = category.trim().toLowerCase();
+    list = list.filter(b => {
+      const bannerCat = (b.category || '').trim().toLowerCase();
+      // If banner is targeted to this category OR is 'all'
+      if (b.position === 'category' || bannerCat) {
+        return !bannerCat || bannerCat === 'الكل' || bannerCat === normCat;
+      }
+      return b.position === 'all';
+    });
+  } else if (position && position !== 'all') {
     list = list.filter(b => {
       const bannerPos = b.position || 'top';
       return bannerPos === position || bannerPos === 'all';
     });
   }
+
   return list.sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
@@ -1285,6 +1297,11 @@ export function createBanner(bannerData: Omit<Banner, 'id'>): Banner {
   const newBanner: Banner = {
     ...bannerData,
     position: bannerData.position || 'top',
+    category: bannerData.category || '',
+    isCampaignShowcase: Boolean(bannerData.isCampaignShowcase),
+    campaignBgColor: bannerData.campaignBgColor || '',
+    campaignProductsTitle: bannerData.campaignProductsTitle || '',
+    campaignProductIds: Array.isArray(bannerData.campaignProductIds) ? bannerData.campaignProductIds : [],
     id: `banner-${Date.now()}`,
     isActive: bannerData.isActive ?? true,
     order: bannerData.order ?? (db.banners.length + 1),
@@ -1299,7 +1316,13 @@ export function updateBanner(id: string, updates: Partial<Banner>): Banner | nul
   if (!db.banners) db.banners = [...initialBanners];
   const idx = db.banners.findIndex(b => b.id === id);
   if (idx === -1) return null;
-  db.banners[idx] = { ...db.banners[idx], ...updates };
+  db.banners[idx] = { 
+    ...db.banners[idx], 
+    ...updates,
+    campaignProductIds: updates.campaignProductIds !== undefined 
+      ? updates.campaignProductIds 
+      : db.banners[idx].campaignProductIds
+  };
   saveDb(db);
   return db.banners[idx];
 }

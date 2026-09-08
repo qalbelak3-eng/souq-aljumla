@@ -6,7 +6,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const all = searchParams.get('all') === 'true';
     const position = searchParams.get('position') || undefined;
-    const banners = getBanners(!all, position);
+    const category = searchParams.get('category') || undefined;
+    const banners = getBanners(!all, position, category);
     return NextResponse.json({ success: true, banners });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

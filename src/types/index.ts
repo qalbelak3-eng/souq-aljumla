@@ -1,5 +1,5 @@
 export type SaleType = 'retail' | 'wholesale' | 'special';
-export type BannerPosition = 'top' | 'middle' | 'all';
+export type BannerPosition = 'top' | 'middle' | 'bottom' | 'category' | 'all';
 
 export interface Banner {
   id: string;
@@ -10,7 +10,12 @@ export interface Banner {
   badge?: string;
   isActive: boolean;
   order?: number;
-  position?: BannerPosition; // 'top' (أعلى الصفحة) | 'middle' (بين الأكثر مبيعاً ووصل حديثاً) | 'all'
+  position?: BannerPosition; // 'top' (أعلى الرئيسية) | 'middle' (وسط الرئيسية) | 'bottom' (أسفل الرئيسية) | 'category' (داخل قسم معين) | 'all'
+  category?: string; // اسم القسم التابع له البنر (مثل "مشروبات" أو "سناك وشيبس ومقرمشات")
+  isCampaignShowcase?: boolean; // هل هو بنر حملة ترويجية تفاعلية مع شريط منتجات معروضة؟
+  campaignBgColor?: string; // لون ثيم خلفية الحملة (مثال: "#15803d" للأخضر أو ألوان مخصصة)
+  campaignProductsTitle?: string; // عنوان سكشن المنتجات داخل الحملة (مثال: "منتجاتنا الطازجة")
+  campaignProductIds?: string[]; // قائمة معرفات المنتجات المعروضة في الحملة
 }
 
 export interface Company {

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, Trash2, Edit2, Check, X, ExternalLink, RefreshCw, Eye, EyeOff, Image as ImageIcon } from 'lucide-react';
-import { Banner, PopupAdSettings } from '@/types';
+import { Sparkles, Plus, Trash2, Edit2, Check, X, ExternalLink, RefreshCw, Eye, EyeOff, Image as ImageIcon, Layers, Tag, Search, ShoppingBag } from 'lucide-react';
+import { Banner, PopupAdSettings, Category, Product } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 import { compressImageFile } from '@/lib/imageUtils';
@@ -14,19 +14,29 @@ export default function AdminBannersPage() {
 
   // Slider Banners State
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
 
-  // Form State for Slider Banners
+  // Form State for Slider Banners & Campaigns
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [image, setImage] = useState('');
   const [linkUrl, setLinkUrl] = useState('/products');
   const [badge, setBadge] = useState('عرض خاص ✦');
-  const [position, setPosition] = useState<'top' | 'middle' | 'all'>('top');
+  const [position, setPosition] = useState<'top' | 'middle' | 'bottom' | 'category' | 'all'>('top');
+  const [category, setCategory] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Showcase Campaign Specific State
+  const [isCampaignShowcase, setIsCampaignShowcase] = useState(false);
+  const [campaignBgColor, setCampaignBgColor] = useState('#15803d');
+  const [campaignProductsTitle, setCampaignProductsTitle] = useState('منتجاتنا الطازجة');
+  const [campaignProductIds, setCampaignProductIds] = useState<string[]>([]);
+  const [productSearchFilter, setProductSearchFilter] = useState('');
 
   // Popup Ads Multi-List State
   const [popupAds, setPopupAds] = useState<PopupAdSettings[]>([]);
@@ -58,13 +68,22 @@ export default function AdminBannersPage() {
       .catch((err) => console.error(err));
   };
 
-  const fetchBanners = () => {
+  const fetchBannersAndData = () => {
     setIsLoading(true);
-    fetch('/api/banners?all=true')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.banners) {
-          setBanners(data.banners);
+    Promise.all([
+      fetch('/api/banners?all=true').then((r) => r.json()),
+      fetch('/api/categories').then((r) => r.json()),
+      fetch('/api/products').then((r) => r.json()),
+    ])
+      .then(([bannersData, catData, prodData]) => {
+        if (bannersData.success && Array.isArray(bannersData.banners)) {
+          setBanners(bannersData.banners);
+        }
+        if (catData.success && Array.isArray(catData.categories)) {
+          setCategories(catData.categories);
+        }
+        if (prodData.success && Array.isArray(prodData.products)) {
+          setProducts(prodData.products);
         }
         setIsLoading(false);
       })
@@ -75,7 +94,7 @@ export default function AdminBannersPage() {
   };
 
   useEffect(() => {
-    fetchBanners();
+    fetchBannersAndData();
     fetchSettings();
   }, []);
 
@@ -87,7 +106,13 @@ export default function AdminBannersPage() {
     setLinkUrl('/products');
     setBadge('توصيل سريع 🚚');
     setPosition('top');
+    setCategory(categories[0]?.name || '');
     setIsActive(true);
+    setIsCampaignShowcase(false);
+    setCampaignBgColor('#15803d');
+    setCampaignProductsTitle('منتجاتنا الطازجة');
+    setCampaignProductIds([]);
+    setProductSearchFilter('');
     setIsModalOpen(true);
   };
 
@@ -99,8 +124,20 @@ export default function AdminBannersPage() {
     setLinkUrl(banner.linkUrl || '/products');
     setBadge(banner.badge || '');
     setPosition(banner.position || 'top');
+    setCategory(banner.category || (categories[0]?.name || ''));
     setIsActive(banner.isActive);
+    setIsCampaignShowcase(Boolean(banner.isCampaignShowcase));
+    setCampaignBgColor(banner.campaignBgColor || '#15803d');
+    setCampaignProductsTitle(banner.campaignProductsTitle || 'منتجاتنا الطازجة');
+    setCampaignProductIds(Array.isArray(banner.campaignProductIds) ? banner.campaignProductIds : []);
+    setProductSearchFilter('');
     setIsModalOpen(true);
+  };
+
+  const toggleProductInCampaign = (productId: string) => {
+    setCampaignProductIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
   };
 
   const handleSaveBanner = async (e: React.FormEvent) => {
@@ -114,6 +151,11 @@ export default function AdminBannersPage() {
       linkUrl: linkUrl.trim(),
       badge: badge.trim(),
       position,
+      category: position === 'category' || category ? category.trim() : '',
+      isCampaignShowcase,
+      campaignBgColor: isCampaignShowcase ? campaignBgColor : undefined,
+      campaignProductsTitle: isCampaignShowcase ? campaignProductsTitle.trim() : undefined,
+      campaignProductIds: isCampaignShowcase ? campaignProductIds : undefined,
       isActive,
     };
 
@@ -127,6 +169,7 @@ export default function AdminBannersPage() {
         const data = await res.json();
         if (data.success && data.banner) {
           setBanners((prev) => prev.map((b) => (b.id === editingBanner.id ? data.banner : b)));
+          toast.success('تم تحديث بيانات البنر الإعلاني بنجاح ✨');
         }
       } else {
         const res = await fetch('/api/banners', {
@@ -137,11 +180,13 @@ export default function AdminBannersPage() {
         const data = await res.json();
         if (data.success && data.banner) {
           setBanners((prev) => [...prev, data.banner]);
+          toast.success('تمت إضافة البنر الإعلاني الجديد بنجاح ✨');
         }
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
+      toast.error('حدث خطأ أثناء حفظ البنر');
     }
     setIsSaving(false);
   };
@@ -351,10 +396,10 @@ export default function AdminBannersPage() {
             <div>
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-amber-500" />
-                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية المتحركة (سلايدر العروض)</h2>
+                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية وحملات العروض المميزة</h2>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                إضافة وتعديل البنرات الترويجية التي تظهر في السلايدر الرئيسي (الأعلى) أو السلايدر الأوسط بين الأقسام
+                إضافة وتعديل البنرات الترويجية المتحركة (السلايدر) وحملات العروض المميزة المدمجة مع منتجات (Showcase Campaigns) في أعلى، وسط، أسفل الرئيسية أو داخل أقسام محددة
               </p>
             </div>
 
@@ -364,11 +409,11 @@ export default function AdminBannersPage() {
                 className="bg-brand-coral hover:bg-brand-coralHover text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة بنر إعلاني جديد</span>
+                <span>إضافة بنر أو حملة جديدة</span>
               </button>
 
               <button
-                onClick={fetchBanners}
+                onClick={fetchBannersAndData}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-3 rounded-xl transition cursor-pointer"
                 title="تحديث"
               >
@@ -382,7 +427,7 @@ export default function AdminBannersPage() {
             {isLoading ? (
               <div className="col-span-full py-16 text-center">
                 <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs text-slate-500">جاري تحميل البنرات الإعلانية...</p>
+                <p className="text-xs text-slate-500">جاري تحميل البنرات وحملات العروض...</p>
               </div>
             ) : banners.length === 0 ? (
               <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
@@ -418,25 +463,42 @@ export default function AdminBannersPage() {
                   </span>
                 )}
 
+                {/* Campaign Showcase Badge */}
+                {banner.isCampaignShowcase && (
+                  <span 
+                    className="absolute top-3 left-3 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-white/30 backdrop-blur-xs"
+                    style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>حملة مميزة مع منتجات ({banner.campaignProductIds?.length || 0})</span>
+                  </span>
+                )}
+
                 {/* Position Badge */}
-                <span className="absolute bottom-3 right-3 bg-slate-900/80 text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full shadow-xs backdrop-blur-xs">
+                <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
                   {(!banner.position || banner.position === 'top')
                     ? '🔝 البنر الرئيسي بالأعلى'
                     : banner.position === 'middle'
                     ? ' البنر الإعلاني الأوسط'
-                    : '🌐 في كلا المكانين'}
+                    : banner.position === 'bottom'
+                    ? '🔽 البنر الإعلاني بالأسفل'
+                    : banner.position === 'category'
+                    ? `📂 داخل قسم: ${banner.category || 'عام'}`
+                    : '🌐 في كل الأماكن'}
                 </span>
 
-                {/* Status Overlay */}
-                <span
-                  className={`absolute top-3 left-3 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${
-                    banner.isActive
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-slate-700 text-white'
-                  }`}
-                >
-                  {banner.isActive ? 'نشط ويظهر بالمتجر ✓' : 'معطل مخفي ✕'}
-                </span>
+                {/* Status Overlay if not campaign badge */}
+                {!banner.isCampaignShowcase && (
+                  <span
+                    className={`absolute top-3 left-3 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${
+                      banner.isActive
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-700 text-white'
+                    }`}
+                  >
+                    {banner.isActive ? 'نشط ويظهر بالمتجر ✓' : 'معطل مخفي ✕'}
+                  </span>
+                )}
               </div>
 
               {/* Banner Content Details */}
@@ -450,6 +512,10 @@ export default function AdminBannersPage() {
                       ? 'أعلى الصفحة'
                       : banner.position === 'middle'
                       ? 'وسط الصفحة'
+                      : banner.position === 'bottom'
+                      ? 'أسفل الصفحة'
+                      : banner.position === 'category'
+                      ? banner.category
                       : 'الكل'}
                   </span>
                 </div>
@@ -462,6 +528,15 @@ export default function AdminBannersPage() {
                   <span className="text-[10px] text-brand-blue font-mono block truncate">
                     الرابط: {banner.linkUrl}
                   </span>
+                )}
+                {banner.isCampaignShowcase && (
+                  <div className="pt-1 flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                    <span 
+                      className="w-3 h-3 rounded-full inline-block shrink-0 border border-slate-300"
+                      style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
+                    />
+                    <span>عنوان شريط المنتجات: &quot;{banner.campaignProductsTitle || 'منتجاتنا الطازجة'}&quot;</span>
+                  </div>
                 )}
               </div>
 
@@ -506,19 +581,21 @@ export default function AdminBannersPage() {
       {/* Add / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-100">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-100 max-h-[92vh] overflow-y-auto">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-black text-sm text-slate-900">
-                {editingBanner ? 'تعديل بيانات البنر الإعلاني' : 'إضافة بنر إعلاني متحرك جديد'}
+              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-brand-coral" />
+                <span>{editingBanner ? 'تعديل بيانات البنر / الحملة' : 'إضافة بنر إعلاني أو حملة مميزة'}</span>
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveBanner} className="space-y-3.5">
+            <form onSubmit={handleSaveBanner} className="space-y-4">
               
+              {/* Title & Subtitle */}
               <div>
                 <label className="block text-slate-700 font-bold mb-1">عنوان البنر الرئيسي:</label>
                 <input
@@ -526,18 +603,18 @@ export default function AdminBannersPage() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="مثال: جميلة كربلاء | خيارك الذكي للتسوق 🇮🇶"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
+                  placeholder="مثال: سبرايت حمضيات ونعناع | أو منتجاتنا الطازجة"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1">الوصف الفرعي:</label>
+                <label className="block text-slate-700 font-bold mb-1">الوصف الفرعي (اختياري):</label>
                 <input
                   type="text"
                   value={subtitle}
                   onChange={(e) => setSubtitle(e.target.value)}
-                  placeholder="مثال: توصيل مباشر وسريع لكافة محافظات العراق (كربلاء، بغداد، البصرة)"
+                  placeholder="مثال: انتعاش يدوم طويلاً | أفضل المنتجات بأسعار الجملة المباشرة"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
                 />
               </div>
@@ -546,7 +623,7 @@ export default function AdminBannersPage() {
               <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                 <label className="font-black text-slate-800 block text-xs flex items-center justify-between">
                   <span>صورة البنر الإعلاني *:</span>
-                  <span className="text-[10px] text-slate-400 font-normal">رفع من الجهاز أو رابط إنترنت</span>
+                  <span className="text-[10px] text-slate-400 font-normal">رفع من الجهاز أو رابط صورة</span>
                 </label>
 
                 <div className="space-y-3">
@@ -564,7 +641,7 @@ export default function AdminBannersPage() {
                   {/* Upload from Device Button & URL Input */}
                   <div className="flex items-center gap-2">
                     <label className="bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-black py-2 px-3.5 rounded-xl cursor-pointer transition shadow-xs flex items-center gap-1.5 active:scale-95">
-                      <span>📁 رفع صورة بنر من جهازك</span>
+                      <span>📁 رفع صورة من جهازك</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -588,7 +665,7 @@ export default function AdminBannersPage() {
                       <button
                         type="button"
                         onClick={() => setImage('')}
-                        className="text-red-500 hover:text-red-700 text-[11px] font-bold py-1.5 px-2.5 rounded-xl bg-red-50 border border-red-200 transition"
+                        className="text-red-500 hover:text-red-700 text-[11px] font-bold py-1.5 px-2.5 rounded-xl bg-red-50 border border-red-200 transition cursor-pointer"
                       >
                         ✕ حذف الصورة
                       </button>
@@ -611,20 +688,42 @@ export default function AdminBannersPage() {
                 </div>
               </div>
 
-              {/* Banner Position Selector */}
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">موقع عرض البنر في الصفحة الرئيسية:</label>
-                <select
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
-                >
-                  <option value="top">🔝 البنر الرئيسي في أعلى الصفحة (Top Banner Slider)</option>
-                  <option value="middle"> البنر الإعلاني الأوسط (بين الأكثر طلباً ووصل حديثاً للمستودع)</option>
-                  <option value="all">🌐 يظهر في كلا المكانين (الأعلى والوسط)</option>
-                </select>
+              {/* Banner Placement & Category Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">موقع عرض البنر الإعلاني:</label>
+                  <select
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
+                  >
+                    <option value="top">🔝 البنر الرئيسي في أعلى الصفحة الرئيسية</option>
+                    <option value="middle"> البنر الإعلاني الأوسط (وسط الرئيسية)</option>
+                    <option value="bottom">🔽 البنر الإعلاني في أسفل الصفحة الرئيسية</option>
+                    <option value="category">📂 داخل قسم محدد بالمتجر (مخصص للقسم)</option>
+                    <option value="all">🌐 يظهر في جميع الأماكن</option>
+                  </select>
+                </div>
+
+                {position === 'category' && (
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">القسم المستهدف:</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
+              {/* Badge & Link */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">شارة البنر (Badge):</label>
@@ -632,8 +731,8 @@ export default function AdminBannersPage() {
                     type="text"
                     value={badge}
                     onChange={(e) => setBadge(e.target.value)}
-                    placeholder="مثال: توصيل سريع 🚚"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
+                    placeholder="مثال: توصيل سريع 🚚 أو عرض حصري 🔥"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
                   />
                 </div>
 
@@ -650,6 +749,160 @@ export default function AdminBannersPage() {
                 </div>
               </div>
 
+              {/* THEMED SHOWCASE CAMPAIGN SECTION (منتجات معروضة داخل الحملة) */}
+              <div className="border border-emerald-200 bg-emerald-50/50 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isCampaignShowcase}
+                      onChange={(e) => setIsCampaignShowcase(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <span>🏷️ تحويل البنر إلى حملة ترويجية مدمجة مع منتجات معروضة</span>
+                      <span className="bg-emerald-600 text-white text-[10px] px-2 py-0.2 rounded-full font-bold">
+                        مثل &quot;منتجاتنا الطازجة&quot;
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {isCampaignShowcase && (
+                  <div className="space-y-3 pt-2 border-t border-emerald-200/60">
+                    
+                    {/* Theme Color Selector */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5 text-xs">
+                        لون ثيم خلفية الحملة:
+                      </label>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {[
+                          { name: 'أخضر طازج', color: '#15803d' },
+                          { name: 'برتقالي', color: '#ea580c' },
+                          { name: 'أزرق', color: '#0284c7' },
+                          { name: 'بنفسجي', color: '#7c3aed' },
+                          { name: 'عنبري', color: '#d97706' },
+                          { name: 'رمادي داكن', color: '#1e293b' },
+                        ].map((item) => (
+                          <button
+                            key={item.color}
+                            type="button"
+                            onClick={() => setCampaignBgColor(item.color)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition ${
+                              campaignBgColor === item.color ? 'ring-2 ring-slate-900 scale-105' : 'opacity-85 hover:opacity-100'
+                            }`}
+                            style={{ backgroundColor: item.color }}
+                          >
+                            <span>{item.name}</span>
+                            {campaignBgColor === item.color && <Check className="w-3 h-3 stroke-[3]" />}
+                          </button>
+                        ))}
+
+                        <input
+                          type="color"
+                          value={campaignBgColor}
+                          onChange={(e) => setCampaignBgColor(e.target.value)}
+                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200"
+                          title="اختر لون مخصص"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Products Section Title */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1 text-xs">
+                        عنوان قسم المنتجات المعروضة:
+                      </label>
+                      <input
+                        type="text"
+                        value={campaignProductsTitle}
+                        onChange={(e) => setCampaignProductsTitle(e.target.value)}
+                        placeholder="مثال: منتجاتنا الطازجة | تشكيلة المشروبات المميزة"
+                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 font-bold"
+                      />
+                    </div>
+
+                    {/* Search & Select Products for this Campaign */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-slate-800 font-bold text-xs">
+                          اختر المنتجات المعروضة في شريط الحملة ({campaignProductIds.length} منتج محدد):
+                        </label>
+                        {campaignProductIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setCampaignProductIds([])}
+                            className="text-[10px] text-red-600 hover:underline font-bold cursor-pointer"
+                          >
+                            إلغاء تحديد الكل
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Search box for products */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={productSearchFilter}
+                          onChange={(e) => setProductSearchFilter(e.target.value)}
+                          placeholder="ابحث عن منتج لإضافته للحملة..."
+                          className="w-full bg-white border border-slate-200 rounded-xl py-2 pr-8 pl-3 text-xs text-slate-800 focus:outline-none focus:border-emerald-600"
+                        />
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                      </div>
+
+                      {/* Products Multi-Select Scrollable Box */}
+                      <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl bg-white p-2 space-y-1">
+                        {products
+                          .filter((p) =>
+                            !productSearchFilter.trim() ||
+                            p.name.toLowerCase().includes(productSearchFilter.toLowerCase()) ||
+                            (p.category && p.category.toLowerCase().includes(productSearchFilter.toLowerCase()))
+                          )
+                          .map((p) => {
+                            const isSelected = campaignProductIds.includes(p.id);
+                            return (
+                              <div
+                                key={p.id}
+                                onClick={() => toggleProductInCampaign(p.id)}
+                                className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer transition ${
+                                  isSelected
+                                    ? 'bg-emerald-50 border border-emerald-300 font-bold text-emerald-950'
+                                    : 'hover:bg-slate-50 border border-transparent text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                                    {p.images && p.images[0] ? (
+                                      <img src={p.images[0]} alt={p.name} className="w-full h-full object-contain" />
+                                    ) : (
+                                      <span>📦</span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-[11px] font-bold">{p.name}</p>
+                                    <span className="text-[10px] text-slate-400 block font-mono">
+                                      {p.price.toLocaleString()} د.ع • {p.category}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'bg-emerald-600 text-white' : 'border border-slate-300 bg-white'
+                                }`}>
+                                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 pt-2">
                 <input
                   type="checkbox"
@@ -659,7 +912,7 @@ export default function AdminBannersPage() {
                   className="w-4 h-4 text-brand-blue rounded border-slate-300 focus:ring-brand-blue"
                 />
                 <label htmlFor="isActiveCheck" className="text-slate-800 font-bold cursor-pointer">
-                  تفعيل ونشر البنر فوراً في السلايدر المتحرك بالصفحة الرئيسية
+                  تفعيل ونشر البنر / الحملة فوراً في المتجر
                 </label>
               </div>
 
@@ -677,7 +930,7 @@ export default function AdminBannersPage() {
                   disabled={isSaving}
                   className="bg-brand-coral hover:bg-brand-coralHover text-white font-black py-2 px-5 rounded-xl shadow-xs transition cursor-pointer"
                 >
-                  {isSaving ? 'جاري الحفظ...' : 'حفظ البنر الإعلاني'}
+                  {isSaving ? 'جاري الحفظ...' : 'حفظ ونشر البنر'}
                 </button>
               </div>
 
