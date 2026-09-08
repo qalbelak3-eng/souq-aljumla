@@ -20,7 +20,7 @@ export default function ProductBuyModal({
   onClose,
   initialSaleType,
 }: ProductBuyModalProps) {
-  const { addToCart, freeDeliveryThreshold } = useCart();
+  const { cart, addToCart, updateQuantity, removeFromCart, freeDeliveryThreshold } = useCart();
   const { user, isApprovedMerchant } = useAuth();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
 
@@ -36,10 +36,27 @@ export default function ProductBuyModal({
   const [saleType, setSaleType] = useState<SaleType>(
     initialSaleType || (isApprovedMerchant ? 'wholesale' : 'retail')
   );
-  const [quantity, setQuantity] = useState(1);
+
+  // Check if this product with this saleType is already in the cart
+  const existingCartItem = cart.find(
+    (item) => item.product?.id === product?.id && item.saleType === saleType
+  );
+  const isAlreadyInCart = Boolean(existingCartItem && existingCartItem.quantity > 0);
+
+  const [quantity, setQuantity] = useState<number>(existingCartItem ? existingCartItem.quantity : 1);
   const [added, setAdded] = useState(false);
 
-  if (!isOpen) return null;
+  // When modal opens or saleType/cart changes, sync quantity accurately
+  useEffect(() => {
+    if (isOpen && product?.id) {
+      const match = cart.find(
+        (item) => item.product?.id === product.id && item.saleType === saleType
+      );
+      setQuantity(match ? match.quantity : 1);
+    }
+  }, [isOpen, product?.id, saleType]);
+
+  if (!isOpen || !product) return null;
 
   const { price: currentPrice, tierLabel, tier } = getProductPriceForUser(product, saleType, user);
   const { price: wholesaleCalculatedPrice } = getProductPriceForUser(product, 'wholesale', user);
@@ -47,22 +64,38 @@ export default function ProductBuyModal({
   const currentUnit = saleType === 'wholesale' ? product.wholesaleUnit : product.retailUnit;
   const oldPrice = saleType === 'wholesale' ? product.originalWholesalePrice : product.originalPrice;
   const hasDiscount = Boolean(oldPrice && oldPrice > currentPrice);
-  const total = currentPrice * quantity;
+  const total = currentPrice * Math.max(0, quantity);
   const availableStock = product.stock || 24;
 
   // 🎁 حساب مكافأة وهدية رصيد الأرباح
   const cashbackPerPiece = getProductCashbackRate(product, user, storeSettings);
-  const piecesCount = (saleType === 'wholesale' ? (product.itemsPerWholesaleUnit || 1) : 1) * quantity;
+  const piecesCount = (saleType === 'wholesale' ? (product.itemsPerWholesaleUnit || 1) : 1) * Math.max(1, quantity);
   const cashbackTotalReward = cashbackPerPiece * piecesCount;
   const isCashbackRewardEnabled = product.enableCashbackReward !== false && cashbackTotalReward > 0;
 
+  const handleSaleTypeChange = (newType: SaleType) => {
+    setSaleType(newType);
+    const match = cart.find(
+      (item) => item.product?.id === product.id && item.saleType === newType
+    );
+    setQuantity(match ? match.quantity : 1);
+  };
+
   const handleConfirmBuy = () => {
-    addToCart(product, quantity, saleType);
+    if (quantity <= 0) {
+      removeFromCart(product.id, saleType);
+    } else {
+      if (existingCartItem) {
+        updateQuantity(product.id, quantity, saleType);
+      } else {
+        addToCart(product, quantity, saleType);
+      }
+    }
     setAdded(true);
     setTimeout(() => {
       setAdded(false);
       onClose();
-    }, 900);
+    }, 700);
   };
 
   return (
@@ -110,10 +143,7 @@ export default function ProductBuyModal({
           <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60">
             <button
               type="button"
-              onClick={() => {
-                setSaleType('retail');
-                setQuantity(1);
-              }}
+              onClick={() => handleSaleTypeChange('retail')}
               className={`py-2 px-2.5 rounded-xl font-bold text-xs transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                 saleType === 'retail'
                   ? 'bg-white text-brand-blue shadow-xs ring-2 ring-blue-200 font-black'
@@ -129,10 +159,7 @@ export default function ProductBuyModal({
 
             <button
               type="button"
-              onClick={() => {
-                setSaleType('wholesale');
-                setQuantity(1);
-              }}
+              onClick={() => handleSaleTypeChange('wholesale')}
               className={`py-2 px-2.5 rounded-xl font-bold text-xs transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                 saleType === 'wholesale'
                   ? 'bg-white text-emerald-700 shadow-xs ring-2 ring-emerald-200 font-black'
@@ -178,8 +205,9 @@ export default function ProductBuyModal({
             {/* Minus Button */}
             <button
               type="button"
-              onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              onClick={() => setQuantity((prev) => Math.max(0, (prev || 1) - 1))}
               className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center transition shadow-xs active:scale-95 cursor-pointer shrink-0"
+              title="تقليل الكمية"
             >
               <Minus className="w-4 h-4" />
             </button>
@@ -187,9 +215,9 @@ export default function ProductBuyModal({
             {/* Direct Number Input */}
             <input
               type="number"
-              min="1"
+              min="0"
               max={availableStock}
-              value={quantity === 0 ? '' : quantity}
+              value={quantity === 0 ? '0' : quantity}
               onChange={(e) => {
                 const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
                 if (isNaN(val)) {
@@ -199,7 +227,7 @@ export default function ProductBuyModal({
                 }
               }}
               onBlur={() => {
-                if (!quantity || quantity < 1) setQuantity(1);
+                if (quantity === undefined || isNaN(quantity)) setQuantity(1);
               }}
               onFocus={(e) => e.target.select()}
               className="w-16 h-8 text-center text-sm font-black text-slate-900 font-mono bg-white border border-slate-300 rounded-xl focus:border-brand-blue focus:ring-2 focus:ring-blue-100 focus:outline-none transition shadow-inner"
@@ -209,8 +237,9 @@ export default function ProductBuyModal({
             {/* Plus Button: Dark Green Circle */}
             <button
               type="button"
-              onClick={() => setQuantity(quantity + 1)}
+              onClick={() => setQuantity((prev) => (prev || 0) + 1)}
               className="w-8 h-8 rounded-full bg-[#1b4332] hover:bg-[#143628] text-white flex items-center justify-center transition shadow-xs active:scale-95 cursor-pointer shrink-0"
+              title="زيادة الكمية"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -251,6 +280,10 @@ export default function ProductBuyModal({
           className={`w-full font-black py-3.5 px-4 rounded-2xl shadow-md transition flex items-center justify-center gap-2 text-xs sm:text-sm transform active:scale-98 cursor-pointer ${
             added
               ? 'bg-[#16a34a] text-white'
+              : quantity <= 0
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : isAlreadyInCart
+              ? 'bg-[#16a34a] hover:bg-[#15803d] text-white shadow-sm'
               : hasDiscount
               ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-rose-200'
               : 'bg-[#16a34a] hover:bg-[#15803d] text-white shadow-sm'
@@ -259,7 +292,17 @@ export default function ProductBuyModal({
           {added ? (
             <>
               <Check className="w-5 h-5" />
-              <span>تمت الإضافة للسلة بنجاح!</span>
+              <span>{quantity <= 0 ? 'تم حذف الصنف من السلة' : isAlreadyInCart ? 'تم تحديث الكمية بالسلة!' : 'تمت الإضافة للسلة بنجاح!'}</span>
+            </>
+          ) : quantity <= 0 ? (
+            <>
+              <span>إزالة من السلة</span>
+              <X className="w-4 h-4" />
+            </>
+          ) : isAlreadyInCart ? (
+            <>
+              <span>تعديل الكمية بالسلة ({quantity})</span>
+              <Check className="w-4 h-4" />
             </>
           ) : (
             <>
