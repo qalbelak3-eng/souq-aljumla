@@ -414,8 +414,13 @@ export default function AdminBannersPage() {
     }
   };
 
-  const sliderBanners = banners.filter((b) => !b.isCampaignShowcase);
-  const campaignBanners = banners.filter((b) => b.isCampaignShowcase);
+  const sliderBanners = banners
+    .filter((b) => !b.isCampaignShowcase)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const campaignBanners = banners
+    .filter((b) => b.isCampaignShowcase)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   return (
     <div className="space-y-6 text-xs select-none">
