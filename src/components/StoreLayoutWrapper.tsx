@@ -10,6 +10,7 @@ import WhatsAppFloatingButton from '@/components/WhatsAppFloatingButton';
 import PopupAdvertisement from '@/components/PopupAdvertisement';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import LuckyWheelWidget from '@/components/LuckyWheelWidget';
+import FloatingBottomCartBar from '@/components/FloatingBottomCartBar';
 
 export default function StoreLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,14 +26,14 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   const isProductsCatalog = pathname === '/products' || pathname.startsWith('/products/');
 
   if (isCampaignRoute) {
-    // Completely Clean Isolated Showcase View: No store header, no footer, no announcement bar, just products and cart
+    // Completely Clean Isolated Showcase View: No store header, no footer, no announcement bar, just products and floating checkout bar when shopping
     return (
       <>
         <main className="flex-1 min-h-screen bg-[#f3f8fc]">
           {children}
         </main>
         <CartDrawer />
-        <WhatsAppFloatingButton />
+        <FloatingBottomCartBar />
       </>
     );
   }
@@ -59,6 +60,7 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
       <Footer />
       <CartDrawer />
       <WhatsAppFloatingButton />
+      <FloatingBottomCartBar />
       <LuckyWheelWidget />
       <PopupAdvertisement />
       <PushNotificationManager />
