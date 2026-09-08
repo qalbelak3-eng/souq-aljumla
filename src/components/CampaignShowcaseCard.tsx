@@ -71,32 +71,38 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
   };
 
   return (
-    <div className={`space-y-3.5 my-4 sm:my-6 ${className}`}>
-      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (التصميم الإعلاني الكامل) */}
-      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/80 group">
+    <div className={`relative my-4 sm:my-6 select-none ${className}`}>
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد) */}
+      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 aspect-[18/8] sm:aspect-[22/8] md:aspect-[24/8] min-h-[170px] sm:min-h-[220px] md:min-h-[260px] bg-slate-100 group">
         {banner.linkUrl ? (
-          <Link href={banner.linkUrl} className="block w-full">
+          <Link href={banner.linkUrl} className="block w-full h-full relative">
             <img
               src={banner.image}
               alt={banner.title || 'حملة عروض'}
-              className="w-full h-auto object-cover rounded-3xl group-hover:opacity-95 transition"
+              className="w-full h-full object-cover rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
             />
+            {/* Top Navigation Arrow (كما في التصميم المرجعي) */}
+            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/30 hover:bg-white/50 backdrop-blur-md text-white flex items-center justify-center transition shadow-xs">
+              <ChevronLeft className="w-5 h-5" />
+            </div>
           </Link>
         ) : (
-          <img
-            src={banner.image}
-            alt={banner.title || 'حملة عروض'}
-            className="w-full h-auto object-cover rounded-3xl"
-          />
+          <div className="relative w-full h-full">
+            <img
+              src={banner.image}
+              alt={banner.title || 'حملة عروض'}
+              className="w-full h-full object-cover rounded-3xl"
+            />
+          </div>
         )}
 
-        {/* Desktop Scroll Controls if many products */}
+        {/* Desktop Scroll Controls */}
         {products.length > 3 && (
-          <div className="absolute bottom-3 left-3 hidden sm:flex items-center gap-1.5 z-10">
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 hidden sm:flex items-center gap-1.5 z-20">
             <button
               type="button"
               onClick={() => scroll('right')}
-              className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-sm"
+              className="w-8 h-8 rounded-full bg-black/25 hover:bg-black/50 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-xs"
               aria-label="السابق"
             >
               <ChevronRight className="w-4 h-4" />
@@ -104,7 +110,7 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
             <button
               type="button"
               onClick={() => scroll('left')}
-              className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-sm"
+              className="w-8 h-8 rounded-full bg-black/25 hover:bg-black/50 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-xs"
               aria-label="التالي"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -113,12 +119,12 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         )}
       </div>
 
-      {/* 2. HORIZONTAL PRODUCTS STRIP (شريط المنتجات المعروضة) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (المنتجات متداخلة بجمالية داخل البنر) */}
       {products.length > 0 && (
-        <div className="relative">
+        <div className="relative -mt-16 sm:-mt-22 md:-mt-28 z-10 px-2 sm:px-4">
           <div
             ref={scrollContainerRef}
-            className="flex items-stretch gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 px-0.5"
+            className="flex items-stretch gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-1"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {products.map((product) => {
@@ -137,29 +143,29 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
               return (
                 <div
                   key={product.id}
-                  className="w-[145px] sm:w-[170px] shrink-0 bg-white rounded-2xl p-2.5 border border-slate-200/70 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
+                  className="w-[140px] sm:w-[165px] md:w-[175px] shrink-0 bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 border border-slate-100 shadow-md hover:shadow-xl transition-all flex flex-col justify-between group snap-start cursor-pointer"
                   onClick={() => setSelectedProductForModal(product)}
                 >
                   {/* Image & Discount Badge */}
-                  <div className="relative aspect-square rounded-xl bg-slate-50/70 overflow-hidden flex items-center justify-center p-2 mb-2">
+                  <div className="relative aspect-square rounded-xl sm:rounded-2xl bg-slate-50/50 overflow-hidden flex items-center justify-center p-2 mb-1.5">
                     {product.images && product.images[0] ? (
                       <img
                         src={product.images[0]}
                         alt={product.name}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform"
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
                       />
                     ) : (
                       <div className="text-3xl">📦</div>
                     )}
 
                     {hasDiscount && discountPercent > 0 && (
-                      <span className="absolute top-1.5 right-1.5 bg-[#e11d48] text-white font-black text-[10px] px-2 py-0.5 rounded-md shadow-xs">
+                      <span className="absolute top-1.5 right-1.5 bg-[#e11d48] text-white font-black text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-lg shadow-xs">
                         وفر {discountPercent}%
                       </span>
                     )}
 
                     {isOutOfStock && (
-                      <div className="absolute inset-0 bg-white/80 backdrop-blur-2xs flex items-center justify-center">
+                      <div className="absolute inset-0 bg-white/85 backdrop-blur-2xs flex items-center justify-center">
                         <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
                           نفد المخزون
                         </span>
@@ -174,7 +180,7 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                         e.stopPropagation();
                         setSelectedProductForModal(product);
                       }}
-                      className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white text-slate-800 hover:bg-slate-100 shadow-md border border-slate-100 flex items-center justify-center transition active:scale-90 disabled:opacity-50 cursor-pointer"
+                      className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white text-slate-800 hover:bg-slate-50 shadow-md border border-slate-100 flex items-center justify-center transition active:scale-90 disabled:opacity-50 cursor-pointer"
                       title="إضافة للسلة"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
@@ -182,19 +188,19 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                   </div>
 
                   {/* Title & Unit */}
-                  <div className="space-y-0.5 mb-1.5">
-                    <h4 className="text-xs font-bold text-slate-900 line-clamp-2 leading-tight group-hover:text-brand-blue transition">
+                  <div className="space-y-0.5 mb-1 px-1">
+                    <h4 className="text-[11px] sm:text-xs font-bold text-slate-900 line-clamp-2 leading-tight group-hover:text-brand-blue transition">
                       {product.name}
                     </h4>
                     {currentUnit && (
-                      <span className="text-[10px] text-slate-400 block truncate">
+                      <span className="text-[10px] text-slate-400 block truncate font-medium">
                         {currentUnit}
                       </span>
                     )}
                   </div>
 
                   {/* Pricing */}
-                  <div className="pt-1.5 border-t border-slate-100 flex items-center gap-1.5 flex-wrap">
+                  <div className="pt-1.5 px-1 border-t border-slate-100/80 flex items-baseline gap-1.5 flex-wrap">
                     <div className="text-xs sm:text-sm font-black text-[#e11d48]">
                       {currentPrice.toLocaleString()} <span className="text-[10px] font-normal text-slate-600">د.ع</span>
                     </div>
