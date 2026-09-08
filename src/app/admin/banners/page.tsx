@@ -483,7 +483,7 @@ export default function AdminBannersPage() {
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
           }`}
         >
-          <span>🥤 سلايدر إعلانات سبرايت</span>
+          <span>🎯 سلايدر إعلانات ثانوي</span>
           <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
             {spriteBanners.length}
           </span>
@@ -691,18 +691,18 @@ export default function AdminBannersPage() {
         </>
       )}
 
-      {/* TAB 2: SPRITE SLIDER BANNERS (سلايدر إعلانات هنقرستيشن / سبرايت) */}
+      {/* TAB 2: SPRITE / SECONDARY SLIDER BANNERS (سلايدر إعلانات ثانوي) */}
       {activeTab === 'sprite' && (
         <>
-          {/* Header for Sprite Slider */}
+          {/* Header for Secondary Slider */}
           <div className="bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-950 text-white p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xl">🥤</span>
-                <h2 className="text-base font-black">سلايدر إعلانات هنقرستيشن (قياس سبرايت المدمج)</h2>
+                <span className="text-xl">🎯</span>
+                <h2 className="text-base font-black">سلايدر إعلانات ثانوي (مدمج ومتعدد الشرائح)</h2>
               </div>
               <p className="text-xs text-emerald-100 mt-1 max-w-2xl leading-relaxed">
-                سلايدر إعلاني متحرك مدمج وأنيق بنفس قياسات ومكان إعلان "سبرايت حمضيات ونعناع"، يظهر أسفل الأقسام مباشرة أو بأي مكان تختاره مع دعم الشرائح المتعددة بنقاط التنقل.
+                سلايدر إعلاني متحرك مدمج وأنيق، يظهر أسفل الأقسام مباشرة أو بأي مكان تختاره مع دعم الشرائح المتعددة بنقاط التنقل.
               </p>
             </div>
 
@@ -712,7 +712,7 @@ export default function AdminBannersPage() {
                 className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>➕ إضافة سلايد جديد (قياس سبرايت)</span>
+                <span>➕ إضافة سلايد إعلاني ثانوي جديد</span>
               </button>
 
               <button
@@ -725,28 +725,28 @@ export default function AdminBannersPage() {
             </div>
           </div>
 
-          {/* Sprite Banners List */}
+          {/* Secondary Banners List */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {isLoading ? (
               <div className="col-span-full py-16 text-center">
                 <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs text-slate-500">جاري تحميل سلايدات سبرايت...</p>
+                <p className="text-xs text-slate-500">جاري تحميل سلايدات الإعلانات الثانوية...</p>
               </div>
             ) : spriteBanners.length === 0 ? (
               <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-2xl font-black">
-                  🥤
+                  🎯
                 </div>
-                <h3 className="text-sm font-black text-slate-800">لا توجد سلايدات إعلانية بقياس سبرايت حالياً</h3>
+                <h3 className="text-sm font-black text-slate-800">لا توجد سلايدات إعلانات ثانوية حالياً</h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  أضف سلايدات إعلانية لتظهر أسفل الأقسام مباشرة بشكل متعدد السلايدات وبنفس قياسات هنقرستيشن
+                  أضف سلايدات إعلانية لتظهر أسفل الأقسام مباشرة بشكل متعدد السلايدات وبقياس مدمج أنيق
                 </p>
                 <button
                   onClick={handleOpenAddSprite}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>أضف أول سلايد الآن</span>
+                  <span>أضف أول سلايد إعلاني ثانوي الآن</span>
                 </button>
               </div>
             ) : (
@@ -1088,8 +1088,8 @@ export default function AdminBannersPage() {
                   )
                 ) : isSpriteSlider || position === 'below_categories' ? (
                   <>
-                    <span className="text-base">🥤</span>
-                    <span>{editingBanner ? 'تعديل سلايد هنقرستيشن (سبرايت)' : 'إضافة سلايد إعلاني مدمج (قياس سبرايت)'}</span>
+                    <span className="text-base">🎯</span>
+                    <span>{editingBanner ? 'تعديل سلايد إعلانات ثانوي' : 'إضافة سلايد إعلانات ثانوي جديد'}</span>
                   </>
                 ) : (
                   <>
@@ -1105,12 +1105,12 @@ export default function AdminBannersPage() {
 
             <form onSubmit={handleSaveBanner} className="space-y-4">
               
-              {/* Sprite Slider Tip */}
+              {/* Secondary Slider Tip */}
               {!isCampaignShowcase && (isSpriteSlider || position === 'below_categories') && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-[11px] text-emerald-900 space-y-1">
-                  <span className="font-black flex items-center gap-1">🥤 ميزة سلايدر هنقرستيشن (قياس سبرايت):</span>
+                  <span className="font-black flex items-center gap-1">🎯 ميزة سلايدر الإعلانات الثانوي:</span>
                   <p className="leading-relaxed">
-                    يتم عرض هذا الإعلان بالقياس العريض والمدمج، ويمكنك إضافة عدة شرائح بنفس الموقع ليتحول تلقائياً إلى سلايدر متعدد الشرائح بنقاط تنقل أسفل الأقسام مباشرة.
+                    يتم عرض هذا الإعلان بالقياس العريض والمدمج، ويمكنك إضافة عدة شرائح بنفس الموقع ليتحول تلقائياً إلى سلايدر متعدد الشرائح بنقاط تنقل أسفل الأقسام مباشرة أو بالمكان الذي تحدده.
                   </p>
                 </div>
               )}
