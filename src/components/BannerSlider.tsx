@@ -6,7 +6,7 @@ import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { Banner } from '@/types';
 
 interface BannerSliderProps {
-  position?: 'top' | 'middle' | 'bottom' | 'category' | 'all';
+  position?: 'top' | 'below_categories' | 'middle' | 'bottom' | 'category' | 'all';
   category?: string;
   className?: string;
   aspectRatio?: 'standard' | 'compact' | 'wide';
@@ -126,10 +126,11 @@ export default function BannerSlider({
     setDragOffset(0);
   };
 
-  const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category';
-  const aspectClass = isCompact
-    ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[135px] sm:min-h-[190px] md:min-h-[230px]'
-    : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
+  const aspectClass = aspectRatio === 'wide'
+    ? 'aspect-[24/8] min-h-[120px] sm:min-h-[170px] md:min-h-[200px]'
+    : aspectRatio === 'standard'
+    ? 'aspect-[18/8] sm:aspect-[21/8] min-h-[140px] sm:min-h-[190px] md:min-h-[230px]'
+    : 'aspect-[21/9] sm:aspect-[24/8] min-h-[125px] sm:min-h-[175px] md:min-h-[210px]';
 
   if (isLoading) {
     return (

@@ -1,5 +1,5 @@
 export type SaleType = 'retail' | 'wholesale' | 'special';
-export type BannerPosition = 'top' | 'middle' | 'bottom' | 'category' | 'all';
+export type BannerPosition = 'top' | 'below_categories' | 'middle' | 'bottom' | 'category' | 'all';
 
 export interface Banner {
   id: string;

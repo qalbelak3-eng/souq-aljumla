@@ -26,7 +26,7 @@ export default function AdminBannersPage() {
   const [image, setImage] = useState('');
   const [linkUrl, setLinkUrl] = useState('/products');
   const [badge, setBadge] = useState('عرض خاص ✦');
-  const [position, setPosition] = useState<'top' | 'middle' | 'bottom' | 'category' | 'all'>('top');
+  const [position, setPosition] = useState<'top' | 'below_categories' | 'middle' | 'bottom' | 'category' | 'all'>('top');
   const [category, setCategory] = useState('');
   const [order, setOrder] = useState<number>(1);
   const [isActive, setIsActive] = useState(true);
@@ -555,6 +555,8 @@ export default function AdminBannersPage() {
                     <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
                       {(!banner.position || banner.position === 'top')
                         ? '🔝 البنر الرئيسي بالأعلى'
+                        : banner.position === 'below_categories'
+                        ? '🎯 أسفل الأقسام مباشرة (سبرايت)'
                         : banner.position === 'middle'
                         ? ' البنر الإعلاني الأوسط'
                         : banner.position === 'bottom'
@@ -585,6 +587,8 @@ export default function AdminBannersPage() {
                       <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
                         {(!banner.position || banner.position === 'top')
                           ? 'أعلى الصفحة'
+                          : banner.position === 'below_categories'
+                          ? 'أسفل الأقسام'
                           : banner.position === 'middle'
                           ? 'وسط الصفحة'
                           : banner.position === 'bottom'
@@ -774,6 +778,8 @@ export default function AdminBannersPage() {
                       <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
                         {(!banner.position || banner.position === 'top')
                           ? '🔝 في أعلى الرئيسية'
+                          : banner.position === 'below_categories'
+                          ? '🎯 أسفل الأقسام مباشرة'
                           : banner.position === 'middle'
                           ? ' وسط الصفحة الرئيسية'
                           : banner.position === 'bottom'
@@ -1048,6 +1054,7 @@ export default function AdminBannersPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
                   >
                     <option value="top">🔝 أعلى الصفحة الرئيسية</option>
+                    <option value="below_categories">🎯 أسفل الأقسام مباشرة (مثل سبرايت)</option>
                     <option value="middle"> وسط الصفحة الرئيسية</option>
                     <option value="bottom">🔽 أسفل الصفحة الرئيسية</option>
                     <option value="category">📂 داخل قسم محدد بالمتجر</option>

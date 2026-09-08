@@ -210,9 +210,10 @@ export default function HomePage() {
   const activeShowcases = banners
     .filter((b) => b.isActive && b.isCampaignShowcase)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
-  const topShowcases = activeShowcases.filter((b) => !b.position || b.position === 'top' || b.position === 'all');
+  const topShowcases = activeShowcases.filter((b) => b.position === 'top');
+  const belowCatShowcases = activeShowcases.filter((b) => b.position === 'below_categories');
   const middleShowcases = activeShowcases.filter((b) => b.position === 'middle');
-  const bottomShowcases = activeShowcases.filter((b) => b.position === 'bottom');
+  const bottomShowcases = activeShowcases.filter((b) => !b.position || b.position === 'bottom' || b.position === 'all');
 
   return (
     <div className="space-y-5 sm:space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
@@ -275,6 +276,17 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      {/* 3.5. MULTI-SLIDE BANNER SLIDER (BELOW CATEGORIES - بنر سبرايت حمضيات ونعناع بهنقرستيشن) */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6">
+        <BannerSlider position="below_categories" />
+      </section>
+
+      {belowCatShowcases.map((showcase) => (
+        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+          <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
+        </section>
+      ))}
 
       {/* 4. SECTION 1: OFFERS & DISCOUNTS (يظهر فقط المنتجات التي عليها عروض) */}
       {showOffers && (
