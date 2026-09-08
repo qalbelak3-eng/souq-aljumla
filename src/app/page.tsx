@@ -31,56 +31,35 @@ import { initialCategories, initialSettings, initialProducts, initialBanners } f
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_products_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return initialProducts;
-  });
-  const [categories, setCategories] = useState<Category[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_categories_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return initialCategories;
-  });
-  const [banners, setBanners] = useState<Banner[]>(() => {
-    return initialBanners;
-  });
-  const [settings, setSettings] = useState<any>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_settings_cache');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return initialSettings;
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_products_cache');
-        if (cached && JSON.parse(cached).length > 0) return false;
-      } catch (e) {}
-    }
-    return false;
-  });
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [banners, setBanners] = useState<Banner[]>(initialBanners);
+  const [settings, setSettings] = useState<any>(initialSettings);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const { user, isApprovedMerchant } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Load from cache safely on client mount without hydration mismatch
+    try {
+      const cachedProd = localStorage.getItem('souq_store_products_cache');
+      if (cachedProd) {
+        const parsed = JSON.parse(cachedProd);
+        if (Array.isArray(parsed) && parsed.length > 0) setProducts(parsed);
+      }
+      const cachedCat = localStorage.getItem('souq_store_categories_cache');
+      if (cachedCat) {
+        const parsed = JSON.parse(cachedCat);
+        if (Array.isArray(parsed) && parsed.length > 0) setCategories(parsed);
+      }
+      const cachedSet = localStorage.getItem('souq_store_settings_cache');
+      if (cachedSet) {
+        const parsed = JSON.parse(cachedSet);
+        if (parsed) setSettings(parsed);
+      }
+    } catch (e) {}
+
     try {
       router.prefetch('/products');
     } catch (e) {}

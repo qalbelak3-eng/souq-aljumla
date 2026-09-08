@@ -191,58 +191,15 @@ function ProductsCatalog() {
   const queryParam = searchParams.get('query') || '';
   const filterParam = searchParams.get('filter') || '';
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_products_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-  const [categories, setCategories] = useState<Category[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_categories_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return initialCategories;
-  });
-  const [dbCompanies, setDbCompanies] = useState<Company[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_companies_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return initialCompanies;
-  });
-  const [banners, setBanners] = useState<Banner[]>(() => {
-    return initialBanners;
-  });
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [dbCompanies, setDbCompanies] = useState<Company[]>(initialCompanies);
+  const [banners, setBanners] = useState<Banner[]>(initialBanners);
   const [selectedCategory, setSelectedCategory] = useState<string>(categoryParam);
   const [selectedCompany, setSelectedCompany] = useState<string>(companyParam);
   const [selectedFilter, setSelectedFilter] = useState<string>(filterParam);
   const [searchQuery, setSearchQuery] = useState<string>(queryParam);
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_store_products_cache');
-        if (cached && JSON.parse(cached).length > 0) return false;
-      } catch (e) {}
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (categoryParam) setSelectedCategory(categoryParam);
@@ -252,6 +209,27 @@ function ProductsCatalog() {
   }, [categoryParam, companyParam, queryParam, filterParam]);
 
   useEffect(() => {
+    try {
+      const cachedProd = localStorage.getItem('souq_store_products_cache');
+      if (cachedProd) {
+        const parsed = JSON.parse(cachedProd);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProducts(parsed);
+          setIsLoading(false);
+        }
+      }
+      const cachedCat = localStorage.getItem('souq_store_categories_cache');
+      if (cachedCat) {
+        const parsed = JSON.parse(cachedCat);
+        if (Array.isArray(parsed) && parsed.length > 0) setCategories(parsed);
+      }
+      const cachedComp = localStorage.getItem('souq_store_companies_cache');
+      if (cachedComp) {
+        const parsed = JSON.parse(cachedComp);
+        if (Array.isArray(parsed) && parsed.length > 0) setDbCompanies(parsed);
+      }
+    } catch (e) {}
+
     Promise.all([
       fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
       fetch('/api/categories', { cache: 'no-store' }).then((r) => r.json()),
