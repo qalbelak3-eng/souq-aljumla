@@ -10,7 +10,7 @@ import { compressImageFile } from '@/lib/imageUtils';
 export default function AdminBannersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [activeTab, setActiveTab] = useState<'slider' | 'popup'>('slider');
+  const [activeTab, setActiveTab] = useState<'slider' | 'campaigns' | 'popup'>('slider');
 
   // Slider Banners State
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -109,6 +109,24 @@ export default function AdminBannersPage() {
     setCategory(categories[0]?.name || '');
     setIsActive(true);
     setIsCampaignShowcase(false);
+    setCampaignBgColor('#15803d');
+    setCampaignProductsTitle('منتجاتنا الطازجة');
+    setCampaignProductIds([]);
+    setProductSearchFilter('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenAddCampaign = () => {
+    setEditingBanner(null);
+    setTitle('منتجاتنا الطازجة');
+    setSubtitle('تسوق أفضل وأجود المنتجات الطازجة بأسعار الجملة المباشرة');
+    setImage('https://images.unsplash.com/photo-1610832958506-aa56368176cf?q=80&w=1200&auto=format&fit=crop');
+    setLinkUrl('/products');
+    setBadge('عروض حصرية ✦');
+    setPosition('middle');
+    setCategory(categories[0]?.name || '');
+    setIsActive(true);
+    setIsCampaignShowcase(true);
     setCampaignBgColor('#15803d');
     setCampaignProductsTitle('منتجاتنا الطازجة');
     setCampaignProductIds([]);
@@ -350,66 +368,85 @@ export default function AdminBannersPage() {
     }
   };
 
+  const sliderBanners = banners.filter((b) => !b.isCampaignShowcase);
+  const campaignBanners = banners.filter((b) => b.isCampaignShowcase);
+
   return (
     <div className="space-y-6 text-xs select-none">
       
       {/* Top Tabs Switcher */}
-      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-2">
+      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
         <button
           type="button"
           onClick={() => setActiveTab('slider')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+          className={`py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
             activeTab === 'slider'
               ? 'bg-brand-blue text-white shadow-xs'
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>🖼️ البنرات الإعلانية المتحركة (السلايدر)</span>
+          <span>🖼️ البنرات المتحركة (السلايدر)</span>
           <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
-            {banners.length}
+            {sliderBanners.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('campaigns')}
+          className={`py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'campaigns'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+          }`}
+        >
+          <span>🍏 حملات العروض وشريط المنتجات</span>
+          <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
+            {campaignBanners.length}
           </span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('popup')}
-          className={`flex-1 py-2.5 px-4 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+          className={`py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
             activeTab === 'popup'
               ? 'bg-brand-coral text-white shadow-xs'
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
           }`}
         >
-          <span>📢 الإعلان المنبثق الترويجي (Popup Modal Ad)</span>
+          <span>📢 الإعلان المنبثق (Popup)</span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
             popupEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700'
           }`}>
-            {popupEnabled ? 'مفعل ✓' : 'معطل ✕'}
+            {popupAds.length} بوستر
           </span>
         </button>
       </div>
 
-      {activeTab === 'slider' ? (
+      {/* TAB 1: SLIDER BANNERS */}
+      {activeTab === 'slider' && (
         <>
-          {/* Header Banner for Slider */}
+          {/* Header for Slider */}
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية وحملات العروض المميزة</h2>
+                <Sparkles className="w-5 h-5 text-brand-blue" />
+                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية المتحركة (السلايدر)</h2>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                إضافة وتعديل البنرات الترويجية المتحركة (السلايدر) وحملات العروض المميزة المدمجة مع منتجات (Showcase Campaigns) في أعلى، وسط، أسفل الرئيسية أو داخل أقسام محددة
+                البنرات الترويجية المتحركة التي تظهر في السلايدر الرئيسي بالأعلى، أو شريط الإعلانات الأوسط أو الأسفل، أو داخل الأقسام
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleOpenAdd}
-                className="bg-brand-coral hover:bg-brand-coralHover text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                className="bg-brand-blue hover:bg-brand-blueDark text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة بنر أو حملة جديدة</span>
+                <span>إضافة بنر متحرك جديد</span>
               </button>
 
               <button
@@ -422,161 +459,320 @@ export default function AdminBannersPage() {
             </div>
           </div>
 
-          {/* Banners List */}
+          {/* Slider Banners List */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {isLoading ? (
               <div className="col-span-full py-16 text-center">
                 <div className="w-8 h-8 border-3 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs text-slate-500">جاري تحميل البنرات وحملات العروض...</p>
+                <p className="text-xs text-slate-500">جاري تحميل البنرات...</p>
               </div>
-            ) : banners.length === 0 ? (
+            ) : sliderBanners.length === 0 ? (
               <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
                 <ImageIcon className="w-12 h-12 mx-auto text-slate-300" />
-                <h3 className="text-sm font-black text-slate-800">لا توجد بنرات إعلانية حالياً</h3>
+                <h3 className="text-sm font-black text-slate-800">لا توجد بنرات إعلانية متحركة حالياً</h3>
                 <button
                   onClick={handleOpenAdd}
                   className="bg-brand-blue text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer"
                 >
-                  أضف أول بنر إعلاني الآن
+                  أضف أول بنر متحرك الآن
                 </button>
               </div>
             ) : (
-              banners.map((banner) => (
+              sliderBanners.map((banner) => (
                 <div
                   key={banner.id}
                   className={`bg-white rounded-3xl overflow-hidden border shadow-sm transition-all duration-300 flex flex-col justify-between ${
                     banner.isActive ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50'
                   }`}
                 >
-              {/* Banner Image Preview */}
-              <div className="relative aspect-[21/9] w-full bg-slate-100 overflow-hidden">
-                <img
-                  src={banner.image}
-                  alt={banner.title}
-                  className="w-full h-full object-cover"
-                />
-                
-                {/* Badge Overlay */}
-                {banner.badge && (
-                  <span className="absolute top-3 right-3 bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
-                    {banner.badge}
-                  </span>
-                )}
-
-                {/* Campaign Showcase Badge */}
-                {banner.isCampaignShowcase && (
-                  <span 
-                    className="absolute top-3 left-3 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-white/30 backdrop-blur-xs"
-                    style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    <span>حملة مميزة مع منتجات ({banner.campaignProductIds?.length || 0})</span>
-                  </span>
-                )}
-
-                {/* Position Badge */}
-                <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
-                  {(!banner.position || banner.position === 'top')
-                    ? '🔝 البنر الرئيسي بالأعلى'
-                    : banner.position === 'middle'
-                    ? ' البنر الإعلاني الأوسط'
-                    : banner.position === 'bottom'
-                    ? '🔽 البنر الإعلاني بالأسفل'
-                    : banner.position === 'category'
-                    ? `📂 داخل قسم: ${banner.category || 'عام'}`
-                    : '🌐 في كل الأماكن'}
-                </span>
-
-                {/* Status Overlay if not campaign badge */}
-                {!banner.isCampaignShowcase && (
-                  <span
-                    className={`absolute top-3 left-3 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${
-                      banner.isActive
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-700 text-white'
-                    }`}
-                  >
-                    {banner.isActive ? 'نشط ويظهر بالمتجر ✓' : 'معطل مخفي ✕'}
-                  </span>
-                )}
-              </div>
-
-              {/* Banner Content Details */}
-              <div className="p-4 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-black text-slate-900 leading-snug">
-                    {banner.title}
-                  </h3>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
-                    {(!banner.position || banner.position === 'top')
-                      ? 'أعلى الصفحة'
-                      : banner.position === 'middle'
-                      ? 'وسط الصفحة'
-                      : banner.position === 'bottom'
-                      ? 'أسفل الصفحة'
-                      : banner.position === 'category'
-                      ? banner.category
-                      : 'الكل'}
-                  </span>
-                </div>
-                {banner.subtitle && (
-                  <p className="text-[11px] text-slate-500 line-clamp-2">
-                    {banner.subtitle}
-                  </p>
-                )}
-                {banner.linkUrl && (
-                  <span className="text-[10px] text-brand-blue font-mono block truncate">
-                    الرابط: {banner.linkUrl}
-                  </span>
-                )}
-                {banner.isCampaignShowcase && (
-                  <div className="pt-1 flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                    <span 
-                      className="w-3 h-3 rounded-full inline-block shrink-0 border border-slate-300"
-                      style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
+                  {/* Banner Image Preview */}
+                  <div className="relative aspect-[21/9] w-full bg-slate-100 overflow-hidden">
+                    <img
+                      src={banner.image}
+                      alt={banner.title}
+                      className="w-full h-full object-cover"
                     />
-                    <span>عنوان شريط المنتجات: &quot;{banner.campaignProductsTitle || 'منتجاتنا الطازجة'}&quot;</span>
-                  </div>
-                )}
-              </div>
+                    
+                    {/* Badge Overlay */}
+                    {banner.badge && (
+                      <span className="absolute top-3 right-3 bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
+                        {banner.badge}
+                      </span>
+                    )}
 
-              {/* Actions Footer */}
-              <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {/* Position Badge */}
+                    <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
+                      {(!banner.position || banner.position === 'top')
+                        ? '🔝 البنر الرئيسي بالأعلى'
+                        : banner.position === 'middle'
+                        ? ' البنر الإعلاني الأوسط'
+                        : banner.position === 'bottom'
+                        ? '🔽 البنر الإعلاني بالأسفل'
+                        : banner.position === 'category'
+                        ? `📂 داخل قسم: ${banner.category || 'عام'}`
+                        : '🌐 في كل الأماكن'}
+                    </span>
+
+                    {/* Status Overlay */}
+                    <span
+                      className={`absolute top-3 left-3 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs ${
+                        banner.isActive
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-slate-700 text-white'
+                      }`}
+                    >
+                      {banner.isActive ? 'نشط ويظهر بالمتجر ✓' : 'معطل مخفي ✕'}
+                    </span>
+                  </div>
+
+                  {/* Banner Content Details */}
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-black text-slate-900 leading-snug">
+                        {banner.title}
+                      </h3>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
+                        {(!banner.position || banner.position === 'top')
+                          ? 'أعلى الصفحة'
+                          : banner.position === 'middle'
+                          ? 'وسط الصفحة'
+                          : banner.position === 'bottom'
+                          ? 'أسفل الصفحة'
+                          : banner.position === 'category'
+                          ? banner.category
+                          : 'الكل'}
+                      </span>
+                    </div>
+                    {banner.subtitle && (
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {banner.subtitle}
+                      </p>
+                    )}
+                    {banner.linkUrl && (
+                      <span className="text-[10px] text-brand-blue font-mono block truncate">
+                        الرابط: {banner.linkUrl}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleToggleActive(banner)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition flex items-center gap-1 cursor-pointer ${
+                        banner.isActive
+                          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
+                    >
+                      {banner.isActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{banner.isActive ? 'إخفاء مؤقت' : 'تفعيل ونشر'}</span>
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEdit(banner)}
+                        className="bg-slate-100 hover:bg-slate-200 text-brand-blue p-2 rounded-xl transition cursor-pointer"
+                        title="تعديل البنر"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBanner(banner.id, banner.title)}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition cursor-pointer"
+                        title="حذف البنر"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* TAB 2: SHOWCASE CAMPAIGNS (حملات العروض وشريط المنتجات) */}
+      {activeTab === 'campaigns' && (
+        <>
+          {/* Header for Showcase Campaigns */}
+          <div className="bg-gradient-to-r from-emerald-700 to-teal-800 text-white p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🍏</span>
+                <h2 className="text-base font-black">حملات العروض المميزة مع شريط منتجات (Showcase Campaigns)</h2>
+              </div>
+              <p className="text-xs text-emerald-100 mt-1 max-w-2xl">
+                مثل حملة &quot;منتجاتنا الطازجة&quot;، تتيح لك وضع بنر إعلاني بلون ثيم مخصص (أخضر، برتقالي، كحلي...) مدمج معه شريط أفقي للمنتجات المحددة وتحديد ظهوره في الرئيسية أو داخل قسم معين.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleOpenAddCampaign}
+                className="bg-white hover:bg-emerald-50 text-emerald-800 font-black text-xs py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة حملة عروض جديدة</span>
+              </button>
+
+              <button
+                onClick={fetchBannersAndData}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition cursor-pointer"
+                title="تحديث"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Campaign Banners List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {isLoading ? (
+              <div className="col-span-full py-16 text-center">
+                <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-500">جاري تحميل حملات العروض...</p>
+              </div>
+            ) : campaignBanners.length === 0 ? (
+              <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-2xl font-black">
+                  🍏
+                </div>
+                <h3 className="text-sm font-black text-slate-800">لا توجد حملات عروض مدمجة حالياً</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  قم بإنشاء أول حملة عروض مدمجة مع شريط منتجات تظهر في الصفحة الرئيسية أو داخل أقسام المتجر
+                </p>
                 <button
-                  onClick={() => handleToggleActive(banner)}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition flex items-center gap-1 ${
-                    banner.isActive
-                      ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  onClick={handleOpenAddCampaign}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-5 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إنشاء حملة جديدة الآن</span>
+                </button>
+              </div>
+            ) : (
+              campaignBanners.map((banner) => (
+                <div
+                  key={banner.id}
+                  className={`bg-white rounded-3xl overflow-hidden border shadow-sm transition-all duration-300 flex flex-col justify-between ${
+                    banner.isActive ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50'
                   }`}
                 >
-                  {banner.isActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{banner.isActive ? 'إخفاء مؤقت' : 'تفعيل ونشر'}</span>
-                </button>
+                  {/* Campaign Image Header Preview */}
+                  <div className="relative aspect-[21/9] w-full overflow-hidden" style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}>
+                    <img
+                      src={banner.image}
+                      alt={banner.title}
+                      className="w-full h-full object-cover"
+                    />
+                    
+                    {/* Badge */}
+                    {banner.badge && (
+                      <span className="absolute top-3 right-3 bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
+                        {banner.badge}
+                      </span>
+                    )}
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => handleOpenEdit(banner)}
-                    className="bg-slate-100 hover:bg-slate-200 text-brand-blue p-2 rounded-xl transition"
-                    title="تعديل البنر"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+                    {/* Color Theme Badge */}
+                    <span 
+                      className="absolute top-3 left-3 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1.5 border border-white/30 backdrop-blur-xs"
+                      style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>{banner.campaignProductIds?.length || 0} منتج معروض</span>
+                    </span>
 
-                  <button
-                    onClick={() => handleDeleteBanner(banner.id)}
-                    className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition"
-                    title="حذف البنر"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    {/* Position Badge */}
+                    <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
+                      {(!banner.position || banner.position === 'top')
+                        ? '🔝 في أعلى الرئيسية'
+                        : banner.position === 'middle'
+                        ? ' وسط الصفحة الرئيسية'
+                        : banner.position === 'bottom'
+                        ? '🔽 أسفل الصفحة الرئيسية'
+                        : banner.position === 'category'
+                        ? `📂 داخل قسم: ${banner.category || 'عام'}`
+                        : '🌐 في كل الأماكن'}
+                    </span>
+                  </div>
+
+                  {/* Campaign Content Details */}
+                  <div className="p-4 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-black text-slate-900 leading-snug">
+                        {banner.title}
+                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <span 
+                          className="w-4 h-4 rounded-full border border-slate-300 shadow-xs shrink-0" 
+                          style={{ backgroundColor: banner.campaignBgColor || '#15803d' }}
+                          title="لون الثيم"
+                        />
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          banner.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {banner.isActive ? '🟢 نشطة' : '⚪ معطلة'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {banner.subtitle && (
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {banner.subtitle}
+                      </p>
+                    )}
+
+                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                        <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>عنوان الشريط: &quot;{banner.campaignProductsTitle || 'منتجاتنا الطازجة'}&quot;</span>
+                      </div>
+                      <span className="font-mono text-emerald-700 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-md">
+                        {banner.campaignProductIds?.length || 0} منتجات
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleToggleActive(banner)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition flex items-center gap-1 cursor-pointer ${
+                        banner.isActive
+                          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
+                    >
+                      {banner.isActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{banner.isActive ? 'إخفاء مؤقت' : 'تفعيل ونشر'}</span>
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEdit(banner)}
+                        className="bg-slate-100 hover:bg-slate-200 text-brand-blue p-2 rounded-xl transition cursor-pointer"
+                        title="تعديل الحملة"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBanner(banner.id, banner.title)}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition cursor-pointer"
+                        title="حذف الحملة"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-            </div>
-          ))
-        )}
-      </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* Add / Edit Modal */}
       {isModalOpen && (
@@ -939,9 +1135,9 @@ export default function AdminBannersPage() {
           </div>
         </div>
       )}
-      </>
-      ) : (
-        /* MULTI POPUP ADVERTISEMENT TAB */
+
+      {/* TAB 3: MULTI POPUP ADVERTISEMENT TAB */}
+      {activeTab === 'popup' && (
         <div className="space-y-6">
           
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">

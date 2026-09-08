@@ -129,7 +129,7 @@ export default function BannerSlider({
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category';
   const aspectClass = isCompact
     ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[135px] sm:min-h-[190px] md:min-h-[230px]'
-    : 'aspect-[16/9] sm:aspect-[21/9] min-h-[200px] sm:min-h-[300px] md:min-h-[380px] lg:min-h-[420px]';
+    : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
 
   if (isLoading) {
     return (
