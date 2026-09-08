@@ -1300,6 +1300,7 @@ export function createBanner(bannerData: Omit<Banner, 'id'>): Banner {
     category: bannerData.category || '',
     isCampaignShowcase: Boolean(bannerData.isCampaignShowcase),
     isTextShelf: Boolean(bannerData.isTextShelf),
+    isSpriteSlider: Boolean(bannerData.isSpriteSlider),
     campaignBgColor: bannerData.campaignBgColor || '',
     campaignProductsTitle: bannerData.campaignProductsTitle || '',
     campaignProductIds: Array.isArray(bannerData.campaignProductIds) ? bannerData.campaignProductIds : [],
@@ -1321,6 +1322,7 @@ export function updateBanner(id: string, updates: Partial<Banner>): Banner | nul
     ...db.banners[idx], 
     ...updates,
     isTextShelf: updates.isTextShelf !== undefined ? updates.isTextShelf : db.banners[idx].isTextShelf,
+    isSpriteSlider: updates.isSpriteSlider !== undefined ? updates.isSpriteSlider : db.banners[idx].isSpriteSlider,
     campaignProductIds: updates.campaignProductIds !== undefined 
       ? updates.campaignProductIds 
       : db.banners[idx].campaignProductIds

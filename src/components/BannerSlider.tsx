@@ -126,11 +126,10 @@ export default function BannerSlider({
     setDragOffset(0);
   };
 
-  const aspectClass = aspectRatio === 'wide'
-    ? 'aspect-[24/8] min-h-[120px] sm:min-h-[170px] md:min-h-[200px]'
-    : aspectRatio === 'standard'
-    ? 'aspect-[18/8] sm:aspect-[21/8] min-h-[140px] sm:min-h-[190px] md:min-h-[230px]'
-    : 'aspect-[21/9] sm:aspect-[24/8] min-h-[125px] sm:min-h-[175px] md:min-h-[210px]';
+  const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
+  const aspectClass = isCompact
+    ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[130px] sm:min-h-[180px] md:min-h-[220px]'
+    : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
 
   if (isLoading) {
     return (

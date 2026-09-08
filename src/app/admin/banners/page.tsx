@@ -10,7 +10,7 @@ import { compressImageFile } from '@/lib/imageUtils';
 export default function AdminBannersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [activeTab, setActiveTab] = useState<'slider' | 'campaigns' | 'popup'>('slider');
+  const [activeTab, setActiveTab] = useState<'slider' | 'sprite' | 'campaigns' | 'popup'>('slider');
 
   // Slider Banners State
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -32,9 +32,10 @@ export default function AdminBannersPage() {
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Showcase Campaign Specific State
+  // Showcase Campaign & Sprite Slider Specific State
   const [isCampaignShowcase, setIsCampaignShowcase] = useState(false);
   const [isTextShelf, setIsTextShelf] = useState(false);
+  const [isSpriteSlider, setIsSpriteSlider] = useState(false);
   const [campaignBgColor, setCampaignBgColor] = useState('#15803d');
   const [campaignProductsTitle, setCampaignProductsTitle] = useState('منتجاتنا الطازجة');
   const [campaignProductIds, setCampaignProductIds] = useState<string[]>([]);
@@ -109,12 +110,34 @@ export default function AdminBannersPage() {
     setBadge('توصيل سريع 🚚');
     setPosition('top');
     setCategory(categories[0]?.name || '');
-    setOrder(banners.length + 1);
+    setOrder(banners.filter((b) => !b.isCampaignShowcase && !b.isSpriteSlider && b.position !== 'below_categories').length + 1);
     setIsActive(true);
     setIsCampaignShowcase(false);
     setIsTextShelf(false);
+    setIsSpriteSlider(false);
     setCampaignBgColor('#15803d');
     setCampaignProductsTitle('منتجاتنا الطازجة');
+    setCampaignProductIds([]);
+    setProductSearchFilter('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenAddSprite = () => {
+    setEditingBanner(null);
+    setTitle('');
+    setSubtitle('');
+    setImage('');
+    setLinkUrl('/products');
+    setBadge('جديد ✦');
+    setPosition('below_categories');
+    setCategory(categories[0]?.name || '');
+    setOrder(banners.filter((b) => !b.isCampaignShowcase && (b.isSpriteSlider || b.position === 'below_categories')).length + 1);
+    setIsActive(true);
+    setIsCampaignShowcase(false);
+    setIsTextShelf(false);
+    setIsSpriteSlider(true);
+    setCampaignBgColor('#15803d');
+    setCampaignProductsTitle('');
     setCampaignProductIds([]);
     setProductSearchFilter('');
     setIsModalOpen(true);
@@ -127,12 +150,13 @@ export default function AdminBannersPage() {
     setImage('');
     setLinkUrl('');
     setBadge('');
-    setPosition('top');
+    setPosition('bottom');
     setCategory(categories[0]?.name || '');
     setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
     setIsActive(true);
     setIsCampaignShowcase(true);
     setIsTextShelf(false);
+    setIsSpriteSlider(false);
     setCampaignBgColor('#15803d');
     setCampaignProductsTitle('');
     setCampaignProductIds([]);
@@ -147,12 +171,13 @@ export default function AdminBannersPage() {
     setImage('');
     setLinkUrl('');
     setBadge('');
-    setPosition('top');
+    setPosition('bottom');
     setCategory(categories[0]?.name || '');
     setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
     setIsActive(true);
     setIsCampaignShowcase(true);
     setIsTextShelf(true);
+    setIsSpriteSlider(false);
     setCampaignBgColor('');
     setCampaignProductsTitle('');
     setCampaignProductIds([]);
@@ -173,6 +198,7 @@ export default function AdminBannersPage() {
     setIsActive(banner.isActive);
     setIsCampaignShowcase(Boolean(banner.isCampaignShowcase));
     setIsTextShelf(Boolean(banner.isTextShelf));
+    setIsSpriteSlider(Boolean(banner.isSpriteSlider) || banner.position === 'below_categories');
     setCampaignBgColor(banner.campaignBgColor || '#15803d');
     setCampaignProductsTitle(banner.campaignProductsTitle || banner.title || '');
     setCampaignProductIds(Array.isArray(banner.campaignProductIds) ? banner.campaignProductIds : []);
@@ -195,7 +221,7 @@ export default function AdminBannersPage() {
     }
 
     if (!isCampaignShowcase && !image.trim()) {
-      toast.error('يرجى إضافة صورة للبنر المتحرك');
+      toast.error('يرجى إضافة صورة للبنر');
       return;
     }
 
@@ -217,6 +243,7 @@ export default function AdminBannersPage() {
       order: Number(order) || 1,
       isCampaignShowcase,
       isTextShelf,
+      isSpriteSlider: isSpriteSlider || position === 'below_categories',
       campaignBgColor: isCampaignShowcase ? campaignBgColor : undefined,
       campaignProductsTitle: isCampaignShowcase ? (campaignProductsTitle.trim() || title.trim()) : undefined,
       campaignProductIds: isCampaignShowcase ? campaignProductIds : undefined,
@@ -415,7 +442,11 @@ export default function AdminBannersPage() {
   };
 
   const sliderBanners = banners
-    .filter((b) => !b.isCampaignShowcase)
+    .filter((b) => !b.isCampaignShowcase && !b.isSpriteSlider && b.position !== 'below_categories')
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const spriteBanners = banners
+    .filter((b) => !b.isCampaignShowcase && (b.isSpriteSlider || b.position === 'below_categories'))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const campaignBanners = banners
@@ -426,7 +457,7 @@ export default function AdminBannersPage() {
     <div className="space-y-6 text-xs select-none">
       
       {/* Top Tabs Switcher */}
-      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-2 lg:grid-cols-4 gap-2">
         <button
           type="button"
           onClick={() => setActiveTab('slider')}
@@ -437,9 +468,24 @@ export default function AdminBannersPage() {
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>🖼️ البنرات المتحركة (السلايدر)</span>
+          <span>🖼️ البنرات المتحركة (الرئيسية)</span>
           <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
             {sliderBanners.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('sprite')}
+          className={`py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'sprite'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+          }`}
+        >
+          <span>🥤 سلايدر إعلانات سبرايت</span>
+          <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
+            {spriteBanners.length}
           </span>
         </button>
 
@@ -448,11 +494,11 @@ export default function AdminBannersPage() {
           onClick={() => setActiveTab('campaigns')}
           className={`py-2.5 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
             activeTab === 'campaigns'
-              ? 'bg-emerald-600 text-white shadow-xs'
+              ? 'bg-teal-700 text-white shadow-xs'
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
           }`}
         >
-          <span>🍏 حملات العروض وشريط المنتجات</span>
+          <span>🍏 حملات العروض والأقسام الفاصلة</span>
           <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-mono">
             {campaignBanners.length}
           </span>
@@ -476,7 +522,7 @@ export default function AdminBannersPage() {
         </button>
       </div>
 
-      {/* TAB 1: SLIDER BANNERS */}
+      {/* TAB 1: SLIDER BANNERS (ORIGINAL / STANDARD) */}
       {activeTab === 'slider' && (
         <>
           {/* Header for Slider */}
@@ -484,10 +530,10 @@ export default function AdminBannersPage() {
             <div>
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-brand-blue" />
-                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية المتحركة (السلايدر)</h2>
+                <h2 className="text-base font-black text-slate-900">إدارة البنرات الإعلانية المتحركة (الرئيسية القديمة)</h2>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                البنرات الترويجية المتحركة التي تظهر في السلايدر الرئيسي بالأعلى، أو شريط الإعلانات الأوسط أو الأسفل، أو داخل الأقسام
+                البنرات الترويجية المتحركة بالقياسات الأصلية التي تظهر في السلايدر الرئيسي بالأعلى أو وسط وأسفل الصفحة
               </p>
             </div>
 
@@ -555,8 +601,6 @@ export default function AdminBannersPage() {
                     <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
                       {(!banner.position || banner.position === 'top')
                         ? '🔝 البنر الرئيسي بالأعلى'
-                        : banner.position === 'below_categories'
-                        ? '🎯 أسفل الأقسام مباشرة (سبرايت)'
                         : banner.position === 'middle'
                         ? ' البنر الإعلاني الأوسط'
                         : banner.position === 'bottom'
@@ -587,8 +631,6 @@ export default function AdminBannersPage() {
                       <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
                         {(!banner.position || banner.position === 'top')
                           ? 'أعلى الصفحة'
-                          : banner.position === 'below_categories'
-                          ? 'أسفل الأقسام'
                           : banner.position === 'middle'
                           ? 'وسط الصفحة'
                           : banner.position === 'bottom'
@@ -637,6 +679,171 @@ export default function AdminBannersPage() {
                         onClick={() => handleDeleteBanner(banner.id, banner.title)}
                         className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition cursor-pointer"
                         title="حذف البنر"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* TAB 2: SPRITE SLIDER BANNERS (سلايدر إعلانات هنقرستيشن / سبرايت) */}
+      {activeTab === 'sprite' && (
+        <>
+          {/* Header for Sprite Slider */}
+          <div className="bg-gradient-to-r from-emerald-800 via-teal-900 to-slate-950 text-white p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🥤</span>
+                <h2 className="text-base font-black">سلايدر إعلانات هنقرستيشن (قياس سبرايت المدمج)</h2>
+              </div>
+              <p className="text-xs text-emerald-100 mt-1 max-w-2xl leading-relaxed">
+                سلايدر إعلاني متحرك مدمج وأنيق بنفس قياسات ومكان إعلان "سبرايت حمضيات ونعناع"، يظهر أسفل الأقسام مباشرة أو بأي مكان تختاره مع دعم الشرائح المتعددة بنقاط التنقل.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleOpenAddSprite}
+                className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>➕ إضافة سلايد جديد (قياس سبرايت)</span>
+              </button>
+
+              <button
+                onClick={fetchBannersAndData}
+                className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold py-2.5 px-3 rounded-xl transition cursor-pointer"
+                title="تحديث"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Sprite Banners List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {isLoading ? (
+              <div className="col-span-full py-16 text-center">
+                <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-500">جاري تحميل سلايدات سبرايت...</p>
+              </div>
+            ) : spriteBanners.length === 0 ? (
+              <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-2xl font-black">
+                  🥤
+                </div>
+                <h3 className="text-sm font-black text-slate-800">لا توجد سلايدات إعلانية بقياس سبرايت حالياً</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  أضف سلايدات إعلانية لتظهر أسفل الأقسام مباشرة بشكل متعدد السلايدات وبنفس قياسات هنقرستيشن
+                </p>
+                <button
+                  onClick={handleOpenAddSprite}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer shadow-xs transition inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>أضف أول سلايد الآن</span>
+                </button>
+              </div>
+            ) : (
+              spriteBanners.map((banner) => (
+                <div
+                  key={banner.id}
+                  className={`bg-white rounded-3xl overflow-hidden border shadow-sm transition-all duration-300 flex flex-col justify-between ${
+                    banner.isActive ? 'border-slate-200' : 'border-slate-200 opacity-60 bg-slate-50'
+                  }`}
+                >
+                  {/* Banner Image Preview in Sleek Sprite Aspect Ratio */}
+                  <div className="relative aspect-[22/9] w-full bg-slate-100 overflow-hidden">
+                    <img
+                      src={banner.image}
+                      alt={banner.title}
+                      className="w-full h-full object-cover"
+                    />
+                    
+                    {/* Badge Overlay */}
+                    {banner.badge && (
+                      <span className="absolute top-3 right-3 bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
+                        {banner.badge}
+                      </span>
+                    )}
+
+                    {/* Order Badge */}
+                    <span className="absolute top-3 left-3 bg-slate-900/90 text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full shadow-md font-mono border border-white/20">
+                      الترتيب: #{banner.order || 1}
+                    </span>
+
+                    {/* Position Badge */}
+                    <span className="absolute bottom-3 right-3 bg-slate-900/85 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
+                      {(!banner.position || banner.position === 'below_categories')
+                        ? '🎯 أسفل الأقسام مباشرة'
+                        : banner.position === 'top'
+                        ? '🔝 أعلى الصفحة الرئيسية'
+                        : banner.position === 'middle'
+                        ? ' وسط الصفحة الرئيسية'
+                        : banner.position === 'bottom'
+                        ? '🔽 أسفل الصفحة الرئيسية'
+                        : banner.position === 'category'
+                        ? `📂 داخل قسم: ${banner.category || 'عام'}`
+                        : '🌐 في كل الأماكن'}
+                    </span>
+                  </div>
+
+                  {/* Banner Content Details */}
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-black text-slate-900 leading-snug">
+                        {banner.title}
+                      </h3>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        banner.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {banner.isActive ? '🟢 نشط ويظهر' : '⚪ معطل'}
+                      </span>
+                    </div>
+                    {banner.subtitle && (
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        {banner.subtitle}
+                      </p>
+                    )}
+                    {banner.linkUrl && (
+                      <span className="text-[10px] text-brand-blue font-mono block truncate">
+                        الرابط: {banner.linkUrl}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleToggleActive(banner)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition flex items-center gap-1 cursor-pointer ${
+                        banner.isActive
+                          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
+                    >
+                      {banner.isActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{banner.isActive ? 'إخفاء مؤقت' : 'تفعيل ونشر'}</span>
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEdit(banner)}
+                        className="bg-slate-100 hover:bg-slate-200 text-brand-blue p-2 rounded-xl transition cursor-pointer"
+                        title="تعديل السلايد"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBanner(banner.id, banner.title)}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl transition cursor-pointer"
+                        title="حذف السلايد"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -879,6 +1086,11 @@ export default function AdminBannersPage() {
                       <span>{editingBanner ? 'تعديل بنر الحملة المصمم' : 'إضافة بنر حملة ترويجية مصممة'}</span>
                     </>
                   )
+                ) : isSpriteSlider || position === 'below_categories' ? (
+                  <>
+                    <span className="text-base">🥤</span>
+                    <span>{editingBanner ? 'تعديل سلايد هنقرستيشن (سبرايت)' : 'إضافة سلايد إعلاني مدمج (قياس سبرايت)'}</span>
+                  </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 text-brand-blue" />
@@ -892,6 +1104,16 @@ export default function AdminBannersPage() {
             </div>
 
             <form onSubmit={handleSaveBanner} className="space-y-4">
+              
+              {/* Sprite Slider Tip */}
+              {!isCampaignShowcase && (isSpriteSlider || position === 'below_categories') && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-[11px] text-emerald-900 space-y-1">
+                  <span className="font-black flex items-center gap-1">🥤 ميزة سلايدر هنقرستيشن (قياس سبرايت):</span>
+                  <p className="leading-relaxed">
+                    يتم عرض هذا الإعلان بالقياس العريض والمدمج، ويمكنك إضافة عدة شرائح بنفس الموقع ليتحول تلقائياً إلى سلايدر متعدد الشرائح بنقاط تنقل أسفل الأقسام مباشرة.
+                  </p>
+                </div>
+              )}
               
               {/* Type Switcher for Campaigns/Shelves */}
               {isCampaignShowcase && (

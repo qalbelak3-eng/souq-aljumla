@@ -17,6 +17,7 @@ export interface Banner {
   campaignProductsTitle?: string; // عنوان سكشن المنتجات داخل الحملة (مثال: "منتجاتنا الطازجة")
   campaignProductIds?: string[]; // قائمة معرفات المنتجات المعروضة في الحملة
   isTextShelf?: boolean; // هل هو قسم/شريط منتجات كتابي فاصل بدون بنر؟ (مثل "الآيس كريم والحلويات")
+  isSpriteSlider?: boolean; // هل هو بنر سلايدر مدمج بقياس سبرايت (هنقرستيشن)؟
 }
 
 export interface Company {
