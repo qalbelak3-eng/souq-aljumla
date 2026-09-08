@@ -97,52 +97,29 @@ export default function CampaignPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 space-y-6 select-none">
+    <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 space-y-5 select-none">
       
-      {/* Top Breadcrumb / Back Bar */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
-        >
-          <ArrowRight className="w-4 h-4" />
-          <span>رجوع</span>
-        </button>
+      {/* Clean Top Navigation & Title Bar */}
+      <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+            title="رجوع"
+          >
+            <ArrowRight className="w-5 h-5" />
+          </button>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-bold">
-          <Link href="/" className="hover:text-brand-blue transition">الرئيسية</Link>
-          <span>/</span>
-          <span className="text-slate-900 font-black truncate max-w-[200px] sm:max-w-none">
-            {campaign.title || 'حملة العروض'}
-          </span>
-        </div>
-      </div>
-
-      {/* Campaign Designer Banner Image */}
-      <div className="relative w-full rounded-3xl overflow-hidden shadow-sm border border-slate-100/80 aspect-[21/9] sm:aspect-[24/8] min-h-[160px] sm:min-h-[240px] md:min-h-[300px] bg-slate-100">
-        <img
-          src={campaign.image}
-          alt={campaign.title}
-          className="w-full h-full object-cover"
-        />
-      </div>
-
-      {/* Header Info & Search Bar */}
-      <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-emerald-600" />
             <h1 className="text-base sm:text-lg font-black text-slate-900">
-              {campaign.title || 'منتجات وعروض الحملة'}
+              {campaign.title || 'منتجات العرض'}
             </h1>
-            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-              {products.length} منتج
+            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-mono font-black px-2.5 py-0.5 rounded-full">
+              {filteredProducts.length} منتج
             </span>
           </div>
-          {campaign.subtitle && (
-            <p className="text-xs text-slate-500 mt-1">{campaign.subtitle}</p>
-          )}
         </div>
 
         {/* Search inside this campaign */}
@@ -151,7 +128,7 @@ export default function CampaignPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث داخل هذه العروض..."
+            placeholder="ابحث داخل هذه المنتجات..."
             className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pr-9 pl-3 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
           />
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
