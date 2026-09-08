@@ -70,53 +70,25 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
     }
   };
 
+  const destinationUrl = banner.linkUrl && banner.linkUrl !== '/products'
+    ? banner.linkUrl
+    : `/campaigns/${banner.id}`;
+
   return (
     <div className={`relative my-4 sm:my-6 select-none ${className}`}>
       {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد) */}
       <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 aspect-[18/8] sm:aspect-[22/8] md:aspect-[24/8] min-h-[170px] sm:min-h-[220px] md:min-h-[260px] bg-slate-100 group">
-        {banner.linkUrl ? (
-          <Link href={banner.linkUrl} className="block w-full h-full relative">
-            <img
-              src={banner.image}
-              alt={banner.title || 'حملة عروض'}
-              className="w-full h-full object-cover rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
-            />
-            {/* Top Navigation Arrow (كما في التصميم المرجعي) */}
-            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/30 hover:bg-white/50 backdrop-blur-md text-white flex items-center justify-center transition shadow-xs">
-              <ChevronLeft className="w-5 h-5" />
-            </div>
-          </Link>
-        ) : (
-          <div className="relative w-full h-full">
-            <img
-              src={banner.image}
-              alt={banner.title || 'حملة عروض'}
-              className="w-full h-full object-cover rounded-3xl"
-            />
+        <Link href={destinationUrl} className="block w-full h-full relative cursor-pointer">
+          <img
+            src={banner.image}
+            alt={banner.title || 'حملة عروض'}
+            className="w-full h-full object-cover rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
+          />
+          {/* Top Navigation Arrow (للدخول إلى صفحة القسم أو العرض) */}
+          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/40 hover:bg-white/70 backdrop-blur-md text-white hover:text-slate-900 flex items-center justify-center transition shadow-xs active:scale-95">
+            <ChevronLeft className="w-5 h-5" />
           </div>
-        )}
-
-        {/* Desktop Scroll Controls */}
-        {products.length > 3 && (
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 hidden sm:flex items-center gap-1.5 z-20">
-            <button
-              type="button"
-              onClick={() => scroll('right')}
-              className="w-8 h-8 rounded-full bg-black/25 hover:bg-black/50 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-xs"
-              aria-label="السابق"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll('left')}
-              className="w-8 h-8 rounded-full bg-black/25 hover:bg-black/50 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-xs"
-              aria-label="التالي"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        </Link>
       </div>
 
       {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (المنتجات متداخلة بجمالية داخل البنر) */}
