@@ -65,97 +65,60 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {
-      const scrollAmount = direction === 'left' ? -260 : 260;
+      const scrollAmount = direction === 'left' ? -280 : 280;
       scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
 
-  const bgColor = banner.campaignBgColor || '#15803d'; // Default fresh green
-
   return (
-    <div
-      className={`rounded-3xl overflow-hidden shadow-md border border-slate-100 transition-all ${className}`}
-      style={{ backgroundColor: bgColor }}
-    >
-      {/* 1. THEMED CAMPAIGN HEADER BANNER */}
-      <div className="relative overflow-hidden p-4 sm:p-6 text-white">
-        {/* Background Image / Texture if available */}
-        {banner.image && (
-          <div className="absolute inset-0 z-0">
+    <div className={`space-y-3.5 my-4 sm:my-6 ${className}`}>
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (التصميم الإعلاني الكامل) */}
+      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/80 group">
+        {banner.linkUrl ? (
+          <Link href={banner.linkUrl} className="block w-full">
             <img
               src={banner.image}
-              alt={banner.title}
-              className="w-full h-full object-cover object-center opacity-30 mix-blend-overlay"
+              alt={banner.title || 'حملة عروض'}
+              className="w-full h-auto object-cover rounded-3xl group-hover:opacity-95 transition"
             />
-            <div
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(to right, ${bgColor} 0%, ${bgColor}d9 50%, transparent 100%)`,
-              }}
-            />
-          </div>
+          </Link>
+        ) : (
+          <img
+            src={banner.image}
+            alt={banner.title || 'حملة عروض'}
+            className="w-full h-auto object-cover rounded-3xl"
+          />
         )}
 
-        {/* Content Details */}
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-1 max-w-xl">
-            {banner.badge && (
-              <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-md text-white text-[11px] font-black px-2.5 py-0.5 rounded-full mb-1">
-                <Sparkles className="w-3 h-3 text-amber-300" />
-                <span>{banner.badge}</span>
-              </span>
-            )}
-            <h3 className="text-xl sm:text-2xl font-black tracking-tight drop-shadow-xs">
-              {banner.title}
-            </h3>
-            {banner.subtitle && (
-              <p className="text-xs sm:text-sm text-white/90 font-medium line-clamp-2 drop-shadow-xs">
-                {banner.subtitle}
-              </p>
-            )}
+        {/* Desktop Scroll Controls if many products */}
+        {products.length > 3 && (
+          <div className="absolute bottom-3 left-3 hidden sm:flex items-center gap-1.5 z-10">
+            <button
+              type="button"
+              onClick={() => scroll('right')}
+              className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-sm"
+              aria-label="السابق"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll('left')}
+              className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs shadow-sm"
+              aria-label="التالي"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
           </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-center">
-            {banner.linkUrl && (
-              <Link
-                href={banner.linkUrl}
-                className="bg-white text-slate-900 hover:bg-slate-100 active:scale-95 font-black text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer shrink-0"
-              >
-                <span>تسوق العرض</span>
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </Link>
-            )}
-
-            {products.length > 2 && (
-              <div className="hidden sm:flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => scroll('right')}
-                  className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs"
-                  aria-label="السابق"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scroll('left')}
-                  className="w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition cursor-pointer backdrop-blur-xs"
-                  aria-label="التالي"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 2. HORIZONTAL PRODUCTS SLIDER CAROUSEL */}
+      {/* 2. HORIZONTAL PRODUCTS STRIP (شريط المنتجات المعروضة) */}
       {products.length > 0 && (
-        <div className="p-3 sm:p-4 pt-0">
+        <div className="relative">
           <div
             ref={scrollContainerRef}
-            className="flex items-stretch gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory"
+            className="flex items-stretch gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 px-0.5"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {products.map((product) => {
@@ -174,11 +137,11 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
               return (
                 <div
                   key={product.id}
-                  className="w-[160px] sm:w-[185px] shrink-0 bg-white rounded-2xl p-2.5 border border-white/40 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
+                  className="w-[145px] sm:w-[170px] shrink-0 bg-white rounded-2xl p-2.5 border border-slate-200/70 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
                   onClick={() => setSelectedProductForModal(product)}
                 >
                   {/* Image & Discount Badge */}
-                  <div className="relative aspect-square rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center p-2 mb-2">
+                  <div className="relative aspect-square rounded-xl bg-slate-50/70 overflow-hidden flex items-center justify-center p-2 mb-2">
                     {product.images && product.images[0] ? (
                       <img
                         src={product.images[0]}
@@ -190,8 +153,8 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                     )}
 
                     {hasDiscount && discountPercent > 0 && (
-                      <span className="absolute top-1.5 right-1.5 bg-red-600 text-white font-black text-[9px] px-1.5 py-0.5 rounded-lg shadow-xs">
-                        -%{discountPercent}
+                      <span className="absolute top-1.5 right-1.5 bg-[#e11d48] text-white font-black text-[10px] px-2 py-0.5 rounded-md shadow-xs">
+                        وفر {discountPercent}%
                       </span>
                     )}
 
@@ -202,33 +165,8 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                         </span>
                       </div>
                     )}
-                  </div>
 
-                  {/* Title & Unit */}
-                  <div className="space-y-1 mb-2">
-                    <h4 className="text-xs font-black text-slate-900 line-clamp-2 leading-snug group-hover:text-brand-blue transition">
-                      {product.name}
-                    </h4>
-                    {currentUnit && (
-                      <span className="text-[10px] text-slate-500 font-bold block truncate">
-                        {currentUnit}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Pricing & Add Button */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
-                    <div>
-                      <div className="text-xs sm:text-sm font-black text-brand-blue">
-                        {currentPrice.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">د.ع</span>
-                      </div>
-                      {hasDiscount && oldPrice && (
-                        <div className="text-[10px] text-slate-400 line-through font-mono">
-                          {oldPrice.toLocaleString()} د.ع
-                        </div>
-                      )}
-                    </div>
-
+                    {/* Quick Add Button on bottom left of image */}
                     <button
                       type="button"
                       disabled={isOutOfStock}
@@ -236,11 +174,35 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                         e.stopPropagation();
                         setSelectedProductForModal(product);
                       }}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-brand-coral hover:bg-brand-coralHover text-white flex items-center justify-center shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
+                      className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white text-slate-800 hover:bg-slate-100 shadow-md border border-slate-100 flex items-center justify-center transition active:scale-90 disabled:opacity-50 cursor-pointer"
                       title="إضافة للسلة"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
                     </button>
+                  </div>
+
+                  {/* Title & Unit */}
+                  <div className="space-y-0.5 mb-1.5">
+                    <h4 className="text-xs font-bold text-slate-900 line-clamp-2 leading-tight group-hover:text-brand-blue transition">
+                      {product.name}
+                    </h4>
+                    {currentUnit && (
+                      <span className="text-[10px] text-slate-400 block truncate">
+                        {currentUnit}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Pricing */}
+                  <div className="pt-1.5 border-t border-slate-100 flex items-center gap-1.5 flex-wrap">
+                    <div className="text-xs sm:text-sm font-black text-[#e11d48]">
+                      {currentPrice.toLocaleString()} <span className="text-[10px] font-normal text-slate-600">د.ع</span>
+                    </div>
+                    {hasDiscount && oldPrice && (
+                      <div className="text-[10px] text-slate-400 line-through font-mono">
+                        {oldPrice.toLocaleString()} د.ع
+                      </div>
+                    )}
                   </div>
                 </div>
               );
