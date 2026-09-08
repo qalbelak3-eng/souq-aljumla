@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, Trash2, Edit2, Check, X, ExternalLink, RefreshCw, Eye, EyeOff, Image as ImageIcon, Layers, Tag, Search, ShoppingBag } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Edit2, Check, X, ExternalLink, RefreshCw, Eye, EyeOff, Image as ImageIcon, Layers, Tag, Search, ShoppingBag, Info } from 'lucide-react';
 import { Banner, PopupAdSettings, Category, Product } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
@@ -556,6 +556,29 @@ export default function AdminBannersPage() {
             </div>
           </div>
 
+          {/* Dimension Guide Card for Tab 1 */}
+          <div className="bg-gradient-to-l from-blue-50 via-indigo-50/40 to-white border border-blue-200/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-blue-950 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-blue-600 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-xs text-slate-900">📐 دليل أبعاد البنرات الرئيسية:</span>
+                  <span className="bg-blue-600 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
+                    1920 × 1080 px (أو 1200 × 675 px)
+                  </span>
+                  <span className="bg-blue-100 text-blue-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-blue-200">
+                    نسبة 16:9 عريض قياسي
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  الأنسب للسلايدر الرئيسي الكبير في أعلى أو وسط الصفحة. ⚡ <strong>نظام الضغط الذكي:</strong> يقوم المتجر آلياً بضغط الصورة وتحسين كفاءتها لضمان سرعة تحميل فائقة وتوفير باقة الإنترنت للزبائن.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Slider Banners List */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {isLoading ? (
@@ -722,6 +745,29 @@ export default function AdminBannersPage() {
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
+            </div>
+          </div>
+
+          {/* Dimension Guide Card for Tab 2 */}
+          <div className="bg-gradient-to-l from-emerald-50 via-teal-50/40 to-white border border-emerald-200/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-emerald-950 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-emerald-600 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-xs text-slate-900">📐 دليل أبعاد سلايدر الإعلانات الثانوي:</span>
+                  <span className="bg-emerald-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
+                    1200 × 490 px (أو 1080 × 440 px)
+                  </span>
+                  <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-emerald-200">
+                    نسبة 22:9 أو 21:9 مدمج ونحيف
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  مخصص للسلايدرات المدمجة تحت أيقونات الأقسام (ستايل سبرايت / هنقرستيشن). ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً بأعلى دقة لضمان سرعة الانتقال بين الشرائح بنعومة.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -895,6 +941,29 @@ export default function AdminBannersPage() {
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
+            </div>
+          </div>
+
+          {/* Dimension Guide Card for Tab 3 */}
+          <div className="bg-gradient-to-l from-teal-50 via-emerald-50/40 to-white border border-teal-200/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-teal-950 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-teal-700 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-xs text-slate-900">📐 أبعاد حملات العروض والأقسام:</span>
+                  <span className="bg-teal-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
+                    🎨 بنر مصمم: 1200 × 400 px إلى 1200 × 450 px (نسبة 24:8 أو 18:6)
+                  </span>
+                  <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-md shadow-xs">
+                    📝 القسم الكتابي الفاصل: لا يحتاج صورة نهائياً (عنوان وألوان وشريط منتجات)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  صورة الحملة المصممة تمتد في الخلفية وتتداخل المنتجات فوقها في شريط أفقي. ⚡ <strong>ضغط ذكي:</strong> يقوم النظام بتحسين وضغط الصور فوراً عند الرفع.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1197,11 +1266,35 @@ export default function AdminBannersPage() {
 
               {/* Banner Image Upload & Preview (Only for normal banners or designer showcase banners) */}
               {(!isCampaignShowcase || !isTextShelf) && (
-                <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                  <label className="font-black text-slate-800 block text-xs flex items-center justify-between">
-                    <span>{isCampaignShowcase ? 'صورة التصميم الإعلاني الكامل للحملة *:' : 'صورة البنر الإعلاني *:'}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">رفع من الجهاز أو رابط صورة</span>
-                  </label>
+                <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="font-black text-slate-900 block text-xs">
+                      {isCampaignShowcase ? 'صورة التصميم الإعلاني الكامل للحملة *:' : 'صورة البنر الإعلاني *:'}
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                      رفع من جهازك أو رابط مباشر
+                    </span>
+                  </div>
+
+                  {/* Dynamic Dimension & Compression Hint Box */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap font-bold text-[11px]">
+                      <span className="text-slate-800 flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-brand-blue shrink-0" />
+                        <span>القياس والأبعاد الموصى بها:</span>
+                      </span>
+                      <span className="bg-slate-900 text-white px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black">
+                        {isSpriteSlider || position === 'below_categories'
+                          ? '1200 × 490 px (نسبة 22:9 أو 21:9 مدمج ونحيف)'
+                          : isCampaignShowcase
+                          ? '1200 × 400 px إلى 1200 × 450 px (نسبة 24:8)'
+                          : '1920 × 1080 px أو 1200 × 675 px (نسبة 16:9 قياسي)'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      ⚡ <strong>الضغط التلقائي:</strong> لا تقلق بشأن حجم ملف الصورة؛ يتم ضغط الصورة وتحسين حجمها آلياً بنظام ذكي لسرعة التصفح.
+                    </p>
+                  </div>
 
                   <div className="space-y-3">
                     {/* Banner Preview */}
@@ -1503,6 +1596,29 @@ export default function AdminBannersPage() {
             </div>
           </div>
 
+          {/* Dimension Guide Card for Tab 4 */}
+          <div className="bg-gradient-to-l from-rose-50 via-orange-50/40 to-white border border-rose-200/80 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-rose-950 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-brand-coral text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-xs text-slate-900">📐 دليل أبعاد البوستر المنبثق (Popup):</span>
+                  <span className="bg-brand-coral text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
+                    1080 × 1350 px (طولي 4:5 احترافي)
+                  </span>
+                  <span className="bg-rose-100 text-rose-900 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-rose-200">
+                    أو 1080 × 1080 px (مربع 1:1)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  هذا القياس يعرض البوستر كاملاً بوضوح وجمالية تامة على الهواتف والشاشات الكبيرة دون أي قص. ⚡ <strong>نظام الضغط الذكي:</strong> يتم تحسين وضغط الصورة فوراً لتظهر بلحظة دخول الزبون للمتجر.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* POPUP ADS LIST GRID */}
           {popupAds.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-3">
@@ -1681,12 +1797,28 @@ export default function AdminBannersPage() {
               </div>
 
               {/* Vertical Image Upload */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-3">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="block text-slate-800 font-bold">صورة البوستر العامودي (3:4 أو 4:5) *:</label>
+                  <label className="block text-slate-800 font-bold">صورة البوستر الإعلاني *:</label>
                   <span className="text-[10px] text-slate-500 font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                    تناسب الهاتف والكمبيوتر
+                    رفع من جهازك أو رابط مباشر
                   </span>
+                </div>
+
+                {/* Dimension & Compression Hint Box for Popup */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap font-bold text-[11px]">
+                    <span className="text-slate-800 flex items-center gap-1">
+                      <Info className="w-3.5 h-3.5 text-brand-coral shrink-0" />
+                      <span>القياس والأبعاد الموصى بها للبوستر:</span>
+                    </span>
+                    <span className="bg-brand-coral text-white px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black">
+                      1080 × 1350 px (طولي 4:5) أو 1080 × 1080 px (مربع 1:1)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    ⚡ <strong>ضغط ذكي تلقائي:</strong> يتم تحجيم وضغط صورة البوستر تلقائياً لسرعة الظهور الفوري دون أي بطء في تجربة الزبون.
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
