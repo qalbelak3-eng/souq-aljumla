@@ -1,11 +1,19 @@
 'use client';
 
 import React from 'react';
+import { usePathname } from 'next/navigation';
 import { ShoppingCart } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 
 export default function WhatsAppFloatingButton() {
+  const pathname = usePathname();
   const { totalItemsCount, setIsCartDrawerOpen } = useCart();
+
+  // Floating Cart icon only appears on the Home Page ('/')
+  // Inside categories/sections it stays hidden until user buys/adds a product
+  if (pathname !== '/') {
+    return null;
+  }
 
   return (
     /* Floating Coral Cart Button matching Jumlaty app (Screenshot media_1787336778773.jpg) */

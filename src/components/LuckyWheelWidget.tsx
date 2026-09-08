@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sparkles, Gift } from 'lucide-react';
 import LuckyWheelModal from '@/components/LuckyWheelModal';
 import { useAuth } from '@/context/AuthContext';
@@ -10,6 +11,7 @@ export default function LuckyWheelWidget() {
   const [hasFreeSpin, setHasFreeSpin] = useState(true);
   const [isEnabled, setIsEnabled] = useState(true);
   const [cooldownHours, setCooldownHours] = useState(24);
+  const pathname = usePathname();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -38,7 +40,8 @@ export default function LuckyWheelWidget() {
     }
   }, [isOpen, user, cooldownHours]);
 
-  if (!isEnabled) return null;
+  // Only display on Home Page ('/')
+  if (pathname !== '/' || !isEnabled) return null;
 
   return (
     <>
