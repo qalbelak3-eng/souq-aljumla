@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, Plus } from 'lucide-react';
 import { Banner, Product, SaleType } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
 import { getProductPriceForUser } from '@/lib/pricing';
 import ProductBuyModal from '@/components/ProductBuyModal';
 
@@ -16,6 +17,7 @@ interface TextProductShelfProps {
 
 export default function TextProductShelf({ banner, allProducts = [], className = '' }: TextProductShelfProps) {
   const { user, isApprovedMerchant } = useAuth();
+  const { cart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +115,9 @@ export default function TextProductShelf({ banner, allProducts = [], className =
           const hasDiscount = Boolean(oldPrice && oldPrice > currentPrice);
           const discountPercent = hasDiscount && oldPrice ? Math.round(((oldPrice - currentPrice) / oldPrice) * 100) : 0;
 
+          const cartItem = cart.find((item) => item.product.id === product.id);
+          const inCartQty = cartItem ? cartItem.quantity : 0;
+
           return (
             <div
               key={product.id}
@@ -145,19 +150,33 @@ export default function TextProductShelf({ banner, allProducts = [], className =
                   </div>
                 )}
 
-                {/* Quick Add Button */}
-                <button
-                  type="button"
-                  disabled={isOutOfStock}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedProductForModal(product);
-                  }}
-                  className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white text-slate-800 hover:bg-slate-50 shadow-md border border-slate-100 flex items-center justify-center transition active:scale-90 disabled:opacity-50 cursor-pointer"
-                  title="إضافة للسلة"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                </button>
+                {/* Quick Add / In-Cart Yellow Indicator Button */}
+                {inCartQty > 0 ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedProductForModal(product);
+                    }}
+                    className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#FFDF00] hover:bg-[#F2D400] text-slate-950 shadow-md border border-amber-400 flex items-center justify-center font-black text-xs sm:text-sm transition active:scale-90 font-mono"
+                    title={`${inCartQty} بالسلة - انقر للتعديل`}
+                  >
+                    {inCartQty}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isOutOfStock}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedProductForModal(product);
+                    }}
+                    className="absolute bottom-1.5 left-1.5 w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white text-slate-800 hover:bg-slate-50 shadow-md border border-slate-100 flex items-center justify-center transition active:scale-90 disabled:opacity-50 cursor-pointer"
+                    title="إضافة للسلة"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                  </button>
+                )}
               </div>
 
               {/* Title & Unit */}

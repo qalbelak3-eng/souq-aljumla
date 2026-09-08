@@ -5,14 +5,19 @@ import Link from 'next/link';
 import { ShoppingBag, Star, Check, Crown, Award } from 'lucide-react';
 import { Product, SaleType } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
 import { getProductPriceForUser } from '@/lib/pricing';
 import ProductBuyModal from '@/components/ProductBuyModal';
 
 export default function ProductCard({ product }: { product: Product }) {
   const { user, isApprovedMerchant } = useAuth();
+  const { cart } = useCart();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   if (!product) return null;
+
+  const cartItem = cart.find((item) => item.product.id === product.id);
+  const inCartQty = cartItem ? cartItem.quantity : 0;
 
   const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
   const { price: currentPrice, tierLabel, tier } = getProductPriceForUser(product, selectedType, user);
@@ -60,6 +65,15 @@ export default function ProductCard({ product }: { product: Product }) {
             </span>
           ) : null}
         </div>
+
+        {/* In Cart Indicator Badge on Top Left */}
+        {inCartQty > 0 && (
+          <div className="absolute top-2.5 left-2.5 z-10">
+            <span className="bg-[#FFDF00] text-slate-950 font-black text-[10px] sm:text-[11px] px-2 py-0.5 rounded-lg shadow-sm border border-amber-400 font-mono flex items-center gap-1">
+              <span>{inCartQty} بالسلة</span>
+            </span>
+          </div>
+        )}
 
         {/* Out of Stock Banner */}
         {isOutOfStock && (
@@ -132,14 +146,23 @@ export default function ProductCard({ product }: { product: Product }) {
             type="button"
             onClick={handleOpenBuyModal}
             disabled={isOutOfStock}
-            className={`font-black py-2 px-3.5 sm:px-4 rounded-xl text-xs transition transform active:scale-95 flex items-center gap-1 shadow-xs cursor-pointer ${
-              hasDiscount
+            className={`font-black py-2 px-3 sm:px-4 rounded-xl text-xs transition transform active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer ${
+              inCartQty > 0
+                ? 'bg-[#FFDF00] hover:bg-[#F2D400] text-slate-950 border border-amber-400'
+                : hasDiscount
                 ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-rose-200 ring-1 ring-red-300/50'
                 : 'bg-[#16a34a] hover:bg-[#15803d] text-white shadow-sm shadow-green-600/20'
             }`}
-            title="اختيار الكمية والشراء"
+            title={inCartQty > 0 ? 'تعديل الكمية في السلة' : 'اختيار الكمية والشراء'}
           >
-            <span>اشتري</span>
+            {inCartQty > 0 ? (
+              <>
+                <span className="w-4 h-4 rounded-full bg-slate-950 text-white text-[10px] font-mono flex items-center justify-center font-black">{inCartQty}</span>
+                <span>بالسلة</span>
+              </>
+            ) : (
+              <span>اشتري</span>
+            )}
           </button>
 
         </div>
