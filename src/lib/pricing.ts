@@ -42,28 +42,41 @@ export function getProductPriceForUser(
   return { price: fallbackPrice, tierLabel: 'سعر الكرتون', tier: 'retail' };
 }
 
-export function getUserCashbackRate(user?: User | null, settings?: StoreSettings | null): number {
-  const defaultRate = Number(settings?.cashbackPerItem ?? 150);
+export function getUserCashbackRate(
+  user?: User | null,
+  settings?: StoreSettings | null,
+  saleType: SaleType = 'retail'
+): number {
+  const accountType = user?.accountType;
 
-  if (!user || user.accountType === 'individual' || !user.accountType) {
+  // 1. تاجر جملة VIP
+  if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
+    if (saleType === 'wholesale') {
+      return Number(settings?.cashbackMerchantPerItem ?? 0);
+    }
     return Number(settings?.cashbackCustomerPerItem ?? 100);
   }
 
-  if (user.accountType === 'market') {
-    return Number(settings?.cashbackMarketPerItem ?? 150);
+  // 2. صاحب ماركت / محل
+  if (accountType === 'market') {
+    if (saleType === 'wholesale') {
+      return Number(settings?.cashbackMarketPerItem ?? 0);
+    }
+    return Number(settings?.cashbackCustomerPerItem ?? 100);
   }
 
-  if (user.accountType === 'wholesale' || user.accountType === 'merchant' || user.role === 'merchant') {
-    return Number(settings?.cashbackMerchantPerItem ?? 250);
+  // 3. زبون عادي (مفرد)
+  if (saleType === 'wholesale') {
+    return 0;
   }
-
-  return defaultRate;
+  return Number(settings?.cashbackCustomerPerItem ?? 100);
 }
 
 /**
- * حساب معدل مكافأة الهدية/الكاشباك لمنتج معين حسب نوع البيع (مفرد / كرتون):
- * - المفرد (retail): يحسب بالقطعة للزبون العادي أو حسب السعر المحدد.
- * - الكرتون (wholesale): لا يحسب المفرد بضرب عدد قطع الكرتون؛ بل يحسب فقط إذا وُضعت مكافأة/هدية محددة للكرتون كتحفيز للماركت/التاجر.
+ * حساب معدل مكافأة الهدية/الكاشباك لمنتج معين حسب فئة الحساب ونوع الشراء (مفرد / كرتون):
+ * - زبون المفرد: يحصل على هدية القطعة المفردة (cashbackCustomerAmount).
+ * - صاحب الماركت: يحصل على هدية كرتون الماركت المخصصة (cashbackMarketAmount).
+ * - تاجر الجملة VIP: يحصل على هدية كرتون الجملة المخصصة (cashbackMerchantAmount).
  */
 export function getProductCashbackRate(
   product?: Product | null,
@@ -72,8 +85,7 @@ export function getProductCashbackRate(
   saleType: SaleType = 'retail'
 ): number {
   if (!product) {
-    if (saleType === 'wholesale') return 0;
-    return getUserCashbackRate(user, settings);
+    return getUserCashbackRate(user, settings, saleType);
   }
   
   // إذا تم إيقاف الهدية صراحة عن هذا الصنف
@@ -81,28 +93,47 @@ export function getProductCashbackRate(
     return 0;
   }
 
-  // 📦 حالة الكارتون / الجملة:
+  const accountType = user?.accountType;
+
+  // 1. حساب تاجر الجملة VIP 👑
+  if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
+    if (saleType === 'wholesale') {
+      if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount >= 0) {
+        return product.cashbackMerchantAmount;
+      }
+      return Number(settings?.cashbackMerchantPerItem ?? 0);
+    }
+    // إذا اشترى بالمفرد
+    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+      return product.cashbackCustomerAmount;
+    }
+    return Number(settings?.cashbackCustomerPerItem ?? 100);
+  }
+
+  // 2. حساب صاحب الماركت والمحل 🏪
+  if (accountType === 'market') {
+    if (saleType === 'wholesale') {
+      if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount >= 0) {
+        return product.cashbackMarketAmount;
+      }
+      return Number(settings?.cashbackMarketPerItem ?? 0);
+    }
+    // إذا اشترى بالمفرد
+    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+      return product.cashbackCustomerAmount;
+    }
+    return Number(settings?.cashbackCustomerPerItem ?? 100);
+  }
+
+  // 3. حساب الزبون العادي / المستهلك (المفرد) 👤
   if (saleType === 'wholesale') {
-    // 1. إذا حُددت هدية/كاشباك خاص للكرتون
     if (typeof product.cashbackWholesalePerCarton === 'number' && product.cashbackWholesalePerCarton > 0) {
       return product.cashbackWholesalePerCarton;
     }
-    const accountType = user?.accountType;
-    if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
-      if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount > 0) {
-        return product.cashbackMerchantAmount;
-      }
-    }
-    if (accountType === 'market') {
-      if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount > 0) {
-        return product.cashbackMarketAmount;
-      }
-    }
-    // خلاف ذلك، الكرتون ليس عليه كاشباك بالقطع لأنه مخفض بسعر الجملة
     return 0;
   }
 
-  // 🛒 حالة المفرد بالقطعة (Retail per piece):
+  // شراء بالمفرد للزبون العادي
   if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
     return product.cashbackCustomerAmount;
   }

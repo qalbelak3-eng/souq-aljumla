@@ -251,12 +251,18 @@ export default function ProductBuyModal({
           <span>توصيل مجاني للطلبيات فوق {(freeDeliveryThreshold || 50000).toLocaleString()} د.ع لكافة مناطق كربلاء 🚚</span>
         </div>
 
-        {/* 🎁 سطر مكافأة وهدية رصيد الأرباح (يظهر فقط إذا كان الصنف مفعلاً فيه الهدية وموجباً) */}
+        {/* 🎁 سطر مكافأة وهدية رصيد الأرباح المخصصة حسب فئة الحساب */}
         {isCashbackRewardEnabled && cashbackTotalReward > 0 && (
           <div className="bg-emerald-50 border border-emerald-300/90 rounded-2xl py-2 px-3 text-center flex items-center justify-center gap-1.5 text-[11px] font-black text-emerald-800 shadow-2xs animate-fadeIn">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0 animate-pulse" />
             <span>
-              🎁 احصل على خصم هدية <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong>{quantity > 1 ? ` (${cashbackPerUnit.toLocaleString()} د.ع × ${quantity} ${saleType === 'wholesale' ? (product.wholesaleUnit || 'كرتون') : (product.retailUnit || 'قطعة')})` : ''} في رصيد أرباحك!
+              {saleType === 'wholesale' && (user?.accountType === 'wholesale' || user?.accountType === 'merchant' || user?.role === 'merchant') ? (
+                <>🎁 هدية كبار التجار VIP بقيمة <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong>{quantity > 1 ? ` (${cashbackPerUnit.toLocaleString()} د.ع × ${quantity} كرتون)` : ''} في رصيد أرباحك!</>
+              ) : saleType === 'wholesale' && user?.accountType === 'market' ? (
+                <>🎁 هدية خاصة للماركت بقيمة <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong>{quantity > 1 ? ` (${cashbackPerUnit.toLocaleString()} د.ع × ${quantity} كرتون)` : ''} في رصيد أرباحك!</>
+              ) : (
+                <>🎁 احصل على خصم هدية <strong className="text-emerald-950 font-black underline decoration-emerald-400">{cashbackTotalReward.toLocaleString()} د.ع</strong>{quantity > 1 ? ` (${cashbackPerUnit.toLocaleString()} د.ع × ${quantity} ${saleType === 'wholesale' ? (product.wholesaleUnit || 'كرتون') : (product.retailUnit || 'قطعة')})` : ''} في رصيد أرباحك!</>
+              )}
             </span>
           </div>
         )}
