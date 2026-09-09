@@ -109,49 +109,49 @@ export default function MerchantStatsCard() {
   return (
     <div className="w-full select-none max-w-5xl mx-auto">
       
-      {/* 2-CARD SPLIT EXECUTIVE DASHBOARD: Financial Card + Orders Pulse */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+      {/* 2-CARD SPLIT EXECUTIVE DASHBOARD: Financial Card + Orders Pulse (Compact Sleek Edition) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3">
         
-        {/* ═══ CARD 1: المحفظة والحساب المالي (Luxury Royal Blue Glass Card) ═══ */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#0c2444] via-[#103058] to-[#081830] text-white rounded-3xl p-4 sm:p-5 border border-blue-400/20 shadow-[0_8px_30px_rgba(12,36,68,0.18)] flex flex-col justify-between space-y-3.5 group">
+        {/* ═══ CARD 1: المحفظة والحساب المالي (Luxury Royal Blue Glass Card - Compact) ═══ */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#0c2444] via-[#103058] to-[#081830] text-white rounded-2xl p-3 sm:p-3.5 border border-blue-400/20 shadow-[0_4px_20px_rgba(12,36,68,0.14)] flex flex-col justify-between space-y-2 group">
           
           {/* Subtle Ambient Radial Lights */}
-          <div className="absolute -left-10 -top-10 w-36 h-36 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-emerald-400/15 rounded-full blur-xl pointer-events-none" />
+          <div className="absolute -left-8 -top-8 w-28 h-28 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-400/10 rounded-full blur-lg pointer-events-none" />
 
           {/* Top Row: Title Badge & Statement Button */}
           <div className="relative z-10 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 bg-amber-400/15 text-amber-300 text-[11px] sm:text-xs font-black px-3 py-1 rounded-full border border-amber-400/30 backdrop-blur-md shadow-xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <div className="flex items-center gap-1.5 bg-amber-400/15 text-amber-300 text-[10px] sm:text-[11px] font-black px-2.5 py-0.5 rounded-full border border-amber-400/30 backdrop-blur-md shadow-2xs">
+              <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
               <span>محفظة الأرباح والحساب</span>
             </div>
 
             <Link
               href={statementUrl}
-              className="bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[11px] sm:text-xs font-bold py-1 px-3 rounded-full border border-white/20 backdrop-blur-md transition flex items-center gap-1.5 group-hover:border-white/40 shadow-xs"
+              className="bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[10px] sm:text-[11px] font-bold py-0.5 px-2.5 rounded-full border border-white/20 backdrop-blur-md transition flex items-center gap-1 group-hover:border-white/40 shadow-2xs"
             >
-              <Receipt className="w-3.5 h-3.5 text-sky-300" />
+              <Receipt className="w-3 h-3 text-sky-300" />
               <span>كشف الحساب 🧾</span>
-              <ChevronLeft className="w-3 h-3 transition-transform group-hover:-translate-x-0.5" />
+              <ChevronLeft className="w-2.5 h-2.5 transition-transform group-hover:-translate-x-0.5" />
             </Link>
           </div>
 
           {/* Center: Financial Two Pillars (رصيد أرباحك + المبلغ المتبقي) */}
-          <div className="relative z-10 grid grid-cols-2 gap-3 pt-1">
+          <div className="relative z-10 grid grid-cols-2 gap-2 pt-0.5">
             
             {/* Pillar 1: رصيد أرباح الكاش باك */}
-            <div className="bg-white/10 hover:bg-white/15 rounded-2xl p-3 border border-white/15 backdrop-blur-md transition space-y-1.5 text-right shadow-xs">
-              <span className="text-[11px] text-slate-200 font-bold block flex items-center justify-end gap-1">
+            <div className="bg-white/10 hover:bg-white/15 rounded-xl p-2 sm:p-2.5 border border-white/15 backdrop-blur-md transition space-y-1 text-right shadow-2xs">
+              <span className="text-[10px] text-slate-200 font-bold block flex items-center justify-end gap-1">
                 <span>رصيد أرباحك</span>
                 <span>💰</span>
               </span>
               <div className="flex items-baseline justify-end gap-1">
-                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-300 leading-none drop-shadow-xs">
+                <span className="text-base sm:text-lg font-black font-mono text-emerald-300 leading-none drop-shadow-xs">
                   {profitBalance.toLocaleString()}
                 </span>
-                <span className="text-[10px] font-bold text-slate-300 font-sans">د.ع</span>
+                <span className="text-[9px] font-bold text-slate-300 font-sans">د.ع</span>
               </div>
-              <span className="text-[10px] text-amber-300 font-bold block leading-tight">
+              <span className="text-[9px] text-amber-300 font-bold block leading-tight truncate">
                 ✨ اربح ابتداءً من 50 د.ع للقطعة
               </span>
             </div>
@@ -159,23 +159,23 @@ export default function MerchantStatsCard() {
             {/* Pillar 2: المبلغ المتبقي (المطلوب) */}
             <Link
               href={statementUrl}
-              className="bg-white/10 hover:bg-white/15 rounded-2xl p-3 border border-white/15 backdrop-blur-md transition space-y-1.5 text-right block shadow-xs group/item"
+              className="bg-white/10 hover:bg-white/15 rounded-xl p-2 sm:p-2.5 border border-white/15 backdrop-blur-md transition space-y-1 text-right block shadow-2xs group/item"
             >
               <div className="flex items-center justify-between">
-                <ChevronLeft className="w-3.5 h-3.5 text-slate-300 group-hover/item:-translate-x-0.5 transition-transform" />
-                <span className="text-[11px] text-slate-200 font-bold flex items-center gap-1">
+                <ChevronLeft className="w-3 h-3 text-slate-300 group-hover/item:-translate-x-0.5 transition-transform" />
+                <span className="text-[10px] text-slate-200 font-bold flex items-center gap-1">
                   <span>المبلغ المتبقي</span>
                   <span>📊</span>
                 </span>
               </div>
               <div className="flex items-baseline justify-end gap-1">
-                <span className={`text-xl sm:text-2xl font-black font-mono leading-none drop-shadow-xs ${statementBalance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                <span className={`text-base sm:text-lg font-black font-mono leading-none drop-shadow-xs ${statementBalance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
                   {statementBalance.toLocaleString()}
                 </span>
-                <span className="text-[10px] font-bold text-slate-300 font-sans">د.ع</span>
+                <span className="text-[9px] font-bold text-slate-300 font-sans">د.ع</span>
               </div>
-              <span className="text-[10px] text-slate-300 font-bold block leading-tight">
-                {statementBalance > 0 ? '⚠️ رصيد مطلوب سداده' : '✅ حسابك مسدد بالكامل'}
+              <span className="text-[9px] text-slate-300 font-bold block leading-tight truncate">
+                {statementBalance > 0 ? '⚠️ مطلوب سداده' : '✅ مسدد بالكامل'}
               </span>
             </Link>
 
@@ -183,58 +183,58 @@ export default function MerchantStatsCard() {
 
         </div>
 
-        {/* ═══ CARD 2: حركة ونشاط الطلبات (Modern Light Glass Card) ═══ */}
-        <div className="bg-white/95 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-sky-100/90 shadow-[0_8px_30px_rgba(0,100,255,0.06)] flex flex-col justify-between space-y-3.5">
+        {/* ═══ CARD 2: حركة ونشاط الطلبات (Modern Light Glass Card - Compact) ═══ */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3 sm:p-3.5 border border-sky-100/90 shadow-[0_4px_20px_rgba(0,100,255,0.04)] flex flex-col justify-between space-y-2">
           
           {/* Top Row: Section Title & Orders Link */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-900 text-xs sm:text-sm font-black">
-              <div className="w-7 h-7 rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center shadow-2xs border border-blue-100/80">
-                <Package className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 text-slate-900 text-xs font-black">
+              <div className="w-5.5 h-5.5 rounded-lg bg-blue-50 text-brand-blue flex items-center justify-center border border-blue-100/80">
+                <Package className="w-3 h-3" />
               </div>
               <span>نشاط وحالة الطلبيات</span>
             </div>
 
             <Link
               href={user ? "/profile" : "/login"}
-              className="text-[11px] font-bold text-brand-blue hover:text-brand-blueDark flex items-center gap-0.5 bg-blue-50 hover:bg-blue-100/80 px-3 py-1 rounded-full transition border border-blue-100/80 shadow-2xs"
+              className="text-[10px] sm:text-[11px] font-bold text-brand-blue hover:text-brand-blueDark flex items-center gap-0.5 bg-blue-50 hover:bg-blue-100/80 px-2.5 py-0.5 rounded-full transition border border-blue-100/80 shadow-2xs"
             >
               <span>سجل الطلبات</span>
-              <ChevronLeft className="w-3.5 h-3.5" />
+              <ChevronLeft className="w-2.5 h-2.5" />
             </Link>
           </div>
 
           {/* 3 Metric Tiles (طلبات اليوم + قيد التجهيز + الطلبات السابقة) */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-1">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5">
             
             {/* Metric 1: طلباتي اليوم */}
             <Link
               href={user ? "/profile" : "/login"}
-              className="bg-gradient-to-b from-sky-50/90 to-white hover:from-sky-100/90 rounded-2xl p-2.5 sm:p-3 border border-sky-100 hover:border-sky-300 transition text-center space-y-1.5 block shadow-2xs active:scale-98"
+              className="bg-gradient-to-b from-sky-50/90 to-white hover:from-sky-100/90 rounded-xl p-1.5 sm:p-2 border border-sky-100 hover:border-sky-300 transition text-center space-y-1 block shadow-2xs active:scale-98"
             >
-              <div className="w-7 h-7 mx-auto rounded-full bg-sky-100 text-sky-700 flex items-center justify-center shadow-2xs">
-                <Calendar className="w-3.5 h-3.5" />
+              <div className="w-5.5 h-5.5 mx-auto rounded-full bg-sky-100 text-sky-700 flex items-center justify-center">
+                <Calendar className="w-3 h-3" />
               </div>
-              <span className="text-lg sm:text-xl font-black font-mono text-slate-900 block leading-tight">
+              <span className="text-base sm:text-lg font-black font-mono text-slate-900 block leading-tight">
                 {todayOrders}
               </span>
-              <span className="text-[10px] font-bold text-slate-600 block">
-                طلبات اليوم
+              <span className="text-[9px] font-bold text-slate-600 block">
+                اليوم
               </span>
             </Link>
 
             {/* Metric 2: قيد التجهيز */}
             <Link
               href={user ? "/profile" : "/login"}
-              className="bg-gradient-to-b from-amber-50/90 to-white hover:from-amber-100/90 rounded-2xl p-2.5 sm:p-3 border border-amber-100 hover:border-amber-300 transition text-center space-y-1.5 block shadow-2xs active:scale-98"
+              className="bg-gradient-to-b from-amber-50/90 to-white hover:from-amber-100/90 rounded-xl p-1.5 sm:p-2 border border-amber-100 hover:border-amber-300 transition text-center space-y-1 block shadow-2xs active:scale-98"
             >
-              <div className="w-7 h-7 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shadow-2xs">
-                <Clock className="w-3.5 h-3.5" />
+              <div className="w-5.5 h-5.5 mx-auto rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Clock className="w-3 h-3" />
               </div>
-              <span className="text-lg sm:text-xl font-black font-mono text-amber-600 block leading-tight">
+              <span className="text-base sm:text-lg font-black font-mono text-amber-600 block leading-tight">
                 {processingOrders}
               </span>
-              <span className="text-[10px] font-bold text-slate-600 block">
+              <span className="text-[9px] font-bold text-slate-600 block">
                 قيد التجهيز
               </span>
             </Link>
@@ -242,16 +242,16 @@ export default function MerchantStatsCard() {
             {/* Metric 3: الطلبات السابقة */}
             <Link
               href={user ? "/profile" : "/login"}
-              className="bg-gradient-to-b from-emerald-50/90 to-white hover:from-emerald-100/90 rounded-2xl p-2.5 sm:p-3 border border-emerald-100 hover:border-emerald-300 transition text-center space-y-1.5 block shadow-2xs active:scale-98"
+              className="bg-gradient-to-b from-emerald-50/90 to-white hover:from-emerald-100/90 rounded-xl p-1.5 sm:p-2 border border-emerald-100 hover:border-emerald-300 transition text-center space-y-1 block shadow-2xs active:scale-98"
             >
-              <div className="w-7 h-7 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-2xs">
-                <CheckCircle2 className="w-3.5 h-3.5" />
+              <div className="w-5.5 h-5.5 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <CheckCircle2 className="w-3 h-3" />
               </div>
-              <span className="text-lg sm:text-xl font-black font-mono text-emerald-600 block leading-tight">
+              <span className="text-base sm:text-lg font-black font-mono text-emerald-600 block leading-tight">
                 {previousOrders}
               </span>
-              <span className="text-[10px] font-bold text-slate-600 block">
-                الطلبات السابقة
+              <span className="text-[9px] font-bold text-slate-600 block">
+                السابقة
               </span>
             </Link>
 
