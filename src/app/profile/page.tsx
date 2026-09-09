@@ -762,7 +762,7 @@ function ProfileContent() {
                 <span>رصيد أرباحك الحالي</span>
               </span>
               <span className="text-[11px] font-bold bg-white/20 px-3 py-1 rounded-full backdrop-blur-xs">
-                تكسب {cashbackRate.toLocaleString()} د.ع عن كل قطعة تطلبها 🎁
+                اربح على كل قطعة تطلبها 🎁
               </span>
             </div>
 
@@ -790,7 +790,7 @@ function ProfileContent() {
                 {rewardCashbackAmount > 0 ? ('لديك رصيد أرباح بقيمة ' + rewardCashbackAmount.toLocaleString() + ' د.ع!') : 'لا يوجد رصيد أرباح متاح حالياً'}
               </h3>
               <p className="text-xs text-slate-500 font-medium max-w-md mx-auto">
-                اطلب أي منتج أو كرتون من سوق الجملة لتربح {cashbackRate.toLocaleString()} د.ع نقداً عن كل قطعة، ويمكنك استخدامها لخصم وتخفيض فواتيرك القادمة بنقرة زر عند صفحة الدفع!
+                اطلب أي منتج أو كرتون من سوق الجملة لتربح على كل قطعة تطلبها، ويمكنك استخدامها لخصم وتخفيض فواتيرك القادمة بنقرة زر عند صفحة الدفع!
               </p>
             </div>
 
