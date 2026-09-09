@@ -84,23 +84,23 @@ export default function WalletStatsCard() {
 
   return (
     <div className="w-full select-none max-w-5xl mx-auto">
-      {/* ═══ المحفظة والحساب المالي (Luxury Crimson Red Glass Card - Sleek Edition) ═══ */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#8b1515] via-[#a81c1c] to-[#680e0e] text-white rounded-2xl p-3 sm:p-3.5 border border-red-400/25 shadow-[0_4px_16px_rgba(139,21,21,0.16)] flex flex-col justify-between gap-2 group">
+      {/* ═══ المحفظة والحساب المالي (Vibrant Red/Rose Offer Button Gradient Edition) ═══ */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white rounded-2xl p-3 sm:p-3.5 border border-red-300/40 shadow-[0_6px_24px_rgba(225,29,72,0.22)] flex flex-col justify-between gap-2 group">
         
         {/* Subtle Ambient Radial Lights */}
-        <div className="absolute -left-6 -top-6 w-24 h-24 bg-amber-400/15 rounded-full blur-lg pointer-events-none" />
-        <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-red-300/10 rounded-full blur-md pointer-events-none" />
+        <div className="absolute -left-6 -top-6 w-24 h-24 bg-amber-400/20 rounded-full blur-lg pointer-events-none" />
+        <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-rose-300/20 rounded-full blur-md pointer-events-none" />
 
         {/* Top Row: Title Badge & Statement Button */}
         <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 bg-white/15 text-amber-200 text-[10px] sm:text-[11px] font-black px-2.5 py-0.5 rounded-full border border-white/20 backdrop-blur-md">
+          <div className="flex items-center gap-1.5 bg-black/20 text-amber-200 text-[10px] sm:text-[11px] font-black px-2.5 py-0.5 rounded-full border border-white/25 backdrop-blur-md">
             <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
             <span>محفظة الأرباح والحساب</span>
           </div>
 
           <Link
             href={statementUrl}
-            className="bg-black/20 hover:bg-black/30 active:scale-95 text-white text-[10px] sm:text-[11px] font-bold py-0.5 px-2.5 rounded-full border border-white/20 backdrop-blur-md transition flex items-center gap-1 group-hover:border-white/40"
+            className="bg-black/25 hover:bg-black/35 active:scale-95 text-white text-[10px] sm:text-[11px] font-bold py-0.5 px-2.5 rounded-full border border-white/25 backdrop-blur-md transition flex items-center gap-1 group-hover:border-white/40 shadow-xs"
           >
             <Receipt className="w-3 h-3 text-amber-200" />
             <span>كشف الحساب 🧾</span>
@@ -112,13 +112,13 @@ export default function WalletStatsCard() {
         <div className="relative z-10 grid grid-cols-2 gap-2">
           
           {/* Pillar 1: رصيد أرباح الكاش باك */}
-          <div className="bg-black/20 hover:bg-black/25 rounded-xl p-2 sm:p-2.5 border border-white/10 backdrop-blur-md transition space-y-0.5 text-right">
+          <div className="bg-black/20 hover:bg-black/25 rounded-xl p-2 sm:p-2.5 border border-white/20 backdrop-blur-md transition space-y-0.5 text-right">
             <div className="flex items-center justify-end gap-1 text-[10px] text-red-100 font-bold">
               <span>رصيد أرباحك</span>
               <span>💰</span>
             </div>
             <div className="flex items-baseline justify-end gap-1">
-              <span className="text-base sm:text-lg font-black font-mono text-amber-300 leading-none">
+              <span className="text-base sm:text-lg font-black font-mono text-amber-300 leading-none drop-shadow-xs">
                 {profitBalance.toLocaleString()}
               </span>
               <span className="text-[9px] font-bold text-red-100 font-sans">د.ع</span>
@@ -131,7 +131,7 @@ export default function WalletStatsCard() {
           {/* Pillar 2: المبلغ المتبقي (المطلوب) */}
           <Link
             href={statementUrl}
-            className="bg-black/20 hover:bg-black/25 rounded-xl p-2 sm:p-2.5 border border-white/10 backdrop-blur-md transition space-y-0.5 text-right block group/item"
+            className="bg-black/20 hover:bg-black/25 rounded-xl p-2 sm:p-2.5 border border-white/20 backdrop-blur-md transition space-y-0.5 text-right block group/item"
           >
             <div className="flex items-center justify-between">
               <ChevronLeft className="w-3 h-3 text-red-200 group-hover/item:-translate-x-0.5 transition-transform" />
@@ -141,12 +141,12 @@ export default function WalletStatsCard() {
               </div>
             </div>
             <div className="flex items-baseline justify-end gap-1">
-              <span className={`text-base sm:text-lg font-black font-mono leading-none ${statementBalance > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
+              <span className={`text-base sm:text-lg font-black font-mono leading-none drop-shadow-xs ${statementBalance > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
                 {statementBalance.toLocaleString()}
               </span>
               <span className="text-[9px] font-bold text-red-100 font-sans">د.ع</span>
             </div>
-            <span className="text-[9px] text-red-100/90 font-bold block leading-tight truncate">
+            <span className="text-[9px] text-red-100 font-bold block leading-tight truncate">
               {statementBalance > 0 ? '⚠️ مطلوب سداده' : '✅ مسدد بالكامل'}
             </span>
           </Link>
