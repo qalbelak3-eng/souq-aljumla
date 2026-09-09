@@ -22,12 +22,13 @@ export default function BannerSlider({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Touch and drag states
+  // Touch and drag states for standard full-width slider
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
   const [isSwiping, setIsSwiping] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let url = `/api/banners?position=${encodeURIComponent(position)}`;
@@ -51,16 +52,63 @@ export default function BannerSlider({
       });
   }, [position, category]);
 
+  const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
+
+  // Helper to scroll to specific slide in Hungerstation separated-card carousel
+  const scrollToIndex = (idx: number) => {
+    if (!scrollRef.current) return;
+    const cards = scrollRef.current.querySelectorAll('.banner-slide-card');
+    if (cards[idx]) {
+      (cards[idx] as HTMLElement).scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+      setCurrentIndex(idx);
+    }
+  };
+
+  // Detect active index on scroll for peek carousel
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const cards = container.querySelectorAll('.banner-slide-card');
+    if (cards.length === 0) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const containerCenter = containerRect.left + containerRect.width / 2;
+
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    cards.forEach((card, idx) => {
+      const rect = (card as HTMLElement).getBoundingClientRect();
+      const cardCenter = rect.left + rect.width / 2;
+      const distance = Math.abs(containerCenter - cardCenter);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = idx;
+      }
+    });
+
+    setCurrentIndex(closestIndex);
+  };
+
   // Auto slide every 4.5 seconds (paused while user is touching/swiping)
   useEffect(() => {
     if (banners.length <= 1 || isSwiping) return;
     const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % banners.length);
+      const nextIdx = (currentIndex + 1) % banners.length;
+      if (isCompact && scrollRef.current) {
+        scrollToIndex(nextIdx);
+      } else {
+        setCurrentIndex(nextIdx);
+      }
     }, 4500);
     return () => clearInterval(interval);
-  }, [banners.length, isSwiping]);
+  }, [banners.length, currentIndex, isSwiping, isCompact]);
 
-  // Touch Swipe Handlers for Mobile (سحب وتحريك يدوي سلس بالأصبع)
+  // Touch Swipe Handlers for Standard Full-Width Slider
   const handleTouchStart = (e: React.TouchEvent) => {
     setIsSwiping(true);
     setTouchStartX(e.targetTouches[0].clientX);
@@ -78,13 +126,11 @@ export default function BannerSlider({
   const handleTouchEnd = () => {
     if (touchStartX !== null && touchEndX !== null) {
       const distance = touchStartX - touchEndX;
-      const minSwipeDistance = 45; // pixels needed to trigger swipe
+      const minSwipeDistance = 45;
 
       if (distance > minSwipeDistance) {
-        // Swiped Left -> Next Banner in RTL
         setCurrentIndex((prev) => (prev + 1) % banners.length);
       } else if (distance < -minSwipeDistance) {
-        // Swiped Right -> Previous Banner in RTL
         setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
       }
     }
@@ -95,7 +141,7 @@ export default function BannerSlider({
     setDragOffset(0);
   };
 
-  // Mouse Drag Handlers for Desktop
+  // Mouse Drag Handlers for Standard Full-Width Slider
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsSwiping(true);
     setTouchStartX(e.clientX);
@@ -126,12 +172,10 @@ export default function BannerSlider({
     setDragOffset(0);
   };
 
-  const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
-  const aspectClass = isCompact
-    ? 'aspect-[24/8] sm:aspect-[24/8]'
-    : 'aspect-[16/9] sm:aspect-[16/9]';
-
   if (isLoading) {
+    const aspectClass = isCompact
+      ? 'aspect-[24/8] sm:aspect-[24/8]'
+      : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
     return (
       <div className={`w-full ${aspectClass} bg-white rounded-3xl animate-pulse border border-slate-100 shadow-sm ${className}`} />
     );
@@ -139,6 +183,108 @@ export default function BannerSlider({
 
   if (banners.length === 0) return null;
 
+  // 1. HUNGERSTATION STYLE SEPARATED CARDS PEEK CAROUSEL (FOR SECONDARY / COMPACT SLIDERS)
+  if (isCompact) {
+    if (banners.length === 1) {
+      const singleBanner = banners[0];
+      return (
+        <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-slate-100 bg-white aspect-[24/8] select-none ${className}`}>
+          <Link
+            href={singleBanner.linkUrl || '/products'}
+            className="block relative w-full h-full overflow-hidden"
+          >
+            <img
+              src={singleBanner.image}
+              alt={singleBanner.title || 'بنر إعلاني'}
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
+          </Link>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`relative w-full select-none group ${className}`}>
+        {/* Scrollable Track with Peek Effect & Touch Swiping */}
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          onTouchStart={() => setIsSwiping(true)}
+          onTouchEnd={() => setTimeout(() => setIsSwiping(false), 2000)}
+          className="flex items-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none snap-x snap-mandatory py-1 px-1 sm:px-2 scroll-smooth"
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {banners.map((banner, index) => (
+            <div
+              key={banner.id}
+              className="banner-slide-card w-[87%] sm:w-[92%] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_2px_14px_rgba(0,0,0,0.06)] border border-slate-100 aspect-[24/8] bg-white transition-transform active:scale-[0.99]"
+            >
+              <Link
+                href={banner.linkUrl || '/products'}
+                className="block relative w-full h-full overflow-hidden"
+              >
+                <img
+                  src={banner.image}
+                  alt={banner.title || 'بنر إعلاني'}
+                  className="w-full h-full object-cover pointer-events-none"
+                  draggable={false}
+                />
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        {/* Navigation Arrows for Desktop Hover */}
+        <button
+          type="button"
+          onClick={() => {
+            const prevIdx = (currentIndex - 1 + banners.length) % banners.length;
+            scrollToIndex(prevIdx);
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+          aria-label="السابق"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const nextIdx = (currentIndex + 1) % banners.length;
+            scrollToIndex(nextIdx);
+          }}
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+          aria-label="التالي"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+
+        {/* Pagination Indicator Dots */}
+        <div className="flex items-center justify-center gap-1.5 pt-2">
+          {banners.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => scrollToIndex(idx)}
+              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                currentIndex === idx
+                  ? 'w-6 bg-brand-blue shadow-xs'
+                  : 'w-1.5 bg-slate-300 hover:bg-slate-400'
+              }`}
+              aria-label={`انتقال للبنر ${idx + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 2. STANDARD FULL-WIDTH SLIDER (ORIGINAL MAIN BANNERS)
   return (
     <div
       ref={containerRef}
@@ -164,12 +310,11 @@ export default function BannerSlider({
             <Link
               href={banner.linkUrl || '/products'}
               onClick={(e) => {
-                // If user dragged/swiped, don't trigger navigation
                 if (Math.abs(dragOffset) > 10) {
                   e.preventDefault();
                 }
               }}
-              className={`block relative w-full ${aspectClass} overflow-hidden`}
+              className="block relative w-full aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px] overflow-hidden"
             >
               <img
                 src={banner.image}
@@ -186,24 +331,26 @@ export default function BannerSlider({
       {banners.length > 1 && (
         <>
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="السابق"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
 
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setCurrentIndex((prev) => (prev + 1) % banners.length);
             }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="التالي"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -217,12 +364,13 @@ export default function BannerSlider({
           {banners.map((_, idx) => (
             <button
               key={idx}
+              type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setCurrentIndex(idx);
               }}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
+              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                 currentIndex === idx
                   ? 'w-6 bg-white shadow-xs'
                   : 'w-1.5 bg-white/50 hover:bg-white'
@@ -232,7 +380,6 @@ export default function BannerSlider({
           ))}
         </div>
       )}
-
     </div>
   );
 }
