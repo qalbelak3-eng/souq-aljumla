@@ -758,14 +758,14 @@ export default function AdminBannersPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-xs text-slate-900">📐 دليل أبعاد سلايدر الإعلانات الثانوي:</span>
                   <span className="bg-emerald-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
-                    1200 × 450 px (أو 1080 × 400 px)
+                    1200 × 400 px (أو 1080 × 360 px)
                   </span>
                   <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-emerald-200">
-                    نسبة 21:8 مدمج ونحيف (ستايل سبرايت هنقرستيشن)
+                    نسبة 24:8 نحيف ومدمج (ستايل سبرايت هنقرستيشن)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  مخصص للسلايدرات الإعلانية الأنيقة (مثل إعلان سبرايت في تطبيق هنقرستيشن) بارتفاع متناسق يظهر كامل تفاصيل التصميم دون قص الأطراف. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً بأعلى جودة.
+                  مخصص للسلايدرات الإعلانية الأنيقة والنحيفة (مثل إعلان سبرايت في هنقرستيشن) بنسبة 3:1 ليكون مدمجاً وخفيفاً بدون أن يأخذ مساحة طولية كبيرة. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً.
                 </p>
               </div>
             </div>
@@ -804,7 +804,7 @@ export default function AdminBannersPage() {
                   }`}
                 >
                   {/* Banner Image Preview in Sleek Sprite Aspect Ratio */}
-                  <div className="relative aspect-[22/9] w-full bg-slate-100 overflow-hidden">
+                  <div className="relative aspect-[24/8] w-full bg-slate-100 overflow-hidden">
                     <img
                       src={banner.image}
                       alt={banner.title}
@@ -1285,7 +1285,7 @@ export default function AdminBannersPage() {
                       </span>
                       <span className="bg-slate-900 text-white px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black">
                         {isSpriteSlider || position === 'below_categories'
-                          ? '1200 × 450 px أو 1080 × 400 px (نسبة 21:8 ستايل سبرايت)'
+                          ? '1200 × 400 px أو 1080 × 360 px (نسبة 24:8 أو 3:1 نحيف ومدمج)'
                           : isCampaignShowcase
                           ? '1200 × 400 px إلى 1200 × 450 px (نسبة 24:8)'
                           : '1920 × 1080 px أو 1200 × 675 px (نسبة 16:9 قياسي)'}
