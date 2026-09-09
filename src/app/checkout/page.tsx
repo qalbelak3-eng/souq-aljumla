@@ -177,7 +177,7 @@ export default function CheckoutPage() {
             );
             const totalPieces = userOrders.reduce(
               (sum: number, o: any) =>
-                sum + (o.items || []).reduce((s: number, i: any) => s + (i.quantity || 0), 0),
+                sum + (o.items || []).reduce((s: number, i: any) => (i.saleType === 'wholesale' ? s : s + (i.quantity || 0)), 0),
               0
             );
             const totalEarned = totalPieces * rate;

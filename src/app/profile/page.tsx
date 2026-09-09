@@ -430,10 +430,10 @@ function ProfileContent() {
     );
   }
 
-  // Calculate Rewards / Pieces
+  // Calculate Rewards / Pieces (تطبق مكافأة القطع على مبيعات المفرد فقط)
   const validProfileOrders = orders.filter((o) => o.status !== 'cancelled');
   const totalPiecesCount = validProfileOrders.reduce((sum, ord) => {
-    return sum + ord.items.reduce((s, it) => s + it.quantity, 0);
+    return sum + ord.items.reduce((s, it) => (it.saleType === 'wholesale' ? s : s + (it.quantity || 0)), 0);
   }, 0);
   const totalEarnedRewards = totalPiecesCount * cashbackRate;
   const totalUsedRewards = validProfileOrders.reduce((sum, ord) => sum + Number(ord.usedCashbackDiscount || 0), 0);

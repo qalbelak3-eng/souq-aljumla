@@ -107,6 +107,7 @@ export default function AdminProductsPage() {
   const [cashbackCustomerAmount, setCashbackCustomerAmount] = useState<number | ''>('');
   const [cashbackMarketAmount, setCashbackMarketAmount] = useState<number | ''>('');
   const [cashbackMerchantAmount, setCashbackMerchantAmount] = useState<number | ''>('');
+  const [cashbackWholesalePerCarton, setCashbackWholesalePerCarton] = useState<number | ''>('');
 
   const fetchProducts = async () => {
     if (products.length === 0) setIsLoading(true);
@@ -192,6 +193,7 @@ export default function AdminProductsPage() {
     setCashbackCustomerAmount('');
     setCashbackMarketAmount('');
     setCashbackMerchantAmount('');
+    setCashbackWholesalePerCarton('');
     setIsModalOpen(true);
   };
 
@@ -241,6 +243,7 @@ export default function AdminProductsPage() {
     setCashbackCustomerAmount(p.cashbackCustomerAmount !== undefined ? p.cashbackCustomerAmount : (p.customCashbackAmount ?? ''));
     setCashbackMarketAmount(p.cashbackMarketAmount ?? '');
     setCashbackMerchantAmount(p.cashbackMerchantAmount ?? '');
+    setCashbackWholesalePerCarton(p.cashbackWholesalePerCarton ?? '');
     setIsModalOpen(true);
   };
 
@@ -312,6 +315,7 @@ export default function AdminProductsPage() {
       cashbackCustomerAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
       cashbackMarketAmount: cashbackMarketAmount !== '' ? Number(cashbackMarketAmount) : undefined,
       cashbackMerchantAmount: cashbackMerchantAmount !== '' ? Number(cashbackMerchantAmount) : undefined,
+      cashbackWholesalePerCarton: cashbackWholesalePerCarton !== '' ? Number(cashbackWholesalePerCarton) : undefined,
       customCashbackAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
     };
 
@@ -1287,11 +1291,11 @@ export default function AdminProductsPage() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {/* Tier 1: Retail Customers */}
-                      <div className="bg-emerald-50/50 p-2 rounded-xl border border-emerald-100 space-y-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Tier 1: Retail Customer per piece */}
+                      <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100 space-y-1">
                         <label className="text-[11px] font-bold text-slate-700 block">
-                          🛒 زبائن المفرد (العادي):
+                          🛒 هدية كاشباك للقطعة المفردة (للمستهلك):
                         </label>
                         <div className="flex items-center gap-1.5">
                           <input
@@ -1302,49 +1306,33 @@ export default function AdminProductsPage() {
                             placeholder="افتراضي (100)"
                             className="w-full bg-white border border-emerald-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-emerald-600 font-mono text-center"
                           />
-                          <span className="text-[10px] font-bold text-emerald-900 shrink-0">د.ع</span>
+                          <span className="text-[10px] font-bold text-emerald-900 shrink-0">د.ع / قطعة</span>
                         </div>
+                        <span className="text-[9.5px] text-slate-500 block">تُمنح فقط عند الشراء بالمفرد</span>
                       </div>
 
-                      {/* Tier 2: Market Owners */}
-                      <div className="bg-blue-50/50 p-2 rounded-xl border border-blue-100 space-y-1">
+                      {/* Tier 2: Wholesale Carton Bonus for Merchants / Markets */}
+                      <div className="bg-amber-50/50 p-2.5 rounded-xl border border-amber-100 space-y-1">
                         <label className="text-[11px] font-bold text-slate-700 block">
-                          🏪 أصحاب الماركتات:
+                          📦 هدية تحفيزية لكل كرتون جملة (للماركت والتاجر):
                         </label>
                         <div className="flex items-center gap-1.5">
                           <input
                             type="number"
                             min="0"
-                            value={cashbackMarketAmount}
-                            onChange={(e) => setCashbackMarketAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="افتراضي (150)"
-                            className="w-full bg-white border border-blue-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-blue-600 font-mono text-center"
-                          />
-                          <span className="text-[10px] font-bold text-blue-900 shrink-0">د.ع</span>
-                        </div>
-                      </div>
-
-                      {/* Tier 3: Wholesale VIP Merchants */}
-                      <div className="bg-amber-50/50 p-2 rounded-xl border border-amber-100 space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 block">
-                          👑 كبار تجار الجملة VIP:
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            min="0"
-                            value={cashbackMerchantAmount}
-                            onChange={(e) => setCashbackMerchantAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="افتراضي (250)"
+                            value={cashbackWholesalePerCarton}
+                            onChange={(e) => setCashbackWholesalePerCarton(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0 (بدون هدية)"
                             className="w-full bg-white border border-amber-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-900 focus:border-amber-600 font-mono text-center"
                           />
-                          <span className="text-[10px] font-bold text-amber-900 shrink-0">د.ع</span>
+                          <span className="text-[10px] font-bold text-amber-900 shrink-0">د.ع / كرتون</span>
                         </div>
+                        <span className="text-[9.5px] text-amber-700 block">مكافأة ثابتة لكل كرتون عند الرغبة في تحفيز التاجر/الماركت</span>
                       </div>
                     </div>
 
                     <p className="text-[10px] text-emerald-700 font-medium">
-                      💡 سيظهر شريط الهدية الأخضر الترويجي في صفحة الشراء مخصصاً بحسب رتبة وحساب كل زبون تلقائياً، ومضروباً بعدد القطع عند الشراء بالكرتون.
+                      💡 الكاشباك بالقطع يُطبّق حصراً على مبيعات المفرد، بينما الكرتون يباع بسعر الجملة المخفض ولا يحسب بالقطع إلا إذا وضعت له هدية كرتون تحفيزية بالأعلى.
                     </p>
                   </div>
                 ) : (

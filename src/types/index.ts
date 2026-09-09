@@ -76,6 +76,7 @@ export interface Product {
   cashbackCustomerAmount?: number; // مبلغ كاشباك القطعة للزبون العادي (المفرد)
   cashbackMarketAmount?: number; // مبلغ كاشباك القطعة لأصحاب الماركتات والمحلات
   cashbackMerchantAmount?: number; // مبلغ كاشباك القطعة لكبار تجار الجملة VIP
+  cashbackWholesalePerCarton?: number; // هدية/كاشباك مخصص لكل كرتون عند الرغبة في تحفيز التاجر أو الماركت
   customCashbackAmount?: number; // احتياطي
   orderedWholesaleQty?: number; // إجمالي الكمية المطلوبة من قبل كبار التجار (الجملة)
   orderedMarketQty?: number; // إجمالي الكمية المطلوبة من قبل أصحاب الماركتات والمحلات

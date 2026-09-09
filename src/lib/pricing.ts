@@ -61,46 +61,48 @@ export function getUserCashbackRate(user?: User | null, settings?: StoreSettings
 }
 
 /**
- * حساب معدل مكافأة الهدية/الكاشباك لمنتج معين حسب فئة الزبون (مفرد / ماركت / تاجر VIP)
- * يعود بـ 0 إذا تم إيقاف الهدية عن هذا المنتج
+ * حساب معدل مكافأة الهدية/الكاشباك لمنتج معين حسب نوع البيع (مفرد / كرتون):
+ * - المفرد (retail): يحسب بالقطعة للزبون العادي أو حسب السعر المحدد.
+ * - الكرتون (wholesale): لا يحسب المفرد بضرب عدد قطع الكرتون؛ بل يحسب فقط إذا وُضعت مكافأة/هدية محددة للكرتون كتحفيز للماركت/التاجر.
  */
 export function getProductCashbackRate(
   product?: Product | null,
   user?: User | null,
-  settings?: StoreSettings | null
+  settings?: StoreSettings | null,
+  saleType: SaleType = 'retail'
 ): number {
-  if (!product) return getUserCashbackRate(user, settings);
+  if (!product) {
+    if (saleType === 'wholesale') return 0;
+    return getUserCashbackRate(user, settings);
+  }
   
   // إذا تم إيقاف الهدية صراحة عن هذا الصنف
   if (product.enableCashbackReward === false) {
     return 0;
   }
 
-  const accountType = user?.accountType || 'individual';
-
-  // 1. تاجر الجملة VIP
-  if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
-    if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount >= 0) {
-      return product.cashbackMerchantAmount;
+  // 📦 حالة الكارتون / الجملة:
+  if (saleType === 'wholesale') {
+    // 1. إذا حُددت هدية/كاشباك خاص للكرتون
+    if (typeof product.cashbackWholesalePerCarton === 'number' && product.cashbackWholesalePerCarton > 0) {
+      return product.cashbackWholesalePerCarton;
     }
-    if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
-      return product.customCashbackAmount;
+    const accountType = user?.accountType;
+    if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
+      if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount > 0) {
+        return product.cashbackMerchantAmount;
+      }
     }
-    return Number(settings?.cashbackMerchantPerItem ?? 250);
+    if (accountType === 'market') {
+      if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount > 0) {
+        return product.cashbackMarketAmount;
+      }
+    }
+    // خلاف ذلك، الكرتون ليس عليه كاشباك بالقطع لأنه مخفض بسعر الجملة
+    return 0;
   }
 
-  // 2. صاحب الماركت والمحلات
-  if (accountType === 'market') {
-    if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount >= 0) {
-      return product.cashbackMarketAmount;
-    }
-    if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
-      return product.customCashbackAmount;
-    }
-    return Number(settings?.cashbackMarketPerItem ?? 150);
-  }
-
-  // 3. الزبون العادي (المفرد)
+  // 🛒 حالة المفرد بالقطعة (Retail per piece):
   if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
     return product.cashbackCustomerAmount;
   }

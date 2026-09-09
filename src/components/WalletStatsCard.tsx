@@ -71,7 +71,10 @@ export default function WalletStatsCard() {
   }, [user]);
 
   const validOrders = orders.filter((o) => o.status !== 'cancelled');
-  const totalItemsSold = validOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0);
+  const totalItemsSold = validOrders.reduce(
+    (sum, o) => sum + o.items.reduce((s, i) => (i.saleType === 'wholesale' ? s : s + (i.quantity || 0)), 0),
+    0
+  );
   const totalEarnedCashback = totalItemsSold * cashbackRate;
   const totalUsedCashback = validOrders.reduce((sum, o) => sum + Number(o.usedCashbackDiscount || 0), 0);
   const profitBalance = Math.max(0, totalEarnedCashback - totalUsedCashback);
