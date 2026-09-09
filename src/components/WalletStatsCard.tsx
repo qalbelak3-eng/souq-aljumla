@@ -84,42 +84,46 @@ export default function WalletStatsCard() {
 
   return (
     <div className="w-full select-none max-w-5xl mx-auto">
-      {/* ═══ المحفظة والحساب المالي (Modern Light Glass Card - Matching Orders Pulse Theme) ═══ */}
-      <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-slate-200/90 shadow-[0_4px_16px_rgba(0,0,0,0.03)] flex flex-col justify-between gap-2.5">
+      {/* ═══ المحفظة والحساب المالي (Luxury Royal Navy & Gold VIP Edition) ═══ */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#0c2444] via-[#123662] to-[#08172c] text-white rounded-2xl p-3.5 sm:p-4.5 border border-blue-400/25 shadow-[0_6px_24px_rgba(12,36,68,0.18)] flex flex-col justify-between gap-3 group">
         
-        {/* Top Row: Section Title & Statement Link */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-slate-800 text-xs sm:text-sm font-black">
-            <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-              <Wallet className="w-3.5 h-3.5" />
-            </div>
+        {/* Subtle Ambient Glow Lights */}
+        <div className="absolute -left-8 -top-8 w-32 h-32 bg-amber-400/15 rounded-full blur-xl pointer-events-none" />
+        <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-emerald-400/15 rounded-full blur-xl pointer-events-none" />
+
+        {/* Top Row: Section Title & Statement Button */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 bg-amber-400/15 text-amber-300 text-[11px] sm:text-xs font-black px-3 py-1 rounded-full border border-amber-400/30 backdrop-blur-md shadow-2xs">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
             <span>محفظة الأرباح والحساب</span>
           </div>
 
           <Link
             href={statementUrl}
-            className="text-[11px] font-bold text-slate-700 hover:text-brand-blue flex items-center gap-1 bg-slate-100/80 hover:bg-blue-50 px-2.5 py-1 rounded-full transition border border-slate-200"
+            className="bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[11px] sm:text-xs font-bold py-1 px-3 rounded-full border border-white/20 backdrop-blur-md transition flex items-center gap-1.5 group-hover:border-white/40 shadow-2xs"
           >
+            <Receipt className="w-3.5 h-3.5 text-sky-300" />
             <span>كشف الحساب 🧾</span>
-            <ChevronLeft className="w-3 h-3" />
+            <ChevronLeft className="w-3 h-3 transition-transform group-hover:-translate-x-0.5" />
           </Link>
         </div>
 
         {/* 2 Financial Pillars (رصيد أرباحك + المبلغ المتبقي) */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="relative z-10 grid grid-cols-2 gap-2.5 sm:gap-3.5">
           
           {/* Pillar 1: رصيد أرباح الكاش باك */}
-          <div className="bg-slate-50/90 hover:bg-emerald-50/70 rounded-xl p-2 sm:p-2.5 border border-slate-200/80 hover:border-emerald-200 transition text-center space-y-1 block">
-            <div className="w-6 h-6 mx-auto rounded-full bg-emerald-100/80 text-emerald-700 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5" />
+          <div className="bg-white/10 hover:bg-white/15 rounded-xl p-2.5 sm:p-3 border border-white/15 backdrop-blur-md transition space-y-1 text-right shadow-2xs">
+            <div className="flex items-center justify-end gap-1.5 text-[11px] sm:text-xs text-slate-200 font-bold">
+              <span>رصيد أرباحك</span>
+              <span>💰</span>
             </div>
-            <div className="flex items-baseline justify-center gap-1">
-              <span className="text-base sm:text-lg font-black font-mono text-emerald-600 block leading-tight">
+            <div className="flex items-baseline justify-end gap-1">
+              <span className="text-lg sm:text-xl font-black font-mono text-emerald-300 leading-none drop-shadow-xs">
                 {profitBalance.toLocaleString()}
               </span>
-              <span className="text-[10px] font-bold text-slate-500">د.ع</span>
+              <span className="text-[10px] font-bold text-slate-300 font-sans">د.ع</span>
             </div>
-            <span className="text-[10px] sm:text-xs font-bold text-slate-500 block truncate">
+            <span className="text-[10px] sm:text-xs text-amber-300 font-bold block leading-tight truncate">
               ✨ اربح على كل قطعة تطلبها
             </span>
           </div>
@@ -127,18 +131,22 @@ export default function WalletStatsCard() {
           {/* Pillar 2: المبلغ المتبقي (المطلوب) */}
           <Link
             href={statementUrl}
-            className="bg-slate-50/90 hover:bg-rose-50/70 rounded-xl p-2 sm:p-2.5 border border-slate-200/80 hover:border-rose-200 transition text-center space-y-1 block active:scale-98 group/item"
+            className="bg-white/10 hover:bg-white/15 rounded-xl p-2.5 sm:p-3 border border-white/15 backdrop-blur-md transition space-y-1 text-right block active:scale-98 group/item shadow-2xs"
           >
-            <div className={`w-6 h-6 mx-auto rounded-full ${statementBalance > 0 ? 'bg-amber-100/80 text-amber-700' : 'bg-emerald-100/80 text-emerald-700'} flex items-center justify-center`}>
-              <Receipt className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-between">
+              <ChevronLeft className="w-3.5 h-3.5 text-slate-300 group-hover/item:-translate-x-0.5 transition-transform" />
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-200 font-bold">
+                <span>المبلغ المتبقي</span>
+                <span>📊</span>
+              </div>
             </div>
-            <div className="flex items-baseline justify-center gap-1">
-              <span className={`text-base sm:text-lg font-black font-mono leading-tight ${statementBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+            <div className="flex items-baseline justify-end gap-1">
+              <span className={`text-lg sm:text-xl font-black font-mono leading-none drop-shadow-xs ${statementBalance > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
                 {statementBalance.toLocaleString()}
               </span>
-              <span className="text-[10px] font-bold text-slate-500">د.ع</span>
+              <span className="text-[10px] font-bold text-slate-300 font-sans">د.ع</span>
             </div>
-            <span className="text-[10px] sm:text-xs font-bold text-slate-500 block truncate">
+            <span className={`text-[10px] sm:text-xs font-bold block leading-tight truncate ${statementBalance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
               {statementBalance > 0 ? '⚠️ مطلوب سداده' : '✅ مسدد بالكامل'}
             </span>
           </Link>
