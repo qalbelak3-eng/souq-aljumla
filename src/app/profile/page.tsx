@@ -37,6 +37,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { Order, SavedAddress, UserComplaint } from '@/types';
 import MerchantTierBadge from '@/components/MerchantTierBadge';
+import MerchantStatsCard from '@/components/MerchantStatsCard';
 import { getUserCashbackRate } from '@/lib/pricing';
 
 const PRESET_AVATARS = [
@@ -569,7 +570,10 @@ function ProfileContent() {
         </div>
       </div>
 
-      {/* 2. JAMLATY STYLE NAVIGATION TABS BAR */}
+      {/* 2. EXECUTIVE DASHBOARD: محفظة الأرباح والحساب + نشاط وحالة الطلبيات */}
+      <MerchantStatsCard />
+
+      {/* 3. JAMLATY STYLE NAVIGATION TABS BAR */}
       <div className="grid grid-cols-5 gap-1 sm:gap-2 bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs">
         <button
           onClick={() => setActiveTab('orders')}

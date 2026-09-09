@@ -23,7 +23,6 @@ import {
 import ProductCard from '@/components/ProductCard';
 import BannerSlider from '@/components/BannerSlider';
 import CampaignShowcaseCard from '@/components/CampaignShowcaseCard';
-import MerchantStatsCard from '@/components/MerchantStatsCard';
 import CategoryIcon from '@/components/CategoryIcon';
 import CompetitionLeaderboard from '@/components/CompetitionLeaderboard';
 import { Product, Category, Banner } from '@/types';
@@ -218,12 +217,7 @@ export default function HomePage() {
   return (
     <div className="space-y-5 sm:space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
       
-      {/* 1. PROFITS & 4 STATS RECTANGLES (رصيد أرباحك + المستطيلات الأربعة) */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-1">
-        <MerchantStatsCard />
-      </section>
-
-      {/* 2. AUTO-SLIDING BANNERS (TOP) */}
+      {/* 1. AUTO-SLIDING BANNERS (TOP) */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
         <BannerSlider position="top" />
       </section>
