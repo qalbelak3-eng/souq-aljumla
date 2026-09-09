@@ -573,46 +573,74 @@ function ProfileContent() {
       {/* 2. EXECUTIVE DASHBOARD: محفظة الأرباح والحساب + نشاط وحالة الطلبيات */}
       <MerchantStatsCard />
 
-      {/* 3. JAMLATY STYLE NAVIGATION TABS BAR */}
-      <div className="grid grid-cols-5 gap-1 sm:gap-2 bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs">
+      {/* 3. JAMLATY STYLE NAVIGATION TABS BAR (Distinct Clickable Buttons) */}
+      <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 bg-slate-100/90 p-2 sm:p-2.5 rounded-2xl border border-slate-200/90 shadow-sm">
         <button
+          type="button"
           onClick={() => setActiveTab('orders')}
-          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ' + (activeTab === 'orders' ? 'bg-brand-blue text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')}
+          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ' + (
+            activeTab === 'orders'
+              ? 'bg-[#0c2444] text-white shadow-md ring-2 ring-blue-900/20 border border-[#0c2444]'
+              : 'bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-50 border border-slate-200 shadow-2xs hover:border-slate-300'
+          )}
         >
-          <Package className="w-4 h-4 shrink-0" />
+          <Package className="w-4 h-4 shrink-0 text-brand-blue group-hover:scale-110" />
           <span className="hidden sm:inline">طلباتي</span>
-          <span className="font-mono text-[10px] bg-black/10 px-1.5 py-0.5 rounded-full">{orders.length}</span>
+          <span className="sm:hidden">الطلبات</span>
+          <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-black ${activeTab === 'orders' ? 'bg-white/20 text-white' : 'bg-blue-50 text-brand-blue border border-blue-100'}`}>
+            {orders.length}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('rewards')}
-          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ' + (activeTab === 'rewards' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')}
+          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ' + (
+            activeTab === 'rewards'
+              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md ring-2 ring-amber-500/25 border border-amber-600'
+              : 'bg-white text-slate-700 hover:text-slate-950 hover:bg-amber-50/50 border border-slate-200 shadow-2xs hover:border-amber-200'
+          )}
         >
-          <Gift className="w-4 h-4 shrink-0" />
+          <Gift className={`w-4 h-4 shrink-0 ${activeTab === 'rewards' ? 'text-white' : 'text-amber-500'}`} />
           <span>أرباحي</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('complaints')}
-          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ' + (activeTab === 'complaints' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')}
+          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ' + (
+            activeTab === 'complaints'
+              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md ring-2 ring-rose-500/25 border border-rose-700'
+              : 'bg-white text-slate-700 hover:text-slate-950 hover:bg-rose-50/50 border border-slate-200 shadow-2xs hover:border-rose-200'
+          )}
         >
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span className="hidden xs:inline">الشكاوى</span>
+          <AlertCircle className={`w-4 h-4 shrink-0 ${activeTab === 'complaints' ? 'text-white' : 'text-rose-500'}`} />
+          <span>الشكاوى</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('locations')}
-          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ' + (activeTab === 'locations' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')}
+          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ' + (
+            activeTab === 'locations'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md ring-2 ring-emerald-500/25 border border-emerald-700'
+              : 'bg-white text-slate-700 hover:text-slate-950 hover:bg-emerald-50/50 border border-slate-200 shadow-2xs hover:border-emerald-200'
+          )}
         >
-          <MapPin className="w-4 h-4 shrink-0" />
+          <MapPin className={`w-4 h-4 shrink-0 ${activeTab === 'locations' ? 'text-white' : 'text-emerald-600'}`} />
           <span>مواقعي</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('account')}
-          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 ' + (activeTab === 'account' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50')}
+          className={'py-2.5 px-1 sm:px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ' + (
+            activeTab === 'account'
+              ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md ring-2 ring-indigo-500/25 border border-indigo-700'
+              : 'bg-white text-slate-700 hover:text-slate-950 hover:bg-indigo-50/50 border border-slate-200 shadow-2xs hover:border-indigo-200'
+          )}
         >
-          <UserIcon className="w-4 h-4 shrink-0" />
+          <UserIcon className={`w-4 h-4 shrink-0 ${activeTab === 'account' ? 'text-white' : 'text-indigo-600'}`} />
           <span className="hidden sm:inline">إدارة حسابي</span>
           <span className="sm:hidden">حسابي</span>
         </button>
