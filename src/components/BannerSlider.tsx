@@ -128,7 +128,7 @@ export default function BannerSlider({
 
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
   const aspectClass = isCompact
-    ? 'aspect-[21/9] sm:aspect-[24/8] min-h-[130px] sm:min-h-[180px] md:min-h-[220px]'
+    ? 'aspect-[21/9] sm:aspect-[22/8] min-h-[260px] sm:min-h-[340px] md:min-h-[400px] lg:min-h-[400px]'
     : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
 
   if (isLoading) {

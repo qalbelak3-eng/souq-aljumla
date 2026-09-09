@@ -758,14 +758,14 @@ export default function AdminBannersPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-xs text-slate-900">📐 دليل أبعاد سلايدر الإعلانات الثانوي:</span>
                   <span className="bg-emerald-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
-                    1200 × 490 px (أو 1080 × 440 px)
+                    1200 × 400 px إلى 1200 × 490 px (أقل ارتفاع 400px)
                   </span>
                   <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-emerald-200">
-                    نسبة 22:9 أو 21:9 مدمج ونحيف
+                    نسبة 21:8 أو 22:9 (ارتفاع أدنى 400px)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  مخصص للسلايدرات المدمجة تحت أيقونات الأقسام (ستايل سبرايت / هنقرستيشن). ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً بأعلى دقة لضمان سرعة الانتقال بين الشرائح بنعومة.
+                  مخصص للسلايدرات الإعلانية تحت أيقونات الأقسام (ستايل سبرايت / هنقرستيشن) بارتفاع مريح 400px. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً بأعلى دقة لضمان سرعة الانتقال بين الشرائح بنعومة.
                 </p>
               </div>
             </div>
@@ -1285,7 +1285,7 @@ export default function AdminBannersPage() {
                       </span>
                       <span className="bg-slate-900 text-white px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black">
                         {isSpriteSlider || position === 'below_categories'
-                          ? '1200 × 490 px (نسبة 22:9 أو 21:9 مدمج ونحيف)'
+                          ? '1200 × 400 px إلى 1200 × 490 px (أقل ارتفاع 400px)'
                           : isCampaignShowcase
                           ? '1200 × 400 px إلى 1200 × 450 px (نسبة 24:8)'
                           : '1920 × 1080 px أو 1200 × 675 px (نسبة 16:9 قياسي)'}
