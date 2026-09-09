@@ -761,11 +761,11 @@ export default function AdminBannersPage() {
                     1200 × 400 px (أو 1080 × 360 px)
                   </span>
                   <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-emerald-200">
-                    نسبة 24:8 نحيف ومدمج (ستايل سبرايت هنقرستيشن)
+                    نسبة 24:8 نحيف ومدمج (سلايدر إعلانات ثانوي)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  مخصص للسلايدرات الإعلانية الأنيقة والنحيفة (مثل إعلان سبرايت في هنقرستيشن) بنسبة 3:1 ليكون مدمجاً وخفيفاً بدون أن يأخذ مساحة طولية كبيرة. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً.
+                  مخصص للسلايدرات الإعلانية الأنيقة والنحيفة أسفل الأقسام بنسبة 3:1 ليكون مدمجاً وخفيفاً بدون أن يأخذ مساحة طولية كبيرة. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً.
                 </p>
               </div>
             </div>
@@ -1245,7 +1245,7 @@ export default function AdminBannersPage() {
                   placeholder={
                     isCampaignShowcase
                       ? (isTextShelf ? 'مثال: الآيس كريم والحلويات | أو معجنات ومخبوزات' : 'مثال: حملة منتجاتنا الطازجة | أو بسيط SNACKS')
-                      : 'مثال: سبرايت حمضيات ونعناع'
+                      : 'مثال: عروض كراتين السناكات والألبان'
                   }
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold"
                 />
@@ -1369,7 +1369,7 @@ export default function AdminBannersPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
                   >
                     <option value="top">🔝 أعلى الصفحة الرئيسية</option>
-                    <option value="below_categories">🎯 أسفل الأقسام مباشرة (مثل سبرايت)</option>
+                    <option value="below_categories">🎯 أسفل الأقسام مباشرة</option>
                     <option value="middle"> وسط الصفحة الرئيسية</option>
                     <option value="bottom">🔽 أسفل الصفحة الرئيسية</option>
                     <option value="category">📂 داخل قسم محدد بالمتجر</option>

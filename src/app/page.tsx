@@ -277,7 +277,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* 3.5. MULTI-SLIDE BANNER SLIDER (BELOW CATEGORIES - بنر سبرايت حمضيات ونعناع بهنقرستيشن) */}
+      {/* 3.5. MULTI-SLIDE BANNER SLIDER (BELOW CATEGORIES - سلايدر إعلانات ثانوي) */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
         <BannerSlider position="below_categories" />
       </section>
