@@ -71,127 +71,122 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-6 text-xs">
       
-      {/* Expiry Critical Alert Banner */}
-      {totalExpiryAlerts > 0 && (
-        <div className="bg-gradient-to-r from-red-600 via-amber-600 to-orange-600 text-white p-4 rounded-3xl shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-amber-400/40 animate-pulse">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-6 h-6 text-yellow-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-black text-sm sm:text-base">⚠️ تنبيه رقابة المخزون وصلاحية المواد!</span>
-                <span className="bg-white/20 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-                  إجمالي {totalExpiryAlerts} تنبيه
-                </span>
-              </div>
-              <p className="text-xs text-amber-100 font-bold mt-1">
-                {expiredProducts.length > 0 && (
-                  <span className="bg-red-900/60 px-2 py-0.5 rounded-md ml-2 border border-red-400">
-                    ❌ {expiredProducts.length} مواد منتهية الصلاحية
-                  </span>
-                )}
-                {warningExpiryProducts.length > 0 && (
-                  <span className="bg-amber-900/60 px-2 py-0.5 rounded-md border border-amber-300">
-                    ⏳ {warningExpiryProducts.length} مواد قاربت على الانتهاء بالمخزن
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href="/admin/reports"
-            className="bg-white hover:bg-slate-100 text-slate-900 font-black text-xs py-2.5 px-4 rounded-2xl shrink-0 shadow-xs transition cursor-pointer flex items-center gap-1.5"
-          >
-            <span>فحص تقرير الصلاحيات والمطابقة</span>
-            <span>←</span>
-          </Link>
-        </div>
-      )}
-
       {/* Welcome Banner */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-black text-slate-900">مرحباً بك في لوحة تحكم سوق الجملة 🇮🇶</h1>
-          <p className="text-xs text-slate-500 font-bold mt-1">النظام المحاسبي، متابعة الأرباح، إدارة الفواتير، واعتماد الماركتات</p>
+          <h1 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+            <span>مرحباً بك في لوحة تحكم سوق الجملة</span>
+            <span className="text-xs bg-brand-blue/10 text-brand-blue font-bold px-2 py-0.5 rounded-lg">إصدار الإدارة 🇮🇶</span>
+          </h1>
+          <p className="text-xs text-slate-500 font-bold mt-1">
+            النظام المحاسبي المتكامل، متابعة الأرباح، إدارة المخزون، واعتماد طلبات الماركتات
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {totalExpiryAlerts > 0 && (
-            <Link
-              href="/admin/reports"
-              className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition"
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>{totalExpiryAlerts} تنبيه صلاحية ⚠️</span>
-            </Link>
-          )}
-
-          {pendingOrders > 0 && (
-            <Link
-              href="/admin/orders"
-              className="bg-red-500 hover:bg-red-600 text-white font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition animate-bounce"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>{pendingOrders} طلبات زبائن جديدة 🔔</span>
-            </Link>
-          )}
-
-          {pendingMerchants > 0 && (
-            <Link
-              href="/admin/merchants"
-              className="bg-amber-500 hover:bg-amber-600 text-white font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition animate-pulse"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>{pendingMerchants} طلبات اعتماد تجار ⏳</span>
-            </Link>
-          )}
+        {/* Quick Summary Pills */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-xl text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            <span>{new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          </div>
         </div>
       </div>
 
-      {/* Prominent Action Alert Banners */}
-      {(pendingOrders > 0 || pendingMerchants > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {pendingOrders > 0 && (
-            <div className="bg-red-50 border-2 border-red-200 p-4 rounded-3xl flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <ShoppingCart className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">يوجد {pendingOrders} طلبيات جديدة تحتاج معالجة!</h3>
-                  <p className="text-[11px] text-slate-600 font-bold mt-0.5">يرجى مراجعة تفاصيل الفواتير وتجهيزها</p>
-                </div>
-              </div>
-              <Link
-                href="/admin/orders"
-                className="bg-red-600 hover:bg-red-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shrink-0 transition"
-              >
-                معالجة الطلبيات ⚡
-              </Link>
-            </div>
-          )}
+      {/* Unified Action Alerts Center (مركز التنبيهات والإجراءات الفورية) */}
+      {(pendingOrders > 0 || totalExpiryAlerts > 0 || pendingMerchants > 0) && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="font-black text-slate-700 text-xs flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+              <span>تنبيهات وإجراءات تتطلب المتابعة الفورية:</span>
+            </span>
+          </div>
 
-          {pendingMerchants > 0 && (
-            <div className="bg-amber-50 border-2 border-amber-200 p-4 rounded-3xl flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <Store className="w-5 h-5" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            
+            {/* 1. Pending Orders Alert */}
+            {pendingOrders > 0 && (
+              <div className="bg-red-50/90 border border-red-200/90 p-4 rounded-3xl flex items-center justify-between gap-3 shadow-xs hover:shadow-sm transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <ShoppingCart className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-black text-slate-900 text-xs truncate">طلبيات زبائن جديدة</h3>
+                      <span className="bg-red-600 text-white text-[10px] font-black px-1.5 py-0.2 rounded-md shrink-0">
+                        {pendingOrders}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 font-bold mt-0.5 truncate">بانتظار الموافقة والتجهيز</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">يوجد {pendingMerchants} طلبات تسجيل ماركت بانتظار الاعتماد!</h3>
-                  <p className="text-[11px] text-slate-600 font-bold mt-0.5">تفعيل أسعار الجملة لأصحاب المحلات</p>
-                </div>
+                <Link
+                  href="/admin/orders"
+                  className="bg-red-600 hover:bg-red-700 text-white font-black text-xs py-2 px-3 rounded-xl shrink-0 transition shadow-2xs"
+                >
+                  معالجة ⚡
+                </Link>
               </div>
-              <Link
-                href="/admin/merchants"
-                className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shrink-0 transition"
-              >
-                اعتماد التجار 👑
-              </Link>
-            </div>
-          )}
+            )}
+
+            {/* 2. Expiry Alerts */}
+            {totalExpiryAlerts > 0 && (
+              <div className="bg-amber-50/90 border border-amber-200/90 p-4 rounded-3xl flex items-center justify-between gap-3 shadow-xs hover:shadow-sm transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-black text-slate-900 text-xs truncate">تنبيه صلاحية المواد</h3>
+                      <span className="bg-amber-600 text-white text-[10px] font-black px-1.5 py-0.2 rounded-md shrink-0">
+                        {totalExpiryAlerts}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 font-bold mt-0.5 truncate">
+                      {expiredProducts.length > 0 ? `${expiredProducts.length} منتهي` : ''}
+                      {expiredProducts.length > 0 && warningExpiryProducts.length > 0 ? ' • ' : ''}
+                      {warningExpiryProducts.length > 0 ? `${warningExpiryProducts.length} قارب الانتهاء` : ''}
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href="/admin/reports"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs py-2 px-3 rounded-xl shrink-0 transition shadow-2xs"
+                >
+                  فحص ⚠️
+                </Link>
+              </div>
+            )}
+
+            {/* 3. Pending Merchants Alert */}
+            {pendingMerchants > 0 && (
+              <div className="bg-purple-50/90 border border-purple-200/90 p-4 rounded-3xl flex items-center justify-between gap-3 shadow-xs hover:shadow-sm transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-black text-slate-900 text-xs truncate">اعتماد ماركتات وتجار</h3>
+                      <span className="bg-purple-600 text-white text-[10px] font-black px-1.5 py-0.2 rounded-md shrink-0">
+                        {pendingMerchants}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 font-bold mt-0.5 truncate">طلبات تسجيل حسابات جملة</p>
+                  </div>
+                </div>
+                <Link
+                  href="/admin/merchants"
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-black text-xs py-2 px-3 rounded-xl shrink-0 transition shadow-2xs"
+                >
+                  اعتماد 👑
+                </Link>
+              </div>
+            )}
+
+          </div>
         </div>
       )}
 
@@ -297,7 +292,7 @@ export default function AdminDashboardPage() {
           <div className="space-y-1">
             <h4 className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-2">
               <span>📦 إدارة وتجهيز الطلبيات</span>
-              {pendingOrders > 0 && <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-bounce">{pendingOrders} جديد 🔔</span>}
+              {pendingOrders > 0 && <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">{pendingOrders} جديد 🔔</span>}
             </h4>
             <p className="text-slate-500 font-bold text-[11px]">متابعة الفواتير وحالات التوصيل</p>
           </div>
