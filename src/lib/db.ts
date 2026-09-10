@@ -43,7 +43,10 @@ import {
   LuckyWheelPrize,
   AccountCategory,
   PricingTier,
-  AccountOpeningBalance
+  AccountOpeningBalance,
+  InventoryMovementItem,
+  InventoryReportSummary,
+  DailyReconciliationSummary
 } from '@/types';
 import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners, initialLuckyWheelSettings } from '@/data/initialData';
 
@@ -1812,6 +1815,9 @@ export function createPurchaseInvoice(data: {
         db.products[prodIdx].itemsPerBox = item.itemsPerBox;
         db.products[prodIdx].itemsPerWholesaleUnit = (item.boxesPerCarton || db.products[prodIdx].boxesPerCarton || 1) * item.itemsPerBox;
       }
+      if (item.expiryDate) {
+        db.products[prodIdx].expiryDate = item.expiryDate;
+      }
     }
   }
 
@@ -3092,6 +3098,323 @@ export function getProfitReport(startDate?: string, endDate?: string): ProfitRep
     marginPercentage,
     ordersBreakdown: ordersBreakdown.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     productsBreakdown,
+  };
+}
+
+/* =========================================================================
+   INVENTORY & MOVEMENT REPORT (تقرير حركة المخزن والأكثر/الأقل مبيعاً والصلاحية)
+   ========================================================================= */
+
+export function getInventoryReport(startDate?: string, endDate?: string): InventoryReportSummary {
+  const db = ensureDbExists();
+  const now = new Date();
+  
+  let orders = (db.orders || []).filter(o => o && o.status !== 'cancelled');
+  if (startDate) {
+    const start = new Date(startDate.includes('T') ? startDate : startDate + 'T00:00:00.000Z').getTime();
+    orders = orders.filter(o => new Date(o.createdAt).getTime() >= start);
+  }
+  if (endDate) {
+    const end = new Date(endDate.includes('T') ? endDate : endDate + 'T23:59:59.999Z').getTime();
+    orders = orders.filter(o => new Date(o.createdAt).getTime() <= end);
+  }
+
+  // Aggregate product movement from orders
+  const movementMap = new Map<string, {
+    retailQty: number;
+    wholesaleQty: number;
+    equivalentPieces: number;
+    revenue: number;
+    cost: number;
+  }>();
+
+  orders.forEach(order => {
+    if (!Array.isArray(order.items)) return;
+    order.items.forEach(item => {
+      const prod = db.products.find(p => p.id === item.productId || p.name === item.name);
+      const itemsPerBox = Math.max(1, prod?.itemsPerWholesaleUnit || 24);
+      const isSinglePiece = item.saleType === 'retail' || (item.unitLabel && (item.unitLabel.includes('مفرد') || item.unitLabel.includes('قطعة') || item.unitLabel.includes('قوطية')));
+      
+      const pKey = item.productId || item.name;
+      const current = movementMap.get(pKey) || {
+        retailQty: 0,
+        wholesaleQty: 0,
+        equivalentPieces: 0,
+        revenue: 0,
+        cost: 0,
+      };
+
+      const qty = item.quantity || 0;
+      const lineRevenue = (item.price || 0) * qty;
+      const baseCartonCost = item.costPrice || prod?.costPrice || (prod?.wholesalePrice ? Math.round(prod.wholesalePrice * 0.8) : Math.round((prod?.price || item.price) * itemsPerBox * 0.7));
+      const pieceCost = Math.round(baseCartonCost / itemsPerBox);
+      const lineCost = (isSinglePiece ? pieceCost : baseCartonCost) * qty;
+
+      if (isSinglePiece) {
+        current.retailQty += qty;
+        current.equivalentPieces += qty;
+      } else {
+        current.wholesaleQty += qty;
+        current.equivalentPieces += (qty * itemsPerBox);
+      }
+      current.revenue += lineRevenue;
+      current.cost += lineCost;
+
+      movementMap.set(pKey, current);
+    });
+  });
+
+  let totalStockUnits = 0;
+  let totalStockValueCost = 0;
+  let totalStockValueWholesale = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+  let expiredCount = 0;
+  let nearExpiryCount = 0;
+
+  const allInventory: InventoryMovementItem[] = (db.products || []).map(prod => {
+    const movement = movementMap.get(prod.id) || movementMap.get(prod.name) || {
+      retailQty: 0,
+      wholesaleQty: 0,
+      equivalentPieces: 0,
+      revenue: 0,
+      cost: 0,
+    };
+
+    const stock = Number(prod.stock) || 0;
+    const minAlert = prod.minStockAlert ?? 15;
+    const itemsPerBox = Math.max(1, prod.itemsPerWholesaleUnit || 24);
+    const cartonCost = prod.boxCostPrice || prod.costPrice || (prod.wholesalePrice ? Math.round(prod.wholesalePrice * 0.8) : Math.round(prod.price * itemsPerBox * 0.7));
+    const wholesalePrice = prod.wholesalePrice || (prod.price * itemsPerBox);
+
+    const stockCostVal = stock * cartonCost;
+    const stockWholesaleVal = stock * wholesalePrice;
+
+    totalStockUnits += stock;
+    totalStockValueCost += stockCostVal;
+    totalStockValueWholesale += stockWholesaleVal;
+
+    if (stock === 0) {
+      outOfStockCount++;
+    } else if (stock <= minAlert) {
+      lowStockCount++;
+    }
+
+    // Expiry calculation
+    let expiryStatus: 'expired' | 'warning' | 'valid' | 'none' = 'none';
+    let daysUntilExpiry: number | undefined = undefined;
+
+    if (prod.expiryDate) {
+      const expTime = new Date(prod.expiryDate).getTime();
+      daysUntilExpiry = Math.ceil((expTime - now.getTime()) / (1000 * 60 * 60 * 24));
+      const alertDays = prod.expiryAlertDays ?? 30;
+
+      if (daysUntilExpiry < 0) {
+        expiryStatus = 'expired';
+        if (stock > 0) expiredCount++;
+      } else if (daysUntilExpiry <= alertDays) {
+        expiryStatus = 'warning';
+        if (stock > 0) nearExpiryCount++;
+      } else {
+        expiryStatus = 'valid';
+      }
+    }
+
+    const grossProfit = movement.revenue - movement.cost;
+
+    return {
+      productId: prod.id,
+      productName: prod.name,
+      productImage: prod.images?.[0] || '',
+      category: prod.category || 'عام',
+      company: prod.company || '',
+      currentStock: stock,
+      minStockAlert: minAlert,
+      costPrice: cartonCost,
+      wholesalePrice: wholesalePrice,
+      retailPrice: prod.price || 0,
+      unitsSoldRetail: movement.retailQty,
+      unitsSoldWholesale: movement.wholesaleQty,
+      totalEquivalentSoldPieces: movement.equivalentPieces,
+      totalSalesRevenue: movement.revenue,
+      totalCostOfSold: movement.cost,
+      grossProfit,
+      expiryDate: prod.expiryDate,
+      productionDate: prod.productionDate,
+      expiryAlertDays: prod.expiryAlertDays,
+      daysUntilExpiry,
+      expiryStatus,
+      stockValueCost: stockCostVal,
+      stockValueWholesale: stockWholesaleVal,
+    };
+  });
+
+  // Best Sellers (الأكثر مبيعاً): Sorted by sales volume descending (units sold > 0)
+  const bestSellers = [...allInventory]
+    .filter(i => i.totalEquivalentSoldPieces > 0)
+    .sort((a, b) => b.totalEquivalentSoldPieces - a.totalEquivalentSoldPieces);
+
+  // Lowest Sellers / Stagnant (الأقل مبيعاً والراكد): Sorted by sales volume ascending
+  const lowestSellers = [...allInventory]
+    .sort((a, b) => a.totalEquivalentSoldPieces - b.totalEquivalentSoldPieces);
+
+  // Expiry & Near Expiry items
+  const nearOrExpiredItems = [...allInventory]
+    .filter(i => i.expiryStatus === 'expired' || i.expiryStatus === 'warning' || (i.expiryDate && i.currentStock > 0))
+    .sort((a, b) => (a.daysUntilExpiry ?? 9999) - (b.daysUntilExpiry ?? 9999));
+
+  return {
+    period: startDate && endDate ? `${startDate} إلى ${endDate}` : 'جميع الفترات',
+    startDate,
+    endDate,
+    totalProductsCount: allInventory.length,
+    totalStockUnits,
+    totalStockValueCost,
+    totalStockValueWholesale,
+    lowStockCount,
+    outOfStockCount,
+    expiredCount,
+    nearExpiryCount,
+    bestSellers,
+    lowestSellers,
+    allInventory,
+    nearOrExpiredItems,
+  };
+}
+
+/* =========================================================================
+   DAILY RECONCILIATION REPORT (تقرير المطابقة والتدقيق اليومي للصندوق والعمليات)
+   ========================================================================= */
+
+export function getDailyReconciliationReport(dateStr?: string): DailyReconciliationSummary {
+  const db = ensureDbExists();
+  const targetDate = dateStr || new Date().toISOString().split('T')[0];
+  const startMs = new Date(targetDate + 'T00:00:00.000Z').getTime();
+  const endMs = new Date(targetDate + 'T23:59:59.999Z').getTime();
+
+  // 1. Orders of the day
+  const dayOrders = (db.orders || []).filter(o => {
+    if (!o || o.status === 'cancelled') return false;
+    const t = new Date(o.createdAt).getTime();
+    return t >= startMs && t <= endMs;
+  });
+
+  let totalSalesRevenue = 0;
+  let cashSalesCollected = 0;
+  let creditSalesUnpaid = 0;
+
+  dayOrders.forEach(o => {
+    totalSalesRevenue += (o.total || 0);
+    const collected = o.collectedAmount !== undefined ? o.collectedAmount : (o.paymentMethod === 'cod' ? (o.status === 'delivered' ? o.total : 0) : o.total);
+    cashSalesCollected += collected;
+    creditSalesUnpaid += Math.max(0, o.total - collected);
+  });
+
+  // 2. Driver Settlements of the day (تحصيلات السائقين)
+  let driverSettlementsCount = 0;
+  let driverCashTurnover = 0;
+  dayOrders.forEach(o => {
+    if (o.driverId && (o.collectionStatus === 'collected_cash' || o.status === 'delivered')) {
+      driverSettlementsCount++;
+      driverCashTurnover += (o.collectedAmount || (o.paymentMethod === 'cod' ? o.total : 0));
+    }
+  });
+
+  // 3. Payment Vouchers of the day
+  const dayPayments = (db.payments || []).filter(p => {
+    const t = new Date(p.createdAt).getTime();
+    return t >= startMs && t <= endMs;
+  });
+
+  let receiptVouchersCount = 0;
+  let receiptVouchersTotal = 0;
+  let disbursementVouchersCount = 0;
+  let disbursementVouchersTotal = 0;
+
+  dayPayments.forEach(p => {
+    const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB');
+    if (isDisb) {
+      disbursementVouchersCount++;
+      disbursementVouchersTotal += (p.amount || 0);
+    } else {
+      receiptVouchersCount++;
+      receiptVouchersTotal += (p.amount || 0);
+    }
+  });
+
+  // 4. Purchases of the day
+  const dayPurchases = (db.purchaseInvoices || []).filter(inv => {
+    const t = new Date(inv.date || inv.createdAt).getTime();
+    return t >= startMs && t <= endMs;
+  });
+
+  let purchasesTotalAmount = 0;
+  let purchasesCashPaid = 0;
+  let purchasesCredit = 0;
+
+  dayPurchases.forEach(inv => {
+    purchasesTotalAmount += (inv.totalAmount || 0);
+    const isCash = inv.paymentMethod === 'cash';
+    const isCredit = inv.paymentMethod === 'credit';
+    const paid = isCash ? inv.totalAmount : isCredit ? 0 : (inv.paidAmount || 0);
+    purchasesCashPaid += paid;
+    purchasesCredit += Math.max(0, inv.totalAmount - paid);
+  });
+
+  // 5. Vault 181 Movements & Opening/Closing Balances
+  const allVaultMovements = getCashVaultMovements();
+  
+  let vaultOpeningBalance = 0;
+  let vaultTotalIn = 0;
+  let vaultTotalOut = 0;
+
+  const dayVaultMovements: any[] = [];
+
+  allVaultMovements.forEach(m => {
+    const t = new Date(m.date).getTime();
+    const amt = Number(m.amount) || 0;
+    const isIncome = m.type === 'inflow';
+
+    if (t < startMs) {
+      vaultOpeningBalance += isIncome ? amt : -amt;
+    } else if (t <= endMs) {
+      dayVaultMovements.push(m);
+      if (isIncome) {
+        vaultTotalIn += amt;
+      } else {
+        vaultTotalOut += amt;
+      }
+    }
+  });
+
+  const vaultNetDailyChange = vaultTotalIn - vaultTotalOut;
+  const vaultClosingBalance = vaultOpeningBalance + vaultNetDailyChange;
+
+  return {
+    date: targetDate,
+    ordersCount: dayOrders.length,
+    totalSalesRevenue,
+    cashSalesCollected,
+    creditSalesUnpaid,
+    driverSettlementsCount,
+    driverCashTurnover,
+    receiptVouchersCount,
+    receiptVouchersTotal,
+    disbursementVouchersCount,
+    disbursementVouchersTotal,
+    purchasesCount: dayPurchases.length,
+    purchasesTotalAmount,
+    purchasesCashPaid,
+    purchasesCredit,
+    vaultOpeningBalance,
+    vaultTotalIn,
+    vaultTotalOut,
+    vaultNetDailyChange,
+    vaultClosingBalance,
+    orders: dayOrders,
+    payments: dayPayments,
+    purchases: dayPurchases,
+    vaultMovements: dayVaultMovements,
   };
 }
 

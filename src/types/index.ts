@@ -34,6 +34,7 @@ export interface Company {
 export interface Product {
   id: string;
   name: string;
+  barcode?: string;
   description: string;
   costPrice?: number; // سعر الشراء / التكلفة
   price: number; // سعر البيع بالمفرد (أو سعر العرض أثناء العرض النشط)
@@ -65,6 +66,12 @@ export interface Product {
   images: string[];
   stock: number;
   minStockAlert?: number; // حد التنبيه الأدنى لنفاد المخزون
+  
+  // Expiry & Shelf Life Tracking (تتبع الصلاحية وتنبيهات النفاد/الانتهاء)
+  productionDate?: string; // تاريخ الإنتاج (مثال: 2026-01-15)
+  expiryDate?: string; // تاريخ انتهاء الصلاحية (مثال: 2026-12-30)
+  expiryAlertDays?: number; // مدة التنبيه قبل الانتهاء بالأيام (افتراضي: 30 يوماً)
+  
   isFeatured?: boolean;
   isBestSeller?: boolean; // الأكثر طلباً ومبيعاً 🔥
   isNew?: boolean; // وصل حديثاً 🆕
@@ -583,6 +590,94 @@ export interface ProfitReportSummary {
   productsBreakdown: ProductProfitItem[];
 }
 
+export interface InventoryMovementItem {
+  productId: string;
+  productName: string;
+  productImage?: string;
+  category: string;
+  company: string;
+  currentStock: number;
+  minStockAlert: number;
+  costPrice: number;
+  wholesalePrice: number;
+  retailPrice: number;
+  
+  // Movement within selected period
+  unitsSoldRetail: number; // قطع مباعة مفرد
+  unitsSoldWholesale: number; // كراتين مباعة جملة
+  totalEquivalentSoldPieces: number; // مكافئ إجمالي القطع المباعة
+  totalSalesRevenue: number; // إجمالي المبيعات (د.ع)
+  totalCostOfSold: number; // إجمالي تكلفة المباع
+  grossProfit: number; // الربح المحقق
+  
+  // Expiry Status
+  expiryDate?: string;
+  productionDate?: string;
+  expiryAlertDays?: number;
+  daysUntilExpiry?: number;
+  expiryStatus: 'expired' | 'warning' | 'valid' | 'none'; // منتهي 🔴 / تحذير ⚠️ / سليم 🟢 / غير محدد
+  stockValueCost: number; // القيمة الإجمالية للمخزون المتبقي بسعر التكلفة
+  stockValueWholesale: number; // القيمة الإجمالية للمخزون المتبقي بسعر الجملة
+}
+
+export interface InventoryReportSummary {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+  totalProductsCount: number;
+  totalStockUnits: number;
+  totalStockValueCost: number; // إجمالي قيمة بضاعة المخزن بسعر التكلفة
+  totalStockValueWholesale: number; // إجمالي قيمة بضاعة المخزن بسعر الجملة
+  lowStockCount: number; // عدد الأصناف التي شارفت على النفاد
+  outOfStockCount: number; // عدد الأصناف النافدة تماماً (0)
+  expiredCount: number; // عدد الأصناف المنتهية الصلاحية وفيها رصيد بالمخزن
+  nearExpiryCount: number; // عدد الأصناف القريبة من الانتهاء
+  
+  bestSellers: InventoryMovementItem[]; // الأكثر مبيعاً
+  lowestSellers: InventoryMovementItem[]; // الأقل مبيعاً / الراكد
+  allInventory: InventoryMovementItem[]; // كل الأصناف
+  nearOrExpiredItems: InventoryMovementItem[]; // تقرير الصلاحيات
+}
+
+export interface DailyReconciliationSummary {
+  date: string;
+  
+  // Orders & Sales
+  ordersCount: number;
+  totalSalesRevenue: number;
+  cashSalesCollected: number; // مسدد نقداً
+  creditSalesUnpaid: number; // مبيعات آجلة (ديون جديدة على الزبائن)
+  
+  // Driver Collections (تحصيل السائقين والعهد)
+  driverSettlementsCount: number;
+  driverCashTurnover: number; // نقد مستلم من السائقين
+  
+  // Direct Accounting Vouchers (السندات المباشرة)
+  receiptVouchersCount: number;
+  receiptVouchersTotal: number; // سندات قبض نقدية مباشرة
+  disbursementVouchersCount: number;
+  disbursementVouchersTotal: number; // سندات صرف نقدية
+  
+  // Purchases (المشتريات والتوريدات)
+  purchasesCount: number;
+  purchasesTotalAmount: number;
+  purchasesCashPaid: number; // مشتريات مسددة نقداً من الصندوق
+  purchasesCredit: number; // مشتريات آجلة (ديون علينا)
+  
+  // Vault 181 Reconciliation (الصندوق)
+  vaultOpeningBalance: number; // رصيد الصندوق في بداية اليوم
+  vaultTotalIn: number; // إجمالي الإيداعات الداخلة للصندوق اليوم
+  vaultTotalOut: number; // إجمالي المصروفات الخارجة من الصندوق اليوم
+  vaultNetDailyChange: number; // صافي حركة اليوم = الداخل - الخارج
+  vaultClosingBalance: number; // رصيد الصندوق في نهاية اليوم
+  
+  // Details lists
+  orders: any[];
+  payments: any[];
+  purchases: any[];
+  vaultMovements: any[];
+}
+
 export interface PurchaseInvoiceItem {
   productId: string;
   productName: string;
@@ -597,6 +692,7 @@ export interface PurchaseInvoiceItem {
   totalBoxes?: number; // إجمالي العلب المشتراة = quantity × boxesPerCarton (مثال: 4,200 علبة)
   totalPieces?: number; // إجمالي القطع المشتراة = quantity × (boxesPerCarton × itemsPerBox) (مثال: 100,800 قطعة)
   pieceCostPrice?: number; // تكلفة شراء القطعة الواحدة = costPrice / (boxesPerCarton × itemsPerBox)
+  expiryDate?: string; // تاريخ انتهاء الصلاحية للدفعة المشتراة
 }
 
 export interface PurchaseInvoice {

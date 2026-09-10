@@ -125,8 +125,9 @@ export default function AdminPurchasesPage() {
     costPrice: number;
     boxesPerCarton: number;
     itemsPerBox: number;
+    expiryDate?: string;
   }>>([
-    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
+    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1, expiryDate: '' }
   ]);
 
   // View Invoice Modal
@@ -304,6 +305,7 @@ export default function AdminPurchasesPage() {
             costPrice: prod.costPrice || next[index].costPrice || 0,
             boxesPerCarton: prod.boxesPerCarton || 1,
             itemsPerBox: prod.itemsPerBox || 1,
+            expiryDate: prod.expiryDate || '',
           };
 
           // ⚡ يفتح سطر جديد تلقائياً بمجرد اختيار صنف في آخر سطر
@@ -317,6 +319,7 @@ export default function AdminPurchasesPage() {
               costPrice: 0,
               boxesPerCarton: 1,
               itemsPerBox: 1,
+              expiryDate: '',
             });
           }
         }
@@ -848,7 +851,7 @@ export default function AdminPurchasesPage() {
                       >
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
                           {/* Product Selector */}
-                          <div className="sm:col-span-6 space-y-0.5">
+                          <div className="sm:col-span-4 space-y-0.5">
                             <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف:</label>
                             <SearchableProductSelect
                               allProducts={products}
@@ -875,7 +878,7 @@ export default function AdminPurchasesPage() {
 
                           {/* Carton Cost Price */}
                           <div className="sm:col-span-2 space-y-0.5">
-                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">سعر شراء الكرتون (د.ع):</label>
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">سعر شراء الكرتون:</label>
                             <input
                               type="number"
                               min="0"
@@ -888,10 +891,21 @@ export default function AdminPurchasesPage() {
                             />
                           </div>
 
+                          {/* Expiry Date (Optional) */}
+                          <div className="sm:col-span-2 space-y-0.5">
+                            <label className="text-[10px] font-bold text-rose-800 block pb-0.5">الصلاحية ⏳:</label>
+                            <input
+                              type="date"
+                              value={item.expiryDate || ''}
+                              onChange={(e) => updateItemRow(idx, 'expiryDate', e.target.value)}
+                              className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-1 text-[11px] font-mono text-slate-900 focus:border-rose-500"
+                            />
+                          </div>
+
                           {/* Row Total */}
                           <div className="sm:col-span-1 space-y-0.5 text-center">
                             <label className="text-[10px] font-bold text-slate-600 block pb-0.5">الإجمالي:</label>
-                            <div className="font-mono font-black text-purple-700 text-xs py-2 whitespace-nowrap">
+                            <div className="font-mono font-black text-purple-700 text-[11px] py-2 whitespace-nowrap">
                               {rowTotal.toLocaleString()} د.ع
                             </div>
                           </div>

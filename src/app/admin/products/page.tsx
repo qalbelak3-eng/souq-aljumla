@@ -98,6 +98,9 @@ export default function AdminProductsPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [stock, setStock] = useState<number | ''>(200);
   const [minStockAlert, setMinStockAlert] = useState<number | ''>(15); // حد التنبيه الأدنى
+  const [productionDate, setProductionDate] = useState<string>(''); // تاريخ الإنتاج
+  const [expiryDate, setExpiryDate] = useState<string>(''); // تاريخ انتهاء الصلاحية
+  const [expiryAlertDays, setExpiryAlertDays] = useState<number | ''>(30); // مدة التنبيه بالأيام
   const [origin, setOrigin] = useState('العراق');
   const [isFeatured, setIsFeatured] = useState(false);
   const [isBestSeller, setIsBestSeller] = useState(false);
@@ -200,6 +203,9 @@ export default function AdminProductsPage() {
     setImageUrl('https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800');
     setStock(150);
     setMinStockAlert(15);
+    setProductionDate('');
+    setExpiryDate('');
+    setExpiryAlertDays(30);
     setOrigin('العراق');
     setIsFeatured(false);
     setIsBestSeller(false);
@@ -250,6 +256,9 @@ export default function AdminProductsPage() {
     setImageUrl(p.images?.[0] || '');
     setStock(p.stock);
     setMinStockAlert(p.minStockAlert ?? 15);
+    setProductionDate(p.productionDate || '');
+    setExpiryDate(p.expiryDate || '');
+    setExpiryAlertDays(p.expiryAlertDays ?? 30);
     setOrigin(p.origin || 'العراق');
     setIsFeatured(Boolean(p.isFeatured || p.isBestSeller));
     setIsBestSeller(Boolean(p.isBestSeller || p.isFeatured));
@@ -323,6 +332,9 @@ export default function AdminProductsPage() {
       images: [imageUrl.trim() || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800'],
       stock: Number(stock),
       minStockAlert: Number(minStockAlert) || 15,
+      productionDate: productionDate.trim() || undefined,
+      expiryDate: expiryDate.trim() || undefined,
+      expiryAlertDays: expiryAlertDays !== '' ? Number(expiryAlertDays) : 30,
       origin: origin.trim(),
       isFeatured: Boolean(isFeatured || isBestSeller),
       isBestSeller: Boolean(isBestSeller || isFeatured),
@@ -686,18 +698,44 @@ export default function AdminProductsPage() {
                       </div>
                     </td>
 
-                    {/* Stock */}
+                    {/* Stock & Expiry */}
                     <td className="py-3.5 px-3 text-center">
-                      {p.stock <= (p.minStockAlert ?? 15) ? (
-                        <span className="font-mono font-black px-2 py-1 rounded-xl text-[10px] bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1 animate-pulse whitespace-nowrap">
-                          <AlertTriangle className="w-3 h-3 text-red-600" />
-                          <span>{formatStockDisplay(p.stock, p)} (نفاذ ⚠️)</span>
-                        </span>
-                      ) : (
-                        <span className="font-mono font-bold px-2.5 py-1 rounded-xl text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap inline-block">
-                          {formatStockDisplay(p.stock, p)}
-                        </span>
-                      )}
+                      <div className="space-y-1">
+                        {p.stock <= (p.minStockAlert ?? 15) ? (
+                          <span className="font-mono font-black px-2 py-1 rounded-xl text-[10px] bg-red-100 text-red-800 border border-red-300 inline-flex items-center gap-1 animate-pulse whitespace-nowrap">
+                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                            <span>{formatStockDisplay(p.stock, p)} (نفاذ ⚠️)</span>
+                          </span>
+                        ) : (
+                          <span className="font-mono font-bold px-2.5 py-1 rounded-xl text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap inline-block">
+                            {formatStockDisplay(p.stock, p)}
+                          </span>
+                        )}
+                        
+                        {(() => {
+                          if (!p.expiryDate) return null;
+                          const days = Math.ceil((new Date(p.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                          if (days < 0) {
+                            return (
+                              <span className="bg-red-600 text-white font-bold text-[9px] px-1.5 py-0.5 rounded-md block w-fit mx-auto shadow-2xs">
+                                منتهي الصلاحية 🔴
+                              </span>
+                            );
+                          }
+                          if (days <= (p.expiryAlertDays ?? 30)) {
+                            return (
+                              <span className="bg-amber-500 text-white font-bold text-[9px] px-1.5 py-0.5 rounded-md block w-fit mx-auto shadow-2xs">
+                                ينتهي خلال {days} يوم ⚠️
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-slate-400 font-mono text-[9px] block">
+                              ⏳ {p.expiryDate}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
 
                     {/* Actions */}
@@ -1144,6 +1182,48 @@ export default function AdminProductsPage() {
                     className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue"
                   />
                   <span className="text-[10px] text-slate-400 block">العراق / تركيا / أردني...</span>
+                </div>
+              </div>
+
+              {/* Expiry & Production Dates & Alert Days */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-rose-50/40 p-3 rounded-2xl border border-rose-200">
+                <div className="space-y-1">
+                  <label className="font-black text-slate-800 block text-xs">
+                    تاريخ انتهاء الصلاحية ⏳:
+                  </label>
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="w-full bg-white border border-rose-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:border-rose-600"
+                  />
+                  <span className="text-[10px] text-rose-700 font-bold block">تاريخ الانتهاء المطبوع</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block text-xs">تاريخ الإنتاج (اختياري):</label>
+                  <input
+                    type="date"
+                    value={productionDate}
+                    onChange={(e) => setProductionDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:border-brand-blue"
+                  />
+                  <span className="text-[10px] text-slate-500 block">تاريخ صنع أو تعبئة المنتج</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-black text-rose-950 block text-xs">
+                    مدة التنبيه المسبق (بالأيام) ⚠️:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={expiryAlertDays}
+                    onChange={(e) => setExpiryAlertDays(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="30"
+                    className="w-full bg-white border border-rose-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-rose-900 focus:border-rose-600"
+                  />
+                  <span className="text-[10px] text-rose-700 font-bold block">تنبيه قبل الانتهاء بـ (مثال: 30 يوماً)</span>
                 </div>
               </div>
 
