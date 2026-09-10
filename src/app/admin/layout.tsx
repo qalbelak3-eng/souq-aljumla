@@ -360,70 +360,70 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       href: '/admin/orders',
       icon: ShoppingCart,
       permission: 'orders',
-      badge: pendingOrdersCount > 0 ? (pendingOrdersCount + ' طلبية جديدة 🔔') : null,
+      badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} طلبية جديدة` : null,
       badgeColor: 'bg-red-500 text-white animate-pulse shadow-xs',
     },
     {
-      label: '💼 المحاسبة والديون',
+      label: 'المحاسبة والديون',
       href: '/admin/accounting',
       icon: FileText,
       permission: 'accounting',
-      badge: unsettledDebtsCount > 0 ? (unsettledDebtsCount + ' مطلوبين 📝') : null,
+      badge: unsettledDebtsCount > 0 ? `${unsettledDebtsCount} مطلوبين` : null,
       badgeColor: 'bg-indigo-600 text-white animate-pulse shadow-xs',
     },
-    { label: '📈 تقرير الأرباح', href: '/admin/reports', icon: TrendingUp, permission: 'reports' },
+    { label: 'التقارير والمطابقات', href: '/admin/reports', icon: TrendingUp, permission: 'reports' },
     {
       label: 'إدارة السلع والمخزون',
       href: '/admin/products',
       icon: Package,
       permission: 'products',
-      badge: lowStockCount > 0 ? (lowStockCount + ' قارب النفاذ ⚠️') : null,
+      badge: lowStockCount > 0 ? `${lowStockCount} قارب النفاذ` : null,
       badgeColor: 'bg-rose-500 text-white animate-pulse shadow-xs',
     },
     {
-      label: '🔥 العروض والتخفيضات',
+      label: 'العروض والتخفيضات',
       href: '/admin/offers',
       icon: Flame,
       permission: 'offers',
-      badge: activeOffersCount > 0 ? (`${activeOffersCount} نشط 🔥`) : null,
+      badge: activeOffersCount > 0 ? `${activeOffersCount} نشط` : null,
       badgeColor: 'bg-rose-600 text-white animate-pulse shadow-xs',
     },
-    { label: '📦 فواتير المشتريات والتوريد', href: '/admin/purchases', icon: Package, permission: 'purchases' },
-    { label: '🏢 الشركات والماركات', href: '/admin/companies', icon: Building2, permission: 'companies' },
+    { label: 'فواتير المشتريات والتوريد', href: '/admin/purchases', icon: Package, permission: 'purchases' },
+    { label: 'الشركات والماركات', href: '/admin/companies', icon: Building2, permission: 'companies' },
     {
-      label: '👥 دليل الزبائن والماركتات والتجار',
+      label: 'دليل الزبائن والماركتات والتجار',
       href: '/admin/merchants',
       icon: Store,
       permission: 'merchants',
-      badge: pendingMerchantsCount > 0 ? (pendingMerchantsCount + ' بانتظار الموافقة 👑') : null,
+      badge: pendingMerchantsCount > 0 ? `${pendingMerchantsCount} بانتظار الموافقة` : null,
       badgeColor: 'bg-amber-500 text-white animate-pulse shadow-xs',
     },
     {
-      label: '🚚 إدارة وتوزيع السائقين',
+      label: 'إدارة وتوزيع السائقين',
       href: '/admin/drivers',
       icon: Truck,
       permission: 'drivers',
       badge:
         totalCustodyAmount > 0
-          ? `${totalCustodyAmount.toLocaleString()} د.ع عهدة 💵`
+          ? `${totalCustodyAmount.toLocaleString()} د.ع عهدة`
           : driversCustodyCount > 0
-          ? `${driversCustodyCount} في العهدة 💵`
+          ? `${driversCustodyCount} في العهدة`
           : null,
       badgeColor: 'bg-emerald-600 text-white animate-pulse shadow-xs font-black',
     },
     { label: 'إدارة وتحكم بالأقسام', href: '/admin/categories', icon: Layers, permission: 'categories' },
     { label: 'البنرات الإعلانية المتحركة', href: '/admin/banners', icon: Sparkles, permission: 'banners' },
-    { label: '📢 إرسال إشعارات وتنبيهات', href: '/admin/notifications', icon: Bell, permission: 'notifications' },
+    { label: 'إرسال إشعارات وتنبيهات', href: '/admin/notifications', icon: Bell, permission: 'notifications' },
     {
-      label: '💬 الشكاوى والملاحظات',
+      label: 'الشكاوى والملاحظات',
       href: '/admin/complaints',
       icon: MessageSquare,
       permission: 'complaints',
-      badge: pendingComplaintsCount > 0 ? (`${pendingComplaintsCount} وارد جديد 📨`) : null,
+      badge: pendingComplaintsCount > 0 ? `${pendingComplaintsCount} وارد جديد` : null,
       badgeColor: 'bg-rose-500 text-white animate-pulse shadow-xs',
     },
-    { label: '👥 إدارة الموظفين والصلاحيات', href: '/admin/staff', icon: Users, permission: 'staff' },
-    { label: '⚙️ إعدادات المتجر والتذييل', href: '/admin/settings', icon: Settings, permission: 'settings' },
+    { label: 'إدارة الموظفين والصلاحيات', href: '/admin/staff', icon: Users, permission: 'staff' },
+    { label: 'إعدادات المتجر والتذييل', href: '/admin/settings', icon: Settings, permission: 'settings' },
   ];
 
   // Check if Master Admin or Staff Member Permissions
@@ -464,14 +464,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}
               </span>
               <span className="text-[9px] text-purple-700 font-bold block">
-                {currentAdmin?.jobTitle || (isMasterAdmin ? 'مدير النظام الرئيسي 👑' : 'موظف النظام')}
+                {currentAdmin?.jobTitle || (isMasterAdmin ? 'مدير النظام الرئيسي' : 'موظف النظام')}
               </span>
             </div>
           </div>
 
           {totalPendingActions > 0 && (
             <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-              <span>{totalPendingActions} حركات معلقة بانتظار إجرائك 🔔</span>
+              <span>{totalPendingActions} حركات معلقة بانتظار إجرائك</span>
             </span>
           )}
         </div>
@@ -487,7 +487,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               title="اضغط لتفعيل إشعارات الشاشة والصوت على الموبايل والكمبيوتر عند وصول طلبية أو تسليم السائق"
             >
               <BellRing className="w-3.5 h-3.5" />
-              <span>تفعيل إشعارات الشاشة والصوت 🔔</span>
+              <span>تفعيل إشعارات الشاشة والصوت</span>
             </button>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -502,7 +502,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 title="اضغط لتجربة صوت الجرس والإشعار الفوري على جهازك"
               >
                 <Volume2 className="w-3.5 h-3.5" />
-                <span>تجربة التنبيه 🔊</span>
+                <span>تجربة التنبيه</span>
               </button>
             </div>
           )}
@@ -511,7 +511,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             href="/"
             className="text-xs text-brand-blue hover:text-brand-blueDark font-bold py-1.5 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition border border-slate-200/80"
           >
-            عرض المتجر 🛍️
+            عرض المتجر
           </Link>
 
           <button
