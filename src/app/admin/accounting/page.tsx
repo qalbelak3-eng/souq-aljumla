@@ -191,6 +191,20 @@ function AdminAccountingContent() {
     }
   }, [router]);
 
+  // Handle URL tab parameter
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'add_account' || tab === 'add' || tab === 'new') {
+      setActiveMainTab('add_account');
+    } else if (tab === 'vault') {
+      setActiveMainTab('vault');
+    } else if (tab === 'audit') {
+      setActiveMainTab('audit');
+    } else if (tab === 'accounts') {
+      setActiveMainTab('accounts');
+    }
+  }, [searchParams]);
+
   const fetchAccounts = async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     try {

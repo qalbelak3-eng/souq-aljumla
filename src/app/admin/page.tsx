@@ -183,18 +183,32 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         
         {/* 1. Accounting & Debts */}
-        <Link
-          href="/admin/accounting"
-          className="bg-white hover:bg-slate-50 p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between group transition"
-        >
-          <div className="space-y-1">
-            <h4 className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-              <span>💼 النظام المحاسبي وكشوفات الحسابات</span>
-            </h4>
-            <p className="text-slate-500 font-bold text-[11px]">متابعة الديون وسندات القبض وكشوفات الحساب</p>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between gap-3 group transition">
+          <Link href="/admin/accounting" className="flex items-center justify-between">
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                <span>💼 النظام المحاسبي وكشوفات الحسابات</span>
+              </h4>
+              <p className="text-slate-500 font-bold text-[11px]">متابعة الديون وسندات القبض وكشوفات الحساب</p>
+            </div>
+            <FileText className="w-6 h-6 text-brand-blue group-hover:scale-110 transition-transform" />
+          </Link>
+          
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <Link
+              href="/admin/accounting?tab=add_account"
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-black text-[11px] px-2.5 py-1 rounded-xl transition flex items-center gap-1"
+            >
+              <span>➕ إضافة حساب جديد</span>
+            </Link>
+            <Link
+              href="/admin/accounting"
+              className="bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] px-2.5 py-1 rounded-xl transition"
+            >
+              <span>أستاذ الديون 📖</span>
+            </Link>
           </div>
-          <FileText className="w-6 h-6 text-brand-blue group-hover:scale-110 transition-transform" />
-        </Link>
+        </div>
 
         {/* 2. Profit Reports */}
         <Link
