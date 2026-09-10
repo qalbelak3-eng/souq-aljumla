@@ -2141,23 +2141,41 @@ export function getCashVaultMovements(filter?: { dateFrom?: string; dateTo?: str
     }
   });
 
-  // 2. Cash Receipts (سندات القبض النقدية)
+  // 2. Cash Receipts & Disbursements (سندات القبض وسندات الصرف النقدية)
   (db.payments || []).forEach((p) => {
     if (p.paymentMethod === 'cash') {
-      rawMovements.push({
-        date: p.createdAt,
-        type: 'inflow',
-        category: 'debt_collection',
-        categoryLabel: 'سند قبض نقدي (تسديد زبون)',
-        amount: Number(p.amount) || 0,
-        referenceNumber: p.receiptNumber,
-        partyName: p.customerName,
-        performedBy: {
-          name: p.receivedBy || 'المحاسب',
-          username: 'accountant',
-        },
-        notes: p.notes || `تسديد دفعة نقدية لحساب الزبون ${p.customerName}`,
-      });
+      const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
+      if (isDisb) {
+        rawMovements.push({
+          date: p.createdAt,
+          type: 'outflow',
+          category: 'expense',
+          categoryLabel: 'سند صرف نقدي (سداد مورد / مصاريف)',
+          amount: Number(p.amount) || 0,
+          referenceNumber: p.receiptNumber,
+          partyName: p.customerName,
+          performedBy: {
+            name: p.receivedBy || 'المحاسب',
+            username: 'accountant',
+          },
+          notes: p.notes || `صرف دفعة نقدية لحساب ${p.customerName}`,
+        });
+      } else {
+        rawMovements.push({
+          date: p.createdAt,
+          type: 'inflow',
+          category: 'debt_collection',
+          categoryLabel: 'سند قبض نقدي (تسديد زبون)',
+          amount: Number(p.amount) || 0,
+          referenceNumber: p.receiptNumber,
+          partyName: p.customerName,
+          performedBy: {
+            name: p.receivedBy || 'المحاسب',
+            username: 'accountant',
+          },
+          notes: p.notes || `تسديد دفعة نقدية لحساب الزبون ${p.customerName}`,
+        });
+      }
     }
   });
 
