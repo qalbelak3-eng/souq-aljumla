@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Settings,
   Save,
@@ -959,128 +960,45 @@ export default function AdminSettingsPage() {
           )}
         </div>
 
-        {/* 4. Customer Cashback & Rewards Card (3 Tiers) */}
-        <div className="bg-gradient-to-r from-orange-50/90 via-amber-50/80 to-yellow-50/80 border-2 border-orange-200 p-6 sm:p-7 rounded-3xl shadow-xs space-y-5">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
-              <Gift className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="inline-block bg-orange-200 text-orange-950 text-[10px] font-black px-2 py-0.5 rounded-md mb-1">
-                نظام المكافآت والأرباح (كاش باك لكل صنف) 🎁
+        {/* 4. Customer Cashback & Rewards Card (Per-product control) */}
+        <div className="bg-gradient-to-r from-orange-50/90 via-amber-50/80 to-yellow-50/80 border-2 border-orange-200 p-6 sm:p-7 rounded-3xl shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
+                <Gift className="w-6 h-6" />
               </div>
-              <h2 className="text-sm sm:text-base font-black text-orange-950">
-                تحديد مبلغ الأرباح المكتسبة لكل فئة من الزبائن (3 مستويات)
-              </h2>
-              <p className="text-xs text-orange-800 font-bold mt-0.5">
-                حدد المبلغ بالدينار العراقي الذي يربحه كل نوع زبون عن كل قطعة يطلبها، ليكون لكل فئة رصيد مكافآت خاص بها يظهر في واجهته ويُخصم من فواتيره.
-              </p>
+              <div>
+                <div className="inline-block bg-orange-200 text-orange-950 text-[10px] font-black px-2 py-0.5 rounded-md mb-1">
+                  نظام مكافآت وهدايا الأرباح (كاش باك الأصناف) 🎁
+                </div>
+                <h2 className="text-sm sm:text-base font-black text-orange-950">
+                  إدارة هدايا المنتجات مخصصة 100% لكل صنف على حدة
+                </h2>
+                <p className="text-xs text-orange-800 font-bold mt-0.5">
+                  تم إلغاء المبالغ العامة لضمان الخصوصية التامة؛ كل منتج يتم تحديد مبلغ هديته أو إيقافها تماماً من بطاقة الصنف نفسه.
+                </p>
+              </div>
             </div>
+
+            <Link
+              href="/admin/products"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-black text-xs py-2.5 px-4 rounded-2xl shrink-0 shadow-xs transition flex items-center justify-center gap-1.5 self-start sm:self-center"
+            >
+              <span>إدارة السلع وتعديل الهدايا 🏷️</span>
+              <span>←</span>
+            </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-            
-            {/* 1. Individual Customer */}
-            <div className="bg-white/90 p-4 rounded-2xl border-2 border-sky-200 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                  <span>👤 الزبون العادي (مفرد)</span>
-                </span>
-                <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-md">
-                  مشتريات عادية
-                </span>
-              </div>
-              <label className="text-[11px] text-slate-600 font-bold block">
-                مبلغ الكاش باك لكل قطعة:
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="25"
-                  required
-                  value={settings.cashbackCustomerPerItem ?? 100}
-                  onChange={(e) => setSettings({ ...settings, cashbackCustomerPerItem: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border-2 border-sky-300 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:bg-white focus:border-sky-500 focus:outline-none transition"
-                />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">
-                  د.ع / قطعة
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 font-bold">
-                يكسب عند طلب أي مادة بالمفرد.
-              </p>
-            </div>
-
-            {/* 2. Market Owner */}
-            <div className="bg-white/90 p-4 rounded-2xl border-2 border-emerald-300 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                  <span>🏪 صاحب الماركت المعتمد</span>
-                </span>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
-                  جملة الماركت
-                </span>
-              </div>
-              <label className="text-[11px] text-slate-600 font-bold block">
-                مبلغ الكاش باك لكل قطعة:
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="25"
-                  required
-                  value={settings.cashbackMarketPerItem ?? 150}
-                  onChange={(e) => setSettings({ ...settings, cashbackMarketPerItem: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border-2 border-emerald-400 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:bg-white focus:border-emerald-600 focus:outline-none transition"
-                />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">
-                  د.ع / قطعة
-                </span>
-              </div>
-              <p className="text-[10px] text-emerald-700 font-bold">
-                يكسب عن كل قطعة داخل كراتين الجملة.
-              </p>
-            </div>
-
-            {/* 3. Wholesale Merchant */}
-            <div className="bg-white/90 p-4 rounded-2xl border-2 border-amber-300 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                  <span>👑 تاجر الجملة المعتمد (VIP)</span>
-                </span>
-                <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-md">
-                  VIP جملة
-                </span>
-              </div>
-              <label className="text-[11px] text-slate-600 font-bold block">
-                مبلغ الكاش باك لكل قطعة:
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="25"
-                  required
-                  value={settings.cashbackMerchantPerItem ?? 250}
-                  onChange={(e) => setSettings({ ...settings, cashbackMerchantPerItem: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border-2 border-amber-400 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:bg-white focus:border-amber-600 focus:outline-none transition"
-                />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">
-                  د.ع / قطعة
-                </span>
-              </div>
-              <p className="text-[10px] text-amber-800 font-bold">
-                يكسب أعلى نسبة كاش باك لتحفيز كبار التجار.
-              </p>
-            </div>
-
+          <div className="bg-white/80 p-4 rounded-2xl border border-orange-200/80 space-y-2 text-xs font-bold text-slate-700 leading-relaxed">
+            <p className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span><strong>كيف تمنح هدية لصنف معين؟</strong> افتح صفحة <Link href="/admin/products" className="text-brand-blue underline">إدارة السلع والمخزون</Link>، اضغط زر تعديل ✏️ على أي منتج، ثم فعّل خيار <em>(مكافأة وهدية رصيد الأرباح)</em> وحدد المبلغ بالدينار العراقي (للمفرد، للماركت، ولتاجر VIP).</span>
+            </p>
+            <p className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+              <span><strong>المنتجات التي لا تحتمل الهدايا:</strong> يمكنك إيقاف المفتاح في بطاقة الصنف فيصبح المنتج بدون أي هدية إطلاقاً (0 د.ع) ولا يُمنح عنه أي مبلغ.</span>
+            </p>
           </div>
-
-          <p className="text-[11px] text-orange-950 font-bold bg-white/70 p-2.5 rounded-xl border border-orange-200">
-            💡 <strong>ملاحظة هامة:</strong> يتعرف النظام تلقائياً على نوع الحساب عند تسجيل دخوله (زبون عادي / ماركت / تاجر)، ويعرض له السعر المخصص والمكافأة الخاصة به في شريط الواجهة وصفحة الدفع.
-          </p>
         </div>
 
         {/* 5. Homepage Sections Control Card (التحكم بأقسام الصفحة الرئيسية) */}

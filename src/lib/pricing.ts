@@ -47,29 +47,7 @@ export function getUserCashbackRate(
   settings?: StoreSettings | null,
   saleType: SaleType = 'retail'
 ): number {
-  const accountType = user?.accountType;
-
-  // 1. تاجر جملة VIP
-  if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
-    if (saleType === 'wholesale') {
-      return Number(settings?.cashbackMerchantPerItem ?? 0);
-    }
-    return Number(settings?.cashbackCustomerPerItem ?? 100);
-  }
-
-  // 2. صاحب ماركت / محل
-  if (accountType === 'market') {
-    if (saleType === 'wholesale') {
-      return Number(settings?.cashbackMarketPerItem ?? 0);
-    }
-    return Number(settings?.cashbackCustomerPerItem ?? 100);
-  }
-
-  // 3. زبون عادي (مفرد)
-  if (saleType === 'wholesale') {
-    return 0;
-  }
-  return Number(settings?.cashbackCustomerPerItem ?? 100);
+  return 0;
 }
 
 /**
@@ -77,6 +55,7 @@ export function getUserCashbackRate(
  * - زبون المفرد: يحصل على هدية القطعة المفردة (cashbackCustomerAmount).
  * - صاحب الماركت: يحصل على هدية كرتون الماركت المخصصة (cashbackMarketAmount).
  * - تاجر الجملة VIP: يحصل على هدية كرتون الجملة المخصصة (cashbackMerchantAmount).
+ * - إذا لم تُحدد هدية في الصنف أو تم إيقافها، يكون المبلغ 0 د.ع تماماً بدون أي تعميم تلقائي.
  */
 export function getProductCashbackRate(
   product?: Product | null,
@@ -85,7 +64,7 @@ export function getProductCashbackRate(
   saleType: SaleType = 'retail'
 ): number {
   if (!product) {
-    return getUserCashbackRate(user, settings, saleType);
+    return 0;
   }
   
   // إذا تم إيقاف الهدية صراحة عن هذا الصنف
@@ -98,31 +77,31 @@ export function getProductCashbackRate(
   // 1. حساب تاجر الجملة VIP 👑
   if (accountType === 'wholesale' || accountType === 'merchant' || user?.role === 'merchant') {
     if (saleType === 'wholesale') {
-      if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount >= 0) {
+      if (typeof product.cashbackMerchantAmount === 'number' && product.cashbackMerchantAmount > 0) {
         return product.cashbackMerchantAmount;
       }
-      return Number(settings?.cashbackMerchantPerItem ?? 0);
+      return 0;
     }
     // إذا اشترى بالمفرد
-    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount > 0) {
       return product.cashbackCustomerAmount;
     }
-    return Number(settings?.cashbackCustomerPerItem ?? 100);
+    return 0;
   }
 
   // 2. حساب صاحب الماركت والمحل 🏪
   if (accountType === 'market') {
     if (saleType === 'wholesale') {
-      if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount >= 0) {
+      if (typeof product.cashbackMarketAmount === 'number' && product.cashbackMarketAmount > 0) {
         return product.cashbackMarketAmount;
       }
-      return Number(settings?.cashbackMarketPerItem ?? 0);
+      return 0;
     }
     // إذا اشترى بالمفرد
-    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+    if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount > 0) {
       return product.cashbackCustomerAmount;
     }
-    return Number(settings?.cashbackCustomerPerItem ?? 100);
+    return 0;
   }
 
   // 3. حساب الزبون العادي / المستهلك (المفرد) 👤
@@ -134,11 +113,11 @@ export function getProductCashbackRate(
   }
 
   // شراء بالمفرد للزبون العادي
-  if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount >= 0) {
+  if (typeof product.cashbackCustomerAmount === 'number' && product.cashbackCustomerAmount > 0) {
     return product.cashbackCustomerAmount;
   }
-  if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount >= 0) {
+  if (typeof product.customCashbackAmount === 'number' && product.customCashbackAmount > 0) {
     return product.customCashbackAmount;
   }
-  return Number(settings?.cashbackCustomerPerItem ?? 100);
+  return 0;
 }
