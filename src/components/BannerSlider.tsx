@@ -22,7 +22,7 @@ export default function BannerSlider({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Silky Smooth Touch & Drag gesture states
+  // High performance touch and mouse drag physics
   const [isSwiping, setIsSwiping] = useState(false);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
@@ -30,7 +30,6 @@ export default function BannerSlider({
   const isHorizontalSwipe = useRef<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let url = `/api/banners?position=${encodeURIComponent(position)}`;
@@ -56,61 +55,16 @@ export default function BannerSlider({
 
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
 
-  // Helper to scroll to specific slide in Hungerstation separated-card carousel
-  const scrollToIndex = (idx: number) => {
-    if (!scrollRef.current) return;
-    const cards = scrollRef.current.querySelectorAll('.banner-slide-card');
-    if (cards[idx]) {
-      (cards[idx] as HTMLElement).scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-      setCurrentIndex(idx);
-    }
-  };
-
-  // Detect active index on scroll for peek carousel
-  const handleScroll = () => {
-    if (!scrollRef.current) return;
-    const container = scrollRef.current;
-    const cards = container.querySelectorAll('.banner-slide-card');
-    if (cards.length === 0) return;
-
-    const containerRect = container.getBoundingClientRect();
-    const containerCenter = containerRect.left + containerRect.width / 2;
-
-    let closestIndex = 0;
-    let minDistance = Infinity;
-
-    cards.forEach((card, idx) => {
-      const rect = (card as HTMLElement).getBoundingClientRect();
-      const cardCenter = rect.left + rect.width / 2;
-      const distance = Math.abs(containerCenter - cardCenter);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = idx;
-      }
-    });
-
-    setCurrentIndex(closestIndex);
-  };
-
   // Auto slide every 4.5 seconds (paused while user is touching/swiping)
   useEffect(() => {
     if (banners.length <= 1 || isSwiping) return;
     const interval = setInterval(() => {
-      const nextIdx = (currentIndex + 1) % banners.length;
-      if (isCompact && scrollRef.current) {
-        scrollToIndex(nextIdx);
-      } else {
-        setCurrentIndex(nextIdx);
-      }
+      setCurrentIndex((prev) => (prev + 1) % banners.length);
     }, 4500);
     return () => clearInterval(interval);
-  }, [banners.length, currentIndex, isSwiping, isCompact]);
+  }, [banners.length, isSwiping]);
 
-  // Touch handlers with real-time finger tracking & smart axis lock (Main Slider)
+  // Touch handlers with real-time finger tracking & smart axis lock
   const handleTouchStart = (e: React.TouchEvent) => {
     if (banners.length <= 1) return;
     setIsSwiping(true);
@@ -128,7 +82,7 @@ export default function BannerSlider({
     const diffY = currentY - touchStartY;
 
     if (isHorizontalSwipe.current === null) {
-      if (Math.abs(diffX) > 8 || Math.abs(diffY) > 8) {
+      if (Math.abs(diffX) > 6 || Math.abs(diffY) > 6) {
         isHorizontalSwipe.current = Math.abs(diffX) > Math.abs(diffY);
       }
     }
@@ -140,12 +94,14 @@ export default function BannerSlider({
 
   const handleTouchEnd = () => {
     if (banners.length <= 1) return;
-    const minSwipeDistance = 35;
+    const minSwipeDistance = 30;
 
     if (isHorizontalSwipe.current && dragOffset !== 0) {
       if (dragOffset < -minSwipeDistance) {
+        // Swiped Left -> Go Next
         setCurrentIndex((prev) => (prev + 1) % banners.length);
       } else if (dragOffset > minSwipeDistance) {
+        // Swiped Right -> Go Prev
         setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
       }
     }
@@ -175,7 +131,7 @@ export default function BannerSlider({
 
   const handleMouseUp = () => {
     if (!isSwiping || banners.length <= 1) return;
-    const minSwipeDistance = 40;
+    const minSwipeDistance = 35;
 
     if (dragOffset < -minSwipeDistance) {
       setCurrentIndex((prev) => (prev + 1) % banners.length);
@@ -192,7 +148,7 @@ export default function BannerSlider({
 
   if (isLoading) {
     const aspectClass = isCompact
-      ? 'aspect-[24/8] sm:aspect-[24/8]'
+      ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
       : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
     return (
       <div className={`w-full ${aspectClass} bg-white rounded-3xl animate-pulse border border-slate-100 shadow-sm ${className}`} />
@@ -201,56 +157,83 @@ export default function BannerSlider({
 
   if (banners.length === 0) return null;
 
-  // 1. HUNGERSTATION STYLE SEPARATED CARDS PEEK CAROUSEL (FOR SECONDARY / COMPACT SLIDERS)
-  // ميزة فصل الكروت وظهور طرف البنر التالي ليعرف الزبون بوجود إعلانات أخرى
+  // Single Banner Display
+  if (banners.length === 1) {
+    const singleBanner = banners[0];
+    const aspectClass = isCompact
+      ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
+      : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
+    return (
+      <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 bg-white ${aspectClass} select-none ${className}`}>
+        <Link
+          href={singleBanner.linkUrl || '/products'}
+          className="block relative w-full h-full overflow-hidden"
+        >
+          <img
+            src={singleBanner.image}
+            alt={singleBanner.title || 'بنر إعلاني'}
+            className="w-full h-full object-cover object-center"
+            draggable={false}
+          />
+        </Link>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 1. COMPACT / SECONDARY PEEK CAROUSEL (مع ميزة فصل الكروت وظهور طرف الإعلان التالي)
+  // ═══════════════════════════════════════════════════════════════════
   if (isCompact) {
-    if (banners.length === 1) {
-      const singleBanner = banners[0];
-      return (
-        <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-slate-100 bg-white aspect-[24/8] select-none ${className}`}>
-          <Link
-            href={singleBanner.linkUrl || '/products'}
-            className="block relative w-full h-full overflow-hidden"
-          >
-            <img
-              src={singleBanner.image}
-              alt={singleBanner.title || 'بنر إعلاني'}
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </Link>
-        </div>
-      );
-    }
+    const stepPercent = 89; // 86% width + 3% gap
+
+    const compactTransform = dragOffset !== 0
+      ? `translateX(calc(-${currentIndex * stepPercent}% + ${dragOffset}px))`
+      : `translateX(-${currentIndex * stepPercent}%)`;
+
+    const compactTransition = isSwiping
+      ? 'none'
+      : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)';
 
     return (
-      <div className={`relative w-full select-none group ${className}`}>
-        {/* Scrollable Track with Peek Effect & Touch Swiping */}
+      <div
+        ref={containerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
+      >
+        {/* Track with live real-time finger tracking & peek effect */}
         <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          onTouchStart={() => setIsSwiping(true)}
-          onTouchEnd={() => setTimeout(() => setIsSwiping(false), 2000)}
-          className="flex items-center gap-2.5 sm:gap-3.5 overflow-x-auto scrollbar-none snap-x snap-mandatory py-1 px-1 sm:px-2 scroll-smooth"
+          className="flex items-center will-change-transform py-1 px-1 sm:px-1.5"
           style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            WebkitOverflowScrolling: 'touch',
+            transform: compactTransform,
+            transition: compactTransition,
+            direction: 'ltr',
+            gap: '3%',
           }}
         >
           {banners.map((banner) => (
             <div
               key={banner.id}
-              className="banner-slide-card w-[86%] sm:w-[91%] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_2px_14px_rgba(0,0,0,0.06)] border border-slate-100 aspect-[24/8] bg-white transition-transform active:scale-[0.99]"
+              className="w-[86%] sm:w-[89%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[22/8] sm:aspect-[24/8] min-h-[135px] sm:min-h-[175px] bg-white transition-transform active:scale-[0.99]"
             >
               <Link
                 href={banner.linkUrl || '/products'}
-                className="block relative w-full h-full overflow-hidden"
+                onClick={(e) => {
+                  if (Math.abs(dragOffset) > 10) {
+                    e.preventDefault();
+                  }
+                }}
+                className="block relative w-full h-full overflow-hidden pointer-events-auto"
               >
                 <img
                   src={banner.image}
                   alt={banner.title || 'بنر إعلاني'}
-                  className="w-full h-full object-cover pointer-events-none"
+                  className="w-full h-full object-cover object-center pointer-events-none"
                   draggable={false}
                 />
               </Link>
@@ -261,9 +244,10 @@ export default function BannerSlider({
         {/* Navigation Arrows for Desktop Hover */}
         <button
           type="button"
-          onClick={() => {
-            const prevIdx = (currentIndex - 1 + banners.length) % banners.length;
-            scrollToIndex(prevIdx);
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
           }}
           className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
           aria-label="السابق"
@@ -273,9 +257,10 @@ export default function BannerSlider({
 
         <button
           type="button"
-          onClick={() => {
-            const nextIdx = (currentIndex + 1) % banners.length;
-            scrollToIndex(nextIdx);
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setCurrentIndex((prev) => (prev + 1) % banners.length);
           }}
           className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
           aria-label="التالي"
@@ -289,7 +274,11 @@ export default function BannerSlider({
             <button
               key={idx}
               type="button"
-              onClick={() => scrollToIndex(idx)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCurrentIndex(idx);
+              }}
               className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                 currentIndex === idx
                   ? 'w-6 bg-brand-blue shadow-xs'
@@ -303,7 +292,9 @@ export default function BannerSlider({
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════
   // 2. STANDARD FULL-WIDTH SLIDER (ORIGINAL MAIN TOP BANNERS)
+  // ═══════════════════════════════════════════════════════════════════
   const trackTransform = dragOffset !== 0
     ? `translateX(calc(-${currentIndex * 100}% + ${dragOffset}px))`
     : `translateX(-${currentIndex * 100}%)`;
@@ -338,7 +329,7 @@ export default function BannerSlider({
             <Link
               href={banner.linkUrl || '/products'}
               onClick={(e) => {
-                if (Math.abs(dragOffset) > 12) {
+                if (Math.abs(dragOffset) > 10) {
                   e.preventDefault();
                 }
               }}
