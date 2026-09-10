@@ -1758,6 +1758,19 @@ export function createPurchaseInvoice(data: {
   const paid = data.paymentMethod === 'cash' ? totalAmount : data.paymentMethod === 'credit' ? 0 : Number(data.paidAmount) || 0;
   const remaining = data.paymentMethod === 'cash' ? 0 : data.paymentMethod === 'credit' ? totalAmount : Math.max(0, totalAmount - paid);
 
+  let supplierPhone = data.supplierPhone;
+  if (!supplierPhone && data.companyName) {
+    const cName = data.companyName.trim().toLowerCase();
+    const matchedUser = db.users.find(u => 
+      (u.name && u.name.trim().toLowerCase() === cName) ||
+      (u.businessName && u.businessName.trim().toLowerCase() === cName) ||
+      (data.companyId && u.id === data.companyId)
+    );
+    if (matchedUser && matchedUser.phone) {
+      supplierPhone = matchedUser.phone;
+    }
+  }
+
   const now = new Date();
   const invoiceNum = `PUR-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}-${(db.purchaseInvoices.length + 1).toString().padStart(3, '0')}`;
 
@@ -1766,7 +1779,7 @@ export function createPurchaseInvoice(data: {
     invoiceNumber: invoiceNum,
     companyId: data.companyId || '',
     companyName: data.companyName,
-    supplierPhone: data.supplierPhone,
+    supplierPhone: supplierPhone,
     date: data.date || now.toISOString().split('T')[0],
     items: invoiceItems,
     totalAmount,
@@ -2338,18 +2351,34 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     return cleanPhone && opPhone === cleanPhone;
   });
 
-  if (orders.length === 0 && payments.length === 0 && openings.length === 0 && !user) {
+  // Find all purchase invoices for this supplier/account
+  const purchases = (db.purchaseInvoices || []).filter(inv => {
+    const invPhone = inv.supplierPhone ? inv.supplierPhone.replace(/\D/g, '') : '';
+    const invComp = (inv.companyName || '').trim().toLowerCase();
+    const uName = (user?.name || '').trim().toLowerCase();
+    const uBusName = (user?.businessName || '').trim().toLowerCase();
+    const identLower = identifier.trim().toLowerCase();
+
+    return (
+      (cleanPhone && invPhone && invPhone === cleanPhone) ||
+      (invComp && uName && invComp === uName) ||
+      (invComp && uBusName && invComp === uBusName) ||
+      (invComp && invComp === identLower)
+    );
+  });
+
+  if (orders.length === 0 && payments.length === 0 && openings.length === 0 && purchases.length === 0 && !user) {
     return null;
   }
 
-  // Derive customer info
+  // Derive customer/supplier info
   const primaryOrder = orders[0];
-  const customerName = user?.name || primaryOrder?.customer.name || payments[0]?.customerName || openings[0]?.name || 'عميل المتجر';
-  const customerPhone = user?.phone || primaryOrder?.customer.phone || payments[0]?.customerPhone || openings[0]?.phone || identifier;
+  const customerName = user?.name || primaryOrder?.customer.name || purchases[0]?.companyName || payments[0]?.customerName || openings[0]?.name || 'حساب في النظام';
+  const customerPhone = user?.phone || primaryOrder?.customer.phone || purchases[0]?.supplierPhone || payments[0]?.customerPhone || openings[0]?.phone || identifier;
   const businessName = user?.businessName || primaryOrder?.customer.businessName;
   
   let accountType = 'زبون عادي / زائر';
-  if (user?.category === 'supplier') {
+  if (user?.category === 'supplier' || purchases.length > 0) {
     accountType = 'مجهز / مورد بضائع 🏭';
   } else if (user?.category === 'employee') {
     accountType = 'موظف / كادر الشركة 💼';
@@ -2397,7 +2426,7 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     });
   });
 
-  // Invoices from orders
+  // Invoices from customer orders
   orders.forEach(o => {
     rawTxList.push({
       date: o.createdAt,
@@ -2412,6 +2441,26 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     });
   });
 
+  // Purchase invoices from suppliers
+  purchases.forEach(inv => {
+    const isPartial = inv.paymentMethod === 'partial';
+    const isCash = inv.paymentMethod === 'cash';
+    const isCredit = inv.paymentMethod === 'credit';
+    const paidAmt = isCash ? inv.totalAmount : isCredit ? 0 : (inv.paidAmount || 0);
+
+    rawTxList.push({
+      date: inv.date || inv.createdAt,
+      type: 'invoice',
+      referenceNumber: inv.invoiceNumber,
+      referenceId: inv.id,
+      description: `فاتورة شراء وتوريد (${inv.items.length} أصناف)${isPartial ? ' - دفع جزئي' : isCash ? ' - نقد' : ' - آجل'}`,
+      debit: inv.totalAmount, // إجمالي قيمة التوريد
+      credit: paidAmt, // المسدد نقداً
+      paymentMethod: isCash ? 'نقد (واصل)' : isCredit ? 'آجل (دين)' : 'دفع جزئي',
+      notes: inv.notes ? `${inv.notes}${isPartial ? ` • واصل: ${paidAmt.toLocaleString()} د.ع | متبقي: ${(inv.remainingAmount || 0).toLocaleString()} د.ع` : ''}` : (isPartial ? `واصل: ${paidAmt.toLocaleString()} د.ع | متبقي: ${(inv.remainingAmount || 0).toLocaleString()} د.ع` : ''),
+    });
+  });
+
   // Payments / Receipts
   payments.forEach(p => {
     rawTxList.push({
@@ -2419,7 +2468,7 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
       type: 'payment',
       referenceNumber: formatShortRef(p.receiptNumber, 'REC'),
       referenceId: p.id,
-      description: 'سند قبض',
+      description: 'سند قبض / دفعة',
       debit: 0,
       credit: p.amount,
       paymentMethod: p.paymentMethod,
@@ -2805,6 +2854,60 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
         totalInvoiced: 0,
         totalPaid: p.amount,
         lastDate: p.createdAt,
+      });
+    }
+  });
+
+  // 5. Ingest Purchase Invoices (فواتير الشراء والتوريد للمجهزين والموردين)
+  (db.purchaseInvoices || []).forEach(inv => {
+    let clean = (inv.supplierPhone || '').replace(/\D/g, '');
+    let matchedUser: any = null;
+
+    if (!clean && inv.companyName) {
+      const cName = inv.companyName.trim().toLowerCase();
+      matchedUser = db.users.find(u =>
+        (u.name && u.name.trim().toLowerCase() === cName) ||
+        (u.businessName && u.businessName.trim().toLowerCase() === cName) ||
+        (inv.companyId && u.id === inv.companyId)
+      );
+      if (matchedUser?.phone) {
+        clean = matchedUser.phone.replace(/\D/g, '');
+      }
+    }
+
+    // If still no clean phone, use companyName as key
+    const key = clean || (inv.companyName ? inv.companyName.trim() : 'مورد مجهول');
+    if (!key) return;
+
+    const isCash = inv.paymentMethod === 'cash';
+    const isCredit = inv.paymentMethod === 'credit';
+    const paidAmt = isCash ? inv.totalAmount : isCredit ? 0 : (inv.paidAmount || 0);
+
+    const existing = phoneMap.get(key);
+    if (existing) {
+      existing.ordersCount += 1;
+      existing.totalInvoiced += inv.totalAmount;
+      existing.totalPaid += paidAmt;
+      if (new Date(inv.date || inv.createdAt).getTime() > new Date(existing.lastDate).getTime()) {
+        existing.lastDate = inv.date || inv.createdAt;
+      }
+      if (!existing.category || existing.category === 'customer') {
+        existing.category = 'supplier';
+        existing.accountType = 'مجهز / مورد 🏭';
+      }
+      if (!existing.name && inv.companyName) {
+        existing.name = inv.companyName;
+      }
+    } else {
+      phoneMap.set(key, {
+        name: inv.companyName || matchedUser?.name || 'شركة مجهزة',
+        accountType: 'مجهز / مورد 🏭',
+        category: 'supplier',
+        ordersCount: 1,
+        totalInvoiced: inv.totalAmount,
+        totalPaid: paidAmt,
+        lastDate: inv.date || inv.createdAt,
+        notes: inv.notes,
       });
     }
   });
