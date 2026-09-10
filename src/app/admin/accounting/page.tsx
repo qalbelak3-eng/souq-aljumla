@@ -2899,11 +2899,45 @@ function AdminAccountingContent() {
                                 #{tx.referenceNumber}
                               </td>
                               <td className="py-2.5 px-3 whitespace-nowrap">
-                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block ${
-                                  tx.type === 'invoice' ? 'bg-blue-50 text-brand-blue border border-blue-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                }`}>
-                                  {tx.type === 'invoice' ? '📦 فاتورة مبيعات' : '💵 سند قبض'}
-                                </span>
+                                {(() => {
+                                  const isPur = tx.referenceNumber?.startsWith('PUR') || tx.description?.includes('شراء') || tx.description?.includes('توريد');
+                                  const isDisb = tx.referenceNumber?.startsWith('DSB') || tx.description?.includes('صرف') || tx.description?.includes('دفع');
+                                  const isOpn = tx.type === 'adjustment' || tx.referenceNumber?.startsWith('OPN');
+                                  
+                                  if (isPur) {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block bg-purple-50 text-purple-800 border border-purple-200">
+                                        فاتورة توريد ومشتريات
+                                      </span>
+                                    );
+                                  }
+                                  if (isDisb) {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block bg-purple-50 text-purple-800 border border-purple-200">
+                                        سند صرف وتسديد
+                                      </span>
+                                    );
+                                  }
+                                  if (isOpn) {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block bg-amber-50 text-amber-800 border border-amber-200">
+                                        رصيد افتتاحي
+                                      </span>
+                                    );
+                                  }
+                                  if (tx.type === 'invoice') {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block bg-blue-50 text-brand-blue border border-blue-200">
+                                        فاتورة مبيعات
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      سند قبض
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="py-2.5 px-3 text-left font-mono font-bold whitespace-nowrap text-slate-900">
                                 {tx.debit > 0 ? `${tx.debit.toLocaleString()} د.ع` : '-'}
