@@ -2538,7 +2538,7 @@ function AdminAccountingContent() {
                               type="number"
                               required
                               min="1"
-                              step="250"
+                              step="any"
                               autoFocus
                               value={paymentAmount}
                               onChange={(e) => setPaymentAmount(e.target.value)}
@@ -3427,8 +3427,8 @@ function AdminAccountingContent() {
                   <input
                     type="number"
                     required
-                    min="1000"
-                    step="500"
+                    min="1"
+                    step="any"
                     value={vaultFormAmount}
                     onChange={(e) => setVaultFormAmount(e.target.value)}
                     placeholder="مثال: 250000"
@@ -3642,7 +3642,7 @@ function AdminAccountingContent() {
                       type="number"
                       required
                       min="1"
-                      step="250"
+                      step="any"
                       value={openingBalanceAmount}
                       onChange={(e) => setOpeningBalanceAmount(e.target.value)}
                       placeholder="مثال: 500000"

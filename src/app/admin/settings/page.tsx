@@ -730,7 +730,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="number"
                   min="0"
-                  step="250"
+                  step="any"
                   value={settings.minDeliveryFee ?? 1500}
                   onChange={(e) => setSettings({ ...settings, minDeliveryFee: Number(e.target.value) })}
                   placeholder="1500"
@@ -742,7 +742,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="number"
                   min="0"
-                  step="500"
+                  step="any"
                   value={settings.maxDeliveryFee ?? 10000}
                   onChange={(e) => setSettings({ ...settings, maxDeliveryFee: Number(e.target.value) })}
                   placeholder="10000"

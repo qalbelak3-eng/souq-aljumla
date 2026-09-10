@@ -858,7 +858,7 @@ export default function AdminPurchasesPage() {
                             <input
                               type="number"
                               min="0"
-                              step="250"
+                              step="any"
                               required
                               value={item.costPrice}
                               onChange={(e) => updateItemRow(idx, 'costPrice', Number(e.target.value))}
