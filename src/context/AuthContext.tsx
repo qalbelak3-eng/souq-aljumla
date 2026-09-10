@@ -42,9 +42,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveUserToStorage = (userData: User | null) => {
     setUser(userData);
     if (userData) {
-      localStorage.setItem('etihad_user_iq', JSON.stringify(userData));
+      try {
+        const safeUser = { ...userData };
+        if (safeUser.storefrontImage && safeUser.storefrontImage.startsWith('data:image/')) {
+          safeUser.storefrontImage = '';
+        }
+        localStorage.setItem('etihad_user_iq', JSON.stringify(safeUser));
+      } catch (err) {
+        console.warn('LocalStorage save warning:', err);
+      }
     } else {
-      localStorage.removeItem('etihad_user_iq');
+      try {
+        localStorage.removeItem('etihad_user_iq');
+      } catch {}
     }
   };
 

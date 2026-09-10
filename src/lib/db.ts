@@ -133,6 +133,39 @@ const initialUsers: User[] = [
 
 let inMemoryDb: DatabaseSchema | null = null;
 
+export function saveBase64ImageToFile(dataUri?: string, prefix = 'upload'): string | undefined {
+  if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:image/')) {
+    return dataUri;
+  }
+
+  try {
+    const matches = dataUri.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return dataUri;
+    }
+
+    let ext = matches[1].toLowerCase();
+    if (ext === 'jpeg') ext = 'jpg';
+    if (ext === 'svg+xml') ext = 'svg';
+
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${filename}`;
+  } catch (err) {
+    console.error('Error saving base64 image to file:', err);
+    return dataUri;
+  }
+}
+
 function sanitizeDb(db: DatabaseSchema): DatabaseSchema {
   if (Array.isArray(db.orders)) {
     db.orders.forEach(order => {
@@ -147,17 +180,49 @@ function sanitizeDb(db: DatabaseSchema): DatabaseSchema {
   }
   if (Array.isArray(db.offers)) {
     db.offers.forEach(offer => {
-      if (offer.productImage && offer.productImage.startsWith('data:image/') && offer.productImage.length > 300) {
-        offer.productImage = '';
+      if (offer.productImage && offer.productImage.startsWith('data:image/')) {
+        offer.productImage = saveBase64ImageToFile(offer.productImage, `offer_${offer.id}`) || '';
       }
     });
   }
   if (Array.isArray(db.users)) {
     db.users.forEach(u => {
+      if (u.storefrontImage && u.storefrontImage.startsWith('data:image/')) {
+        u.storefrontImage = saveBase64ImageToFile(u.storefrontImage, `user_storefront_${u.id}`);
+      }
+      if (u.avatar && u.avatar.startsWith('data:image/')) {
+        u.avatar = saveBase64ImageToFile(u.avatar, `user_avatar_${u.id}`);
+      }
       if (u.category === 'supplier' || u.name?.includes('عالم التركي') || u.name?.startsWith('شركة ') || (u.businessName && u.businessName.startsWith('شركة '))) {
         u.category = 'supplier';
         u.accountType = 'supplier';
         u.merchantStatus = 'approved';
+      }
+    });
+  }
+  if (Array.isArray(db.companies)) {
+    db.companies.forEach(c => {
+      if (c.logo && c.logo.startsWith('data:image/')) {
+        c.logo = saveBase64ImageToFile(c.logo, `comp_logo_${c.id}`);
+      }
+    });
+  }
+  if (Array.isArray(db.products)) {
+    db.products.forEach(p => {
+      if (Array.isArray(p.images)) {
+        p.images = p.images.map((img, idx) => {
+          if (img && img.startsWith('data:image/')) {
+            return saveBase64ImageToFile(img, `prod_${p.id}_${idx}`) || img;
+          }
+          return img;
+        });
+      }
+    });
+  }
+  if (Array.isArray(db.banners)) {
+    db.banners.forEach(b => {
+      if (b.image && b.image.startsWith('data:image/')) {
+        b.image = saveBase64ImageToFile(b.image, `banner_${b.id}`) || '';
       }
     });
   }
