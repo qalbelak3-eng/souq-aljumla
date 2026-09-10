@@ -74,6 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Tracking delta references for background notification triggers
   const isFirstAlertsLoadRef = useRef(true);
+  const isFetchingAlertsRef = useRef(false);
   const knownOrderStatusesRef = useRef<Map<string, string>>(new Map());
   const knownPendingMerchantIdsRef = useRef<Set<string>>(new Set());
   const knownDriverCashMapRef = useRef<Map<string, number>>(new Map());
@@ -95,8 +96,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setNotificationPermission(perm);
     if (perm === 'granted') {
       sendSystemNotification({
-        title: '🔔 تم تفعيل إشعارات سوق الجملة بنجاح!',
-        body: 'ستصلك الآن تنبيهات الشاشة والصوت للطلبات الجديدة وتسليم السائقين حتى لو كانت الصفحة منزلة أو في الخلفية.',
+        title: '🔔 تم تفعيل إشعارات لوحة التحكم!',
+        body: 'ستصلك تنبيهات الطلبيات والمندوبين والتجار فوراً أثناء العمل.',
         url: '/admin/orders',
         soundType: 'test',
       });
@@ -118,65 +119,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   const fetchLiveAlerts = useCallback(async () => {
+    if (isFetchingAlertsRef.current) return;
+    isFetchingAlertsRef.current = true;
+
     try {
-      const [orderRes, merchRes, prodRes, driverRes, acctRes, offersRes, complaintsRes] = await Promise.all([
-        fetch('/api/orders').then((r) => r.json()),
-        fetch('/api/admin/merchants').then((r) => r.json()),
-        fetch('/api/products').then((r) => r.json()),
-        fetch('/api/admin/drivers').then((r) => r.json()).catch(() => ({ success: false })),
-        fetch('/api/accounting/accounts').then((r) => r.json()).catch(() => ({ success: false })),
-        fetch('/api/offers?active=true').then((r) => r.json()).catch(() => ({ success: false })),
-        fetch('/api/complaints').then((r) => r.json()).catch(() => ({ success: false })),
-      ]);
+      const res = await fetch('/api/admin/alerts', { cache: 'no-store' });
+      const data = await res.json();
 
-      if (complaintsRes?.success && Array.isArray(complaintsRes.complaints)) {
-        const pending = complaintsRes.complaints.filter((c: any) => c.status === 'pending' || c.status === 'in_progress');
-        setPendingComplaintsCount(pending.length);
-      }
+      if (data && data.success) {
+        setPendingOrdersCount(data.pendingOrdersCount || 0);
+        setPendingMerchantsCount(data.pendingMerchantsCount || 0);
+        setLowStockCount(data.lowStockCount || 0);
+        setDriversCustodyCount(data.driversCustodyCount || 0);
+        setTotalCustodyAmount(data.totalCustodyAmount || 0);
+        setUnsettledDebtsCount(data.unsettledDebtsCount || 0);
+        setActiveOffersCount(data.activeOffersCount || 0);
+        setPendingComplaintsCount(data.pendingComplaintsCount || 0);
 
-      if (offersRes?.success && Array.isArray(offersRes.offers)) {
-        setActiveOffersCount(offersRes.offers.length);
-      }
-
-      if (acctRes.success && Array.isArray(acctRes.accounts)) {
-        const debtorAccounts = acctRes.accounts.filter((acc: any) => Number(acc.currentBalance || 0) > 0);
-        setUnsettledDebtsCount(debtorAccounts.length);
-      }
-
-      if (orderRes.success && Array.isArray(orderRes.orders)) {
-        const orders = orderRes.orders;
-        
-        // 1. Pending orders count
-        const pendingCount = orders.filter((o: any) => o.status === 'pending').length;
-        setPendingOrdersCount(pendingCount);
-
-        // 2. Drivers cash in custody count & total amount (delivered cash orders awaiting settlement)
-        const unsettledCashOrders = orders.filter(
-          (o: any) =>
-            o.driverId &&
-            o.status === 'delivered' &&
-            !o.driverCashSettled &&
-            (o.collectionStatus === 'collected_cash' || o.collectionStatus === 'partial' || !o.collectionStatus)
-        );
-        const driverIdsWithCustody = new Set(unsettledCashOrders.map((o: any) => o.driverId));
-        const custodySum = unsettledCashOrders.reduce(
-          (sum: number, o: any) => sum + Number(o.collectedAmount || o.total || 0),
-          0
-        );
-        setDriversCustodyCount(driverIdsWithCustody.size);
-        setTotalCustodyAmount(custodySum);
-
-        // Check for new orders or status updates if not the first initial load
-        if (!isFirstAlertsLoadRef.current) {
-          orders.forEach((order: any) => {
+        // Check for new orders or delivered orders notifications
+        if (!isFirstAlertsLoadRef.current && Array.isArray(data.recentOrders)) {
+          data.recentOrders.forEach((order: any) => {
             const prevStatus = knownOrderStatusesRef.current.get(order.id);
 
             // 1. BRAND NEW PENDING ORDER ARRIVED
             if (!prevStatus && order.status === 'pending') {
-              const customerTitle = order.customer?.businessName || order.customer?.name || 'زبون';
               sendSystemNotification({
                 title: '🛒 طلبية جديدة وصلت! (#' + order.orderNumber + ')',
-                body: 'المحل / العميل: ' + customerTitle + ' | المبلغ: ' + Number(order.total || 0).toLocaleString() + ' د.ع',
+                body: 'المحل / العميل: ' + order.customerTitle + ' | المبلغ: ' + Number(order.total || 0).toLocaleString() + ' د.ع',
                 url: '/admin/orders',
                 soundType: 'order',
                 tag: 'new-order-' + order.id,
@@ -186,7 +155,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             // 2. DRIVER DELIVERED ORDER (Cash in custody collected)
             if (prevStatus && prevStatus !== 'delivered' && order.status === 'delivered') {
               const driver = order.driverName || 'المندوب';
-              const customerTitle = order.customer?.businessName || order.customer?.name || 'العميل';
+              const customerTitle = order.customerTitle || 'العميل';
               const isCash = order.collectionStatus === 'collected_cash' || !order.collectionStatus;
               
               sendSystemNotification({
@@ -202,20 +171,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           });
         }
 
-        // Update known statuses map
-        const newStatusesMap = new Map<string, string>();
-        orders.forEach((o: any) => newStatusesMap.set(o.id, o.status));
-        knownOrderStatusesRef.current = newStatusesMap;
-      }
+        if (Array.isArray(data.recentOrders)) {
+          const newStatusesMap = new Map<string, string>();
+          data.recentOrders.forEach((o: any) => newStatusesMap.set(o.id, o.status));
+          knownOrderStatusesRef.current = newStatusesMap;
+        }
 
-      if (merchRes.success && Array.isArray(merchRes.merchants)) {
-        const merchants = merchRes.merchants;
-        const pendingMerchants = merchants.filter((m: any) => m.merchantStatus === 'pending');
-        setPendingMerchantsCount(pendingMerchants.length);
-
-        // 3. NEW MERCHANT REGISTERED AWAITING APPROVAL
-        if (!isFirstAlertsLoadRef.current) {
-          pendingMerchants.forEach((m: any) => {
+        // 3. Check for new pending merchants
+        if (!isFirstAlertsLoadRef.current && Array.isArray(data.recentPendingMerchants)) {
+          data.recentPendingMerchants.forEach((m: any) => {
             if (!knownPendingMerchantIdsRef.current.has(m.id)) {
               playNotificationSound('merchant');
               sendSystemNotification({
@@ -228,33 +192,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           });
         }
 
-        const set = new Set<string>();
-        pendingMerchants.forEach((m: any) => set.add(m.id));
-        knownPendingMerchantIdsRef.current = set;
-      }
+        if (Array.isArray(data.recentPendingMerchants)) {
+          const set = new Set<string>();
+          data.recentPendingMerchants.forEach((m: any) => set.add(m.id));
+          knownPendingMerchantIdsRef.current = set;
+        }
 
-      if (prodRes.success && Array.isArray(prodRes.products)) {
-        const low = prodRes.products.filter((p: any) => p.stock <= 5);
-        setLowStockCount(low.length);
-      }
-
-      if (driverRes.success && Array.isArray(driverRes.drivers)) {
-        const drivers = driverRes.drivers;
-        const withCustody = drivers.filter(
-          (d: any) => (Number(d.currentCashInHand) || Number(d.currentCustodyAmount) || 0) > 0
-        );
-        setDriversCustodyCount(withCustody.length);
-        const total = withCustody.reduce(
-          (sum: number, d: any) => sum + (Number(d.currentCashInHand) || Number(d.currentCustodyAmount) || 0),
-          0
-        );
-        setTotalCustodyAmount(total);
-
-        // Check for newly collected cash in driver's hand
-        if (!isFirstAlertsLoadRef.current) {
-          drivers.forEach((driver: any) => {
+        // 4. Check for newly collected cash in driver's hand
+        if (!isFirstAlertsLoadRef.current && Array.isArray(data.driverCashList)) {
+          data.driverCashList.forEach((driver: any) => {
             const prevCash = knownDriverCashMapRef.current.get(driver.id);
-            const currentCash = Number(driver.currentCashInHand || driver.currentCustodyAmount || 0);
+            const currentCash = Number(driver.cashInHand || 0);
 
             if (prevCash !== undefined && currentCash > prevCash) {
               const diff = currentCash - prevCash;
@@ -269,18 +217,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           });
         }
 
-        const newCashMap = new Map<string, number>();
-        drivers.forEach((d: any) =>
-          newCashMap.set(d.id, Number(d.currentCashInHand || d.currentCustodyAmount || 0))
-        );
-        knownDriverCashMapRef.current = newCashMap;
-      }
+        if (Array.isArray(data.driverCashList)) {
+          const newCashMap = new Map<string, number>();
+          data.driverCashList.forEach((d: any) =>
+            newCashMap.set(d.id, Number(d.cashInHand || 0))
+          );
+          knownDriverCashMapRef.current = newCashMap;
+        }
 
-      if (isFirstAlertsLoadRef.current) {
-        isFirstAlertsLoadRef.current = false;
+        if (isFirstAlertsLoadRef.current) {
+          isFirstAlertsLoadRef.current = false;
+        }
       }
     } catch (e) {
       console.error('Error in fetchLiveAlerts:', e);
+    } finally {
+      isFetchingAlertsRef.current = false;
     }
   }, []);
 
@@ -330,7 +282,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       const interval = setInterval(() => {
         fetchLiveAlerts();
-      }, 10000);
+      }, 20000);
 
       const handleFocus = () => fetchLiveAlerts();
       window.addEventListener('focus', handleFocus);
@@ -340,7 +292,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         window.removeEventListener('focus', handleFocus);
       };
     }
-  }, [isAuthenticated, fetchLiveAlerts, isLoginPage, pathname]);
+  }, [isAuthenticated, fetchLiveAlerts, isLoginPage]);
 
   const handleLogout = () => {
     localStorage.removeItem('etihad_admin_auth');

@@ -40,14 +40,18 @@ export default function Header() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Poll for user's complaints updates in realtime
+  // Poll for user's complaints updates in realtime (every 25s)
+  const userPhone = user?.phone;
   useEffect(() => {
-    if (!user?.phone) return;
+    if (!userPhone) return;
 
+    let isSubscribed = true;
     const checkComplaintsReplies = async () => {
       try {
-        const res = await fetch(`/api/complaints?phone=${encodeURIComponent(user.phone)}`);
+        const res = await fetch(`/api/complaints?phone=${encodeURIComponent(userPhone)}`);
         const data = await res.json();
+        if (!isSubscribed) return;
+
         if (data.success && Array.isArray(data.complaints)) {
           let unread = 0;
           let newReplyFound: { id: string; text: string } | null = null;
@@ -94,9 +98,12 @@ export default function Header() {
     };
 
     checkComplaintsReplies();
-    const interval = setInterval(checkComplaintsReplies, 7000);
-    return () => clearInterval(interval);
-  }, [user?.phone]);
+    const interval = setInterval(checkComplaintsReplies, 25000);
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [userPhone]);
 
   // Close dropdown on outside click
   useEffect(() => {

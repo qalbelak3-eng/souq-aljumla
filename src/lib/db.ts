@@ -164,7 +164,7 @@ function sanitizeDb(db: DatabaseSchema): DatabaseSchema {
   return db;
 }
 
-function ensureDbExists(): DatabaseSchema {
+export function ensureDbExists(): DatabaseSchema {
   if (inMemoryDb) {
     return inMemoryDb;
   }

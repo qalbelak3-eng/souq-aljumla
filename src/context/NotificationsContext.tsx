@@ -123,7 +123,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
-  }, [user?.accountType, user]);
+  }, [user?.accountType]);
 
   const subscribeUserToPush = async (reg?: ServiceWorkerRegistration, showToastAlert = true) => {
     try {
@@ -312,7 +312,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
       };
     }
-  }, [refreshNotifications]);
+  }, []);
 
   return (
     <NotificationsContext.Provider
