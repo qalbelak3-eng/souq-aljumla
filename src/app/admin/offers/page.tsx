@@ -1707,7 +1707,7 @@ export default function AdminOffersPage() {
                       <button
                         type="button"
                         onClick={() => handleToggleSuggestedProduct(id)}
-                        className="absolute top-1.5 left-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-xs cursor-pointer transition transform active:scale-90"
+                        className="absolute -top-1.5 -left-1.5 z-20 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-black shadow-md hover:scale-110 cursor-pointer transition transform active:scale-95 border-2 border-white"
                         title="إزالة من المقترحات"
                       >
                         ✕
