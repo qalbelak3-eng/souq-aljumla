@@ -145,12 +145,11 @@ export default function Header() {
                   {user.businessName || user.name}
                 </span>
                 {user.accountType === 'market' ? (
-                  <span className="inline-flex items-center gap-1 bg-[#1b4332] text-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-full border border-emerald-500/40 shadow-xs">
-                    <Store className="w-3 h-3 text-emerald-300" />
-                    <span>ماركت ومحل 🏪</span>
+                  <span className="inline-flex items-center bg-[#1b4332] text-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-full border border-emerald-500/40 shadow-xs">
+                    <span>ماركت ومحل</span>
                   </span>
                 ) : (user.accountType === 'wholesale' || user.accountType === 'merchant') ? (
-                  <MerchantTierBadge tier={user.merchantTier || 'bronze'} size="sm" />
+                  <MerchantTierBadge tier={user.merchantTier || 'bronze'} size="sm" showIcon={false} />
                 ) : null}
               </Link>
             )}

@@ -29,7 +29,7 @@ export default function MerchantTierBadge({
         title="حساب تاجر ذهبي VIP - أعلى فئة تخفيضات"
       >
         {showIcon && <Crown className={size === 'lg' ? 'w-4 h-4 text-amber-950' : 'w-3 h-3 text-amber-950'} />}
-        <span>تاجر ذهبي (VIP) 👑</span>
+        <span>تاجر ذهبي (VIP)</span>
       </span>
     );
   }
@@ -48,7 +48,7 @@ export default function MerchantTierBadge({
         title="حساب تاجر فضي - أسعار خاصة"
       >
         {showIcon && <Star className={size === 'lg' ? 'w-4 h-4 text-slate-700 fill-slate-700' : 'w-3 h-3 text-slate-700 fill-slate-700'} />}
-        <span>تاجر فضي (خاص) ⭐</span>
+        <span>تاجر فضي (خاص)</span>
       </span>
     );
   }
@@ -67,7 +67,7 @@ export default function MerchantTierBadge({
       title="حساب تاجر برونزي - أسعار جملة"
     >
       {showIcon && <Award className={size === 'lg' ? 'w-4 h-4 text-amber-200' : 'w-3 h-3 text-amber-200'} />}
-      <span>تاجر برونزي (جملة) 🥉</span>
+      <span>تاجر برونزي (جملة)</span>
     </span>
   );
 }
