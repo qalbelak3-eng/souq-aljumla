@@ -38,6 +38,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Order, SavedAddress, UserComplaint } from '@/types';
 import MerchantTierBadge from '@/components/MerchantTierBadge';
 import MerchantStatsCard from '@/components/MerchantStatsCard';
+import WalletStatsCard from '@/components/WalletStatsCard';
 import { getUserCashbackRate } from '@/lib/pricing';
 
 const PRESET_AVATARS = [
@@ -570,8 +571,11 @@ function ProfileContent() {
         </div>
       </div>
 
-      {/* 2. EXECUTIVE DASHBOARD: محفظة الأرباح والحساب + نشاط وحالة الطلبيات */}
-      <MerchantStatsCard />
+      {/* 2. EXECUTIVE DASHBOARD: الشريط البنفسجي (الأرباح والمتبقي) + نشاط وحالة الطلبيات */}
+      <div className="space-y-4">
+        <WalletStatsCard />
+        <MerchantStatsCard />
+      </div>
 
       {/* 3. JAMLATY STYLE NAVIGATION TABS BAR (Distinct Clickable Buttons) */}
       <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5 bg-slate-100/90 p-2 sm:p-2.5 rounded-2xl border border-slate-200/90 shadow-sm">
