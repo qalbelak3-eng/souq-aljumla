@@ -54,7 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     name: 'المدير العام',
     username: 'admin',
     role: 'admin',
-    jobTitle: 'مدير النظام الرئيسي 👑',
+    jobTitle: 'كامل الصلاحيات',
     permissions: ['*'],
   });
   
@@ -248,7 +248,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         name: 'المدير العام',
         username: 'admin',
         role: 'admin' as const,
-        jobTitle: 'مدير النظام الرئيسي 👑',
+        jobTitle: 'كامل الصلاحيات',
         permissions: ['*'],
         token: 'auth_master_' + Date.now(),
         loggedAt: new Date().toISOString(),
@@ -404,16 +404,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <EtihadLogo size="sm" />
           
           {/* Logged in Admin / Staff Badge */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-2xl">
-            <div className="w-6 h-6 rounded-xl bg-purple-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 px-3 py-1.5 rounded-2xl shadow-2xs">
+            <div className={`w-7 h-7 rounded-xl ${isMasterAdmin ? 'bg-purple-600' : 'bg-blue-600'} text-white flex items-center justify-center text-xs font-black shadow-2xs shrink-0`}>
               {isMasterAdmin ? '👑' : '👤'}
             </div>
-            <div className="text-right">
-              <span className="font-black text-slate-900 text-xs block leading-tight">
-                {currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}
-              </span>
-              <span className="text-[10px] text-purple-700 font-bold block">
-                {currentAdmin?.jobTitle || (isMasterAdmin ? 'مدير النظام الرئيسي' : 'موظف النظام')}
+            <div className="text-right leading-tight">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-slate-900 text-xs">
+                  {currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}
+                </span>
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                  isMasterAdmin 
+                    ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                    : 'bg-blue-100 text-blue-800 border border-blue-200'
+                }`}>
+                  {isMasterAdmin ? 'إدارة عامة' : 'موظف'}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
+                {currentAdmin?.jobTitle || (isMasterAdmin ? 'كامل الصلاحيات' : 'صلاحيات محددة')}
               </span>
             </div>
           </div>
