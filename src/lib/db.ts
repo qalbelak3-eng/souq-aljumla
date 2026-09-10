@@ -1853,6 +1853,7 @@ export function addPayment(paymentData: {
   paymentMethod: 'cash' | 'zaincash' | 'qicard' | 'bank_transfer' | 'other';
   notes?: string;
   receivedBy?: string;
+  voucherType?: 'receipt' | 'disbursement';
   operatorName?: string;
   operatorUsername?: string;
 }): PaymentRecord {
@@ -1860,12 +1861,15 @@ export function addPayment(paymentData: {
   if (!db.payments) db.payments = [];
   
   const now = new Date();
+  const vType = paymentData.voucherType || 'receipt';
+  const prefix = vType === 'disbursement' ? 'DSB' : 'REC';
+  
   const maxPaySeq = (db.payments || []).reduce((max, p) => {
     const num = parseInt(p.receiptNumber?.replace(/\D/g, '') || '0', 10);
     return num > max ? num : max;
   }, 1000);
   const nextPaySeq = maxPaySeq + 1;
-  const receiptNumber = `REC-${nextPaySeq}`;
+  const receiptNumber = `${prefix}-${nextPaySeq}`;
 
   const newPayment: PaymentRecord = {
     id: `pay-${Date.now()}`,
@@ -1876,6 +1880,7 @@ export function addPayment(paymentData: {
     paymentMethod: paymentData.paymentMethod || 'cash',
     notes: paymentData.notes?.trim() || '',
     receivedBy: paymentData.receivedBy || paymentData.operatorName || 'الإدارة',
+    voucherType: vType,
     createdAt: now.toISOString(),
   };
 
@@ -1883,11 +1888,12 @@ export function addPayment(paymentData: {
   saveDb(db);
 
   // Automatically log to Audit Trail
+  const isDisb = vType === 'disbursement';
   logAuditEvent({
-    actionType: 'payment_created',
-    actionLabel: 'إصدار سند قبض نقدي 🧾',
+    actionType: isDisb ? 'disbursement_created' : 'payment_created',
+    actionLabel: isDisb ? `إصدار سند صرف نقدي 💳 (#${receiptNumber})` : `إصدار سند قبض نقدي 💵 (#${receiptNumber})`,
     category: 'accounting',
-    categoryLabel: 'المحاسبة وسندات القبض',
+    categoryLabel: isDisb ? 'المحاسبة وسندات الصرف' : 'المحاسبة وسندات القبض',
     operator: {
       name: paymentData.operatorName || paymentData.receivedBy || 'المحاسب',
       username: paymentData.operatorUsername || 'accountant',
@@ -1903,8 +1909,10 @@ export function addPayment(paymentData: {
       amount: newPayment.amount,
       fundType: newPayment.paymentMethod === 'cash' ? 'cash_181' : 'bank_182',
     },
-    details: `قام المحاسب بإصدار سند قبض نقدي جديد برقم (${receiptNumber}) بمبلغ ${newPayment.amount.toLocaleString()} د.ع لحساب العميل: ${newPayment.customerName} (${newPayment.customerPhone})`,
-    severity: 'info',
+    details: isDisb
+      ? `قام المحاسب بإصدار سند صرف مالي برقم (${receiptNumber}) بمبلغ ${newPayment.amount.toLocaleString()} د.ع لحساب: ${newPayment.customerName} (${newPayment.customerPhone})`
+      : `قام المحاسب بإصدار سند قبض نقدي برقم (${receiptNumber}) بمبلغ ${newPayment.amount.toLocaleString()} د.ع لحساب: ${newPayment.customerName} (${newPayment.customerPhone})`,
+    severity: isDisb ? 'warning' : 'info',
   });
 
   return newPayment;
@@ -2461,14 +2469,15 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     });
   });
 
-  // Payments / Receipts
+  // Payments / Receipts / Disbursements
   payments.forEach(p => {
+    const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
     rawTxList.push({
       date: p.createdAt,
       type: 'payment',
-      referenceNumber: formatShortRef(p.receiptNumber, 'REC'),
+      referenceNumber: p.receiptNumber || formatShortRef(p.id, isDisb ? 'DSB' : 'REC'),
       referenceId: p.id,
-      description: 'سند قبض / دفعة',
+      description: isDisb ? 'سند صرف / دفع' : 'سند قبض / دفعة',
       debit: 0,
       credit: p.amount,
       paymentMethod: p.paymentMethod,
@@ -2491,6 +2500,8 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     totalPaid += tx.credit;
     currentBalance += (tx.debit - tx.credit);
 
+    const isDisb = tx.referenceNumber?.startsWith('DSB') || tx.description?.includes('صرف');
+
     return {
       id: `tx-${idx + 1}-${tx.referenceNumber}`,
       date: tx.date,
@@ -2499,7 +2510,7 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
         tx.type === 'invoice'
           ? 'فاتورة مبيعات 📦'
           : tx.type === 'payment'
-          ? 'سند قبض / تسديد 💵'
+          ? (isDisb ? 'سند صرف / تسديد 💳' : 'سند قبض / استلام 💵')
           : 'رصيد افتتاحي ⚖️',
       referenceNumber: tx.referenceNumber,
       referenceId: tx.referenceId,

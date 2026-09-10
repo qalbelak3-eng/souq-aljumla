@@ -18,11 +18,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { customerPhone, customerName, amount, paymentMethod, notes, receivedBy, operatorName, operatorUsername } = body;
+    const { customerPhone, customerName, amount, paymentMethod, notes, receivedBy, operatorName, operatorUsername, voucherType } = body;
 
     if (!customerPhone || !customerName || !amount) {
       return NextResponse.json(
-        { success: false, error: 'يرجى إدخال رقم هاتف الزبون والاسم ومبلغ الدفعة المسددة' },
+        { success: false, error: 'يرجى إدخال رقم هاتف الحساب والاسم ومبلغ السند' },
         { status: 400 }
       );
     }
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const isDisb = voucherType === 'disbursement';
     const payment = addPayment({
       customerPhone,
       customerName,
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       paymentMethod: paymentMethod || 'cash',
       notes,
       receivedBy: receivedBy || operatorName || 'كادر المحاسبة',
+      voucherType: isDisb ? 'disbursement' : 'receipt',
       operatorName,
       operatorUsername,
     });
@@ -50,7 +52,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `تم تسجيل سند قبض بمبلغ ${numAmount.toLocaleString()} د.ع بنجاح!`,
+      message: isDisb
+        ? `تم تسجيل سند صرف رقم #${payment.receiptNumber} بمبلغ ${numAmount.toLocaleString()} د.ع بنجاح!`
+        : `تم تسجيل سند قبض رقم #${payment.receiptNumber} بمبلغ ${numAmount.toLocaleString()} د.ع بنجاح!`,
       payment,
       statement: updatedStatement,
     }, { status: 201 });

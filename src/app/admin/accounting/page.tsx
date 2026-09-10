@@ -148,6 +148,7 @@ function AdminAccountingContent() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'receipt' | 'disbursement'>('receipt');
   const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
+  const [voucherFilterCategory, setVoucherFilterCategory] = useState<'all' | 'customer' | 'supplier' | 'employee_driver'>('all');
   const [paymentTarget, setPaymentTarget] = useState<{
     phone: string;
     name: string;
@@ -442,6 +443,7 @@ function AdminAccountingContent() {
     setPaymentMode(mode);
     setPaymentTarget(null);
     setVoucherSearchQuery('');
+    setVoucherFilterCategory('all');
     setPaymentAmount('');
     setPaymentNotes('');
     setPaymentSuccessMessage('');
@@ -455,6 +457,7 @@ function AdminAccountingContent() {
     setPaymentTarget({ phone, name, businessName, balance, category, city });
     setPaymentAmount(Math.abs(balance) > 0 ? String(Math.abs(balance)) : '');
     setVoucherSearchQuery('');
+    setVoucherFilterCategory('all');
     setPaymentNotes('');
     setPaymentSuccessMessage('');
     setIsPaymentModalOpen(true);
@@ -477,6 +480,7 @@ function AdminAccountingContent() {
           amount: Number(paymentAmount),
           paymentMethod,
           notes: paymentNotes,
+          voucherType: paymentMode,
           operatorName: currentOperator?.name || 'المحاسب',
           operatorUsername: currentOperator?.username || 'admin',
         }),
@@ -2131,7 +2135,7 @@ function AdminAccountingContent() {
             </div>
 
             {/* =========================================================================
-                VIEW 1: SMART ACCOUNT SEARCH (إذا لم يتم اختيار حساب بعد)
+                VIEW 1: SMART ACCOUNT SEARCH (بحث ذكي عن أي حساب مسجل بالنظام)
                 ========================================================================= */}
             {!paymentTarget ? (
               <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
@@ -2143,11 +2147,7 @@ function AdminAccountingContent() {
                     autoFocus
                     value={voucherSearchQuery}
                     onChange={(e) => setVoucherSearchQuery(e.target.value)}
-                    placeholder={
-                      paymentMode === 'receipt'
-                        ? '🔍 ابحث باسم الزبون، الماركت، المحل، أو الهاتف...'
-                        : '🔍 ابحث باسم الشركة، المجهز، المورد، أو الهاتف...'
-                    }
+                    placeholder="🔍 ابحث باسم الحساب، المتجر، الشركة، المجهز، أو الهاتف..."
                     className="w-full bg-slate-50 border border-slate-300 rounded-2xl py-2.5 pr-10 pl-8 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue focus:outline-none"
                   />
                   <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
@@ -2155,31 +2155,82 @@ function AdminAccountingContent() {
                     <button
                       type="button"
                       onClick={() => setVoucherSearchQuery('')}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
 
+                {/* Quick Category Filter Pills (الكل، زبائن، مجهزين، كادر) */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setVoucherFilterCategory('all')}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                      voucherFilterCategory === 'all'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    🌐 جميع الحسابات ({accounts.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVoucherFilterCategory('customer')}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                      voucherFilterCategory === 'customer'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    🛍️ زبائن وماركتات ({accounts.filter(a => a.category !== 'supplier' && a.category !== 'employee' && a.category !== 'driver').length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVoucherFilterCategory('supplier')}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                      voucherFilterCategory === 'supplier'
+                        ? 'bg-purple-700 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    🏭 مجهزين وشركات ({accounts.filter(a => a.category === 'supplier').length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVoucherFilterCategory('employee_driver')}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                      voucherFilterCategory === 'employee_driver'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    👥 كادر ومندوبين ({accounts.filter(a => a.category === 'employee' || a.category === 'driver').length})
+                  </button>
+                </div>
+
                 {/* Filtered List Header */}
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
-                  <span>
-                    {paymentMode === 'receipt' ? 'قائمة حسابات الزبائن والماركتات:' : 'قائمة حسابات الشركات والمجهزين:'}
-                  </span>
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1 border-t border-slate-100 pt-1.5">
+                  <span>نتائج الحسابات المطابقة:</span>
                   <span className="font-mono text-slate-400">
                     {(() => {
                       const matched = accounts.filter(acc => {
-                        const isSup = acc.category === 'supplier';
-                        if (paymentMode === 'receipt' && isSup) return false;
-                        if (paymentMode === 'disbursement' && !isSup) return false;
+                        if (voucherFilterCategory === 'customer' && (acc.category === 'supplier' || acc.category === 'employee' || acc.category === 'driver')) return false;
+                        if (voucherFilterCategory === 'supplier' && acc.category !== 'supplier') return false;
+                        if (voucherFilterCategory === 'employee_driver' && acc.category !== 'employee' && acc.category !== 'driver') return false;
+
                         if (!voucherSearchQuery.trim()) return true;
                         const q = voucherSearchQuery.toLowerCase().trim();
                         return (
                           acc.name.toLowerCase().includes(q) ||
                           acc.phone.includes(q) ||
                           (acc.businessName && acc.businessName.toLowerCase().includes(q)) ||
-                          (acc.city && acc.city.toLowerCase().includes(q))
+                          (acc.city && acc.city.toLowerCase().includes(q)) ||
+                          (acc.accountType && acc.accountType.toLowerCase().includes(q))
                         );
                       });
                       return `${matched.length} حساب`;
@@ -2192,16 +2243,18 @@ function AdminAccountingContent() {
                   {(() => {
                     const matchedAccounts = accounts
                       .filter(acc => {
-                        const isSup = acc.category === 'supplier';
-                        if (paymentMode === 'receipt' && isSup) return false;
-                        if (paymentMode === 'disbursement' && !isSup) return false;
+                        if (voucherFilterCategory === 'customer' && (acc.category === 'supplier' || acc.category === 'employee' || acc.category === 'driver')) return false;
+                        if (voucherFilterCategory === 'supplier' && acc.category !== 'supplier') return false;
+                        if (voucherFilterCategory === 'employee_driver' && acc.category !== 'employee' && acc.category !== 'driver') return false;
+
                         if (!voucherSearchQuery.trim()) return true;
                         const q = voucherSearchQuery.toLowerCase().trim();
                         return (
                           acc.name.toLowerCase().includes(q) ||
                           acc.phone.includes(q) ||
                           (acc.businessName && acc.businessName.toLowerCase().includes(q)) ||
-                          (acc.city && acc.city.toLowerCase().includes(q))
+                          (acc.city && acc.city.toLowerCase().includes(q)) ||
+                          (acc.accountType && acc.accountType.toLowerCase().includes(q))
                         );
                       })
                       .sort((a, b) => {
@@ -2216,13 +2269,18 @@ function AdminAccountingContent() {
                           </div>
                           <p className="font-bold text-slate-600 text-xs">لا يوجد حساب يطابق البحث</p>
                           <p className="text-[10px] text-slate-400">
-                            جرب كتابة رقم الهاتف أو اسم المتجر أو اختر الفئة الصحيحة
+                            جرب كتابة رقم الهاتف أو اسم المتجر أو اختر الفئة المناسبة
                           </p>
                         </div>
                       );
                     }
 
                     return matchedAccounts.map((acc) => {
+                      const isSupplier = acc.category === 'supplier';
+                      const isEmployee = acc.category === 'employee';
+                      const isDriver = acc.category === 'driver';
+                      const isWholesale = acc.pricingTier === 'wholesale';
+                      const isMarket = acc.pricingTier === 'market' || acc.accountType?.includes('ماركت');
                       const isOwed = acc.remainingBalance > 0;
 
                       return (
@@ -2243,12 +2301,29 @@ function AdminAccountingContent() {
                           }}
                           className="bg-white hover:bg-slate-50 border border-slate-200 hover:border-brand-blue/50 p-3 rounded-2xl transition cursor-pointer shadow-2xs flex items-center justify-between gap-3 group active:scale-[0.99]"
                         >
-                          <div className="min-w-0 space-y-0.5">
-                            {/* Business & Personal Name */}
+                          <div className="min-w-0 space-y-1">
+                            {/* Category Tag + Business Name */}
                             <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-md ${
+                                isSupplier
+                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                  : isWholesale
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                  : isMarket
+                                  ? 'bg-sky-100 text-sky-900 border border-sky-200'
+                                  : isEmployee
+                                  ? 'bg-orange-100 text-orange-900 border border-orange-200'
+                                  : isDriver
+                                  ? 'bg-teal-100 text-teal-900 border border-teal-200'
+                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}>
+                                {isSupplier ? 'مجهز / مورد 🏭' : isWholesale ? 'تاجر جملة 👑' : isMarket ? 'ماركت 🏪' : isEmployee ? 'موظف 💼' : isDriver ? 'مندوب 🚚' : 'زبون عادي 👤'}
+                              </span>
+
                               <span className="font-black text-slate-900 text-xs group-hover:text-brand-blue transition">
                                 {acc.businessName || acc.name}
                               </span>
+
                               {acc.businessName && acc.name && acc.name !== acc.businessName && (
                                 <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.2 rounded-md">
                                   {acc.name}
@@ -2265,10 +2340,14 @@ function AdminAccountingContent() {
 
                           {/* Balance & Select Badge */}
                           <div className="text-left shrink-0 space-y-1">
-                            {paymentMode === 'receipt' ? (
+                            {isSupplier ? (
                               isOwed ? (
+                                <span className="inline-block bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  دائن: {acc.remainingBalance.toLocaleString()} د.ع
+                                </span>
+                              ) : acc.remainingBalance < 0 ? (
                                 <span className="inline-block bg-red-50 text-[#ef533a] border border-red-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
-                                  مطلوب: {acc.remainingBalance.toLocaleString()} د.ع
+                                  مطلوب: {Math.abs(acc.remainingBalance).toLocaleString()} د.ع
                                 </span>
                               ) : (
                                 <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg whitespace-nowrap">
@@ -2277,8 +2356,12 @@ function AdminAccountingContent() {
                               )
                             ) : (
                               isOwed ? (
+                                <span className="inline-block bg-red-50 text-[#ef533a] border border-red-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  مطلوب: {acc.remainingBalance.toLocaleString()} د.ع
+                                </span>
+                              ) : acc.remainingBalance < 0 ? (
                                 <span className="inline-block bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
-                                  دائن: {acc.remainingBalance.toLocaleString()} د.ع
+                                  دائن: {Math.abs(acc.remainingBalance).toLocaleString()} د.ع
                                 </span>
                               ) : (
                                 <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg whitespace-nowrap">
@@ -2305,11 +2388,34 @@ function AdminAccountingContent() {
                  ========================================================================= */
               <div className="space-y-4 flex-1 overflow-y-auto pr-1">
                 
+                {/* Voucher Number & Info Header Banner */}
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10.5px] font-bold text-slate-500">نوع السند:</span>
+                    <span className={`px-2 py-0.5 rounded-md font-bold text-xs ${
+                      paymentMode === 'disbursement' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {paymentMode === 'disbursement' ? '💳 سند صرف مالي' : '💵 سند قبض نقدي'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 font-mono text-xs font-black text-slate-900">
+                    <span className="text-slate-400 font-sans text-[10px] font-bold">تسلسل رقم السند:</span>
+                    <span className={`px-2 py-0.5 rounded-lg border font-mono font-black ${
+                      paymentMode === 'disbursement'
+                        ? 'bg-purple-50 text-purple-900 border-purple-200'
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                    }`}>
+                      {paymentMode === 'disbursement' ? '#DSB-Auto' : '#REC-Auto'}
+                    </span>
+                  </div>
+                </div>
+
                 {/* Selected Account Info Strip + Change Button */}
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/90 flex items-center justify-between gap-3">
                   <div className="space-y-0.5 min-w-0">
                     <span className="text-[10px] text-slate-400 font-bold block">
-                      {paymentMode === 'disbursement' ? 'المجهز / الشركة المحددة:' : 'الزبون / المتجر المحدد:'}
+                      {paymentTarget.category === 'supplier' ? 'المجهز / الشركة المحددة:' : 'الزبون / الحساب المحدد:'}
                     </span>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-black text-slate-900 text-xs">
@@ -2354,9 +2460,9 @@ function AdminAccountingContent() {
                         {/* 1. المبلغ السابق */}
                         <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-0.5">
                           <span className="text-[10px] text-slate-500 font-bold block">
-                            {paymentMode === 'disbursement' ? 'المستحق السابق (دائن علينا):' : 'الرصيد السابق (مطلوب لنا):'}
+                            {paymentMode === 'disbursement' || paymentTarget.category === 'supplier' ? 'المستحق السابق (دائن علينا):' : 'الرصيد السابق (مطلوب لنا):'}
                           </span>
-                          <div className={`font-mono font-black text-sm ${paymentMode === 'disbursement' ? 'text-purple-800' : 'text-[#ef533a]'}`}>
+                          <div className={`font-mono font-black text-sm ${paymentMode === 'disbursement' || paymentTarget.category === 'supplier' ? 'text-purple-800' : 'text-[#ef533a]'}`}>
                             {prevBalance.toLocaleString()} <span className="text-[10px] font-sans font-bold">د.ع</span>
                           </div>
                         </div>

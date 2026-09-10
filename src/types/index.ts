@@ -484,6 +484,7 @@ export interface PaymentRecord {
   paymentMethod: 'cash' | 'zaincash' | 'qicard' | 'bank_transfer' | 'other';
   notes?: string;
   receivedBy?: string;
+  voucherType?: 'receipt' | 'disbursement';
   createdAt: string;
 }
 
@@ -721,6 +722,7 @@ export type AuditActionType =
   | 'payment_created'
   | 'payment_updated'
   | 'payment_deleted'
+  | 'disbursement_created'
   | 'driver_custody_settled'
   | 'purchase_created'
   | 'purchase_deleted'
