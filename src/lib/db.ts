@@ -1709,11 +1709,14 @@ export function createPurchaseInvoice(data: {
   companyId?: string;
   supplierPhone?: string;
   date?: string;
-  paymentMethod: 'cash' | 'credit';
+  paymentMethod: 'cash' | 'credit' | 'partial';
+  paidAmount?: number;
+  remainingAmount?: number;
   notes?: string;
   items: Array<{
     productId: string;
     productName: string;
+    productImage?: string;
     company?: string;
     unit: string;
     quantity: number;
@@ -1732,10 +1735,12 @@ export function createPurchaseInvoice(data: {
     const totalPiecesInCarton = boxes * piecesPerBox;
     const qty = Number(item.quantity) || 1;
     const cost = Number(item.costPrice) || 0;
+    const img = item.productImage || prod?.images?.[0] || '';
 
     return {
       productId: item.productId,
       productName: item.productName,
+      productImage: img,
       company: item.company || prod?.company || data.companyName,
       unit: item.unit || 'كرتون',
       quantity: qty,
@@ -1750,6 +1755,9 @@ export function createPurchaseInvoice(data: {
   });
 
   const totalAmount = invoiceItems.reduce((sum, it) => sum + it.total, 0);
+  const paid = data.paymentMethod === 'cash' ? totalAmount : data.paymentMethod === 'credit' ? 0 : Number(data.paidAmount) || 0;
+  const remaining = data.paymentMethod === 'cash' ? 0 : data.paymentMethod === 'credit' ? totalAmount : Math.max(0, totalAmount - paid);
+
   const now = new Date();
   const invoiceNum = `PUR-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}-${(db.purchaseInvoices.length + 1).toString().padStart(3, '0')}`;
 
@@ -1763,6 +1771,8 @@ export function createPurchaseInvoice(data: {
     items: invoiceItems,
     totalAmount,
     paymentMethod: data.paymentMethod || 'cash',
+    paidAmount: paid,
+    remainingAmount: remaining,
     notes: data.notes || '',
     createdAt: now.toISOString(),
   };

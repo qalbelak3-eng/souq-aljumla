@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { companyName, companyId, supplierPhone, date, paymentMethod, notes, items } = body;
+    const { companyName, companyId, supplierPhone, date, paymentMethod, paidAmount, remainingAmount, notes, items } = body;
 
     if (!companyName || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
       supplierPhone,
       date,
       paymentMethod: paymentMethod || 'cash',
+      paidAmount: paidAmount ? Number(paidAmount) : undefined,
+      remainingAmount: remainingAmount ? Number(remainingAmount) : undefined,
       notes,
       items,
     });

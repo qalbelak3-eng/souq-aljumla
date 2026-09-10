@@ -585,6 +585,7 @@ export interface ProfitReportSummary {
 export interface PurchaseInvoiceItem {
   productId: string;
   productName: string;
+  productImage?: string;
   company: string;
   unit: string;
   quantity: number; // عدد الكراتين المشتراة (مثال: 700 كرتون)
@@ -606,7 +607,9 @@ export interface PurchaseInvoice {
   date: string;
   items: PurchaseInvoiceItem[];
   totalAmount: number; // إجمالي مبلغ فاتورة الشراء
-  paymentMethod: 'cash' | 'credit'; // نقداً أو آجل
+  paymentMethod: 'cash' | 'credit' | 'partial'; // نقداً (واصل) أو آجل (دين) أو دفع جزئي
+  paidAmount?: number; // المبلغ المدفوع / الواصل نقد
+  remainingAmount?: number; // المبلغ المتبقي كدين
   notes?: string;
   createdAt: string;
 }
