@@ -19,12 +19,23 @@ import {
   AlertTriangle,
   Layers,
   ArrowRight,
-  TrendingDown
+  TrendingDown,
+  UserCheck,
+  ExternalLink
 } from 'lucide-react';
-import { PurchaseInvoice, PurchaseInvoiceItem, Company, Product } from '@/types';
+import { PurchaseInvoice, PurchaseInvoiceItem, Company, Product, CustomerAccountSummary } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 import EtihadLogo from '@/components/EtihadLogo';
+
+interface SupplierAccount {
+  name: string;
+  businessName?: string;
+  phone: string;
+  city?: string;
+  address?: string;
+  pricingTier?: string;
+}
 
 export default function AdminPurchasesPage() {
   const toast = useToast();
@@ -41,6 +52,17 @@ export default function AdminPurchasesPage() {
     }
     return [];
   });
+
+  const [suppliers, setSuppliers] = useState<SupplierAccount[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_admin_suppliers_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
+
   const [companies, setCompanies] = useState<Company[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -50,6 +72,7 @@ export default function AdminPurchasesPage() {
     }
     return [];
   });
+
   const [products, setProducts] = useState<Product[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -59,8 +82,9 @@ export default function AdminPurchasesPage() {
     }
     return [];
   });
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCompany, setSelectedCompany] = useState('الكل');
+  const [selectedSupplier, setSelectedSupplier] = useState('الكل');
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -74,7 +98,8 @@ export default function AdminPurchasesPage() {
 
   // New Invoice Modal
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [invCompany, setInvCompany] = useState('');
+  const [invSupplierName, setInvSupplierName] = useState('');
+  const [invSupplierPhone, setInvSupplierPhone] = useState('');
   const [invDate, setInvDate] = useState(new Date().toISOString().split('T')[0]);
   const [invPaymentMethod, setInvPaymentMethod] = useState<'cash' | 'credit'>('cash');
   const [invNotes, setInvNotes] = useState('');
@@ -88,7 +113,7 @@ export default function AdminPurchasesPage() {
     boxesPerCarton: number;
     itemsPerBox: number;
   }>>([
-    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 1, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
+    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
   ]);
 
   // View Invoice Modal
@@ -98,28 +123,45 @@ export default function AdminPurchasesPage() {
     if (invoices.length === 0) setIsLoading(true);
     if (invoices.length > 0) setIsRefreshing(true);
     try {
-      const [invRes, compRes, prodRes] = await Promise.all([
-        fetch('/api/purchases', { cache: 'no-store' }).then((r) => r.json()),
-        fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
-        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+      const [invRes, compRes, prodRes, accRes] = await Promise.all([
+        fetch('/api/purchases', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/accounting/accounts', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false })),
       ]);
 
-      if (invRes.success) {
+      if (invRes && invRes.success) {
         setInvoices(invRes.invoices || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_purchases_cache', JSON.stringify(invRes.invoices || []));
         }
       }
-      if (compRes.success) {
+      if (compRes && compRes.success) {
         setCompanies(compRes.companies || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
         }
       }
-      if (prodRes.success) {
+      if (prodRes && prodRes.success) {
         setProducts(prodRes.products || []);
         if (typeof window !== 'undefined') {
           localStorage.setItem('souq_admin_products_cache', JSON.stringify(prodRes.products || []));
+        }
+      }
+      if (accRes && accRes.success && Array.isArray(accRes.accounts)) {
+        const supAccounts: SupplierAccount[] = accRes.accounts
+          .filter((a: CustomerAccountSummary) => a.category === 'supplier')
+          .map((a: CustomerAccountSummary) => ({
+            name: a.name,
+            businessName: a.businessName,
+            phone: a.phone,
+            city: a.city,
+            address: a.address,
+            pricingTier: a.pricingTier,
+          }));
+        setSuppliers(supAccounts);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('souq_admin_suppliers_cache', JSON.stringify(supAccounts));
         }
       }
     } catch (e) {
@@ -135,39 +177,22 @@ export default function AdminPurchasesPage() {
   }, []);
 
   const openNewModal = () => {
-    const firstComp = companies[0]?.name || 'شركة التونسا (Altunsa)';
-    setInvCompany(firstComp);
+    const firstSup = suppliers[0]?.name || (invoices[0]?.companyName) || '';
+    const supPhone = suppliers.find(s => s.name === firstSup)?.phone || '';
+    setInvSupplierName(firstSup);
+    setInvSupplierPhone(supPhone);
     setInvDate(new Date().toISOString().split('T')[0]);
     setInvPaymentMethod('cash');
     setInvNotes('');
     
-    // Find products for first company
-    const firstProd = products.find(p => p.company === firstComp) || products[0];
-    setInvItems([
-      {
-        productId: firstProd?.id || '',
-        productName: firstProd?.name || '',
-        company: firstComp,
-        unit: firstProd?.wholesaleUnit || 'كرتون',
-        quantity: 10,
-        costPrice: firstProd?.costPrice || 7000,
-        boxesPerCarton: firstProd?.boxesPerCarton || 6,
-        itemsPerBox: firstProd?.itemsPerBox || 24,
-      }
-    ]);
-    setIsNewModalOpen(true);
-  };
-
-  const handleCompanyChangeInModal = (compName: string) => {
-    setInvCompany(compName);
-    const compProducts = products.filter(p => p.company === compName);
-    const firstProd = compProducts[0];
+    // First product in system or empty item
+    const firstProd = products[0];
     if (firstProd) {
       setInvItems([
         {
           productId: firstProd.id,
           productName: firstProd.name,
-          company: compName,
+          company: firstProd.company || '',
           unit: firstProd.wholesaleUnit || 'كرتون',
           quantity: 10,
           costPrice: firstProd.costPrice || 7000,
@@ -180,31 +205,38 @@ export default function AdminPurchasesPage() {
         {
           productId: '',
           productName: '',
-          company: compName,
+          company: '',
           unit: 'كرتون',
           quantity: 10,
-          costPrice: 7000,
-          boxesPerCarton: 6,
-          itemsPerBox: 24,
+          costPrice: 0,
+          boxesPerCarton: 1,
+          itemsPerBox: 1,
         }
       ]);
+    }
+    setIsNewModalOpen(true);
+  };
+
+  const handleSupplierSelect = (supName: string) => {
+    setInvSupplierName(supName);
+    const sup = suppliers.find(s => s.name === supName);
+    if (sup) {
+      setInvSupplierPhone(sup.phone);
     }
   };
 
   const addItemRow = () => {
-    const compProducts = products.filter(p => p.company === invCompany);
-    const firstProd = compProducts[0];
     setInvItems(prev => [
       ...prev,
       {
-        productId: firstProd?.id || '',
-        productName: firstProd?.name || '',
-        company: invCompany,
-        unit: firstProd?.wholesaleUnit || 'كرتون',
+        productId: '',
+        productName: '',
+        company: '',
+        unit: 'كرتون',
         quantity: 10,
-        costPrice: firstProd?.costPrice || 7000,
-        boxesPerCarton: firstProd?.boxesPerCarton || 6,
-        itemsPerBox: firstProd?.itemsPerBox || 24,
+        costPrice: 0,
+        boxesPerCarton: 1,
+        itemsPerBox: 1,
       }
     ]);
   };
@@ -224,6 +256,7 @@ export default function AdminPurchasesPage() {
             ...next[index],
             productId: prod.id,
             productName: prod.name,
+            company: prod.company || '',
             unit: prod.wholesaleUnit || 'كرتون',
             costPrice: prod.costPrice || next[index].costPrice || 0,
             boxesPerCarton: prod.boxesPerCarton || 1,
@@ -235,7 +268,7 @@ export default function AdminPurchasesPage() {
             next.push({
               productId: '',
               productName: '',
-              company: invCompany,
+              company: '',
               unit: 'كرتون',
               quantity: 10,
               costPrice: 0,
@@ -261,7 +294,11 @@ export default function AdminPurchasesPage() {
   const handleSaveInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     const validItems = invItems.filter(it => it.productId && it.productId.trim() !== '');
-    if (!invCompany || validItems.length === 0) {
+    if (!invSupplierName || !invSupplierName.trim()) {
+      toast.error('يرجى تحديد أو إدخال الشركة المجهزة');
+      return;
+    }
+    if (validItems.length === 0) {
       toast.error('يرجى اختيار صنف واحد على الأقل في الفاتورة');
       return;
     }
@@ -271,7 +308,8 @@ export default function AdminPurchasesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          companyName: invCompany,
+          companyName: invSupplierName.trim(),
+          supplierPhone: invSupplierPhone,
           date: invDate,
           paymentMethod: invPaymentMethod,
           notes: invNotes,
@@ -282,13 +320,17 @@ export default function AdminPurchasesPage() {
       if (data.success && data.invoice) {
         setInvoices(prev => [data.invoice, ...prev]);
         setIsNewModalOpen(false);
+        toast.success('تم تسجيل فاتورة الشراء وتحديث المخزون بنجاح ✅');
         // Refresh products to show updated stock
         fetch('/api/products')
           .then(r => r.json())
           .then(d => d.success && setProducts(d.products || []));
+      } else {
+        toast.error(data.error || 'فشل حفظ الفاتورة');
       }
     } catch (e) {
       console.error(e);
+      toast.error('حدث خطأ أثناء حفظ الفاتورة');
     }
   };
 
@@ -321,6 +363,14 @@ export default function AdminPurchasesPage() {
   const totalItemsSupplied = invoices.reduce((sum, inv) => sum + inv.items.reduce((s, it) => s + it.quantity, 0), 0);
   const lowStockCount = products.filter(p => p.stock <= (p.minStockAlert ?? 15)).length;
 
+  // Build unique supplier list for filters (combining registered suppliers and invoice records)
+  const uniqueSuppliersList = Array.from(
+    new Set([
+      ...suppliers.map(s => s.name),
+      ...invoices.map(inv => inv.companyName).filter(Boolean)
+    ])
+  );
+
   const filteredInvoices = invoices.filter(inv => {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
@@ -329,7 +379,7 @@ export default function AdminPurchasesPage() {
       inv.items.some(it => it.productName.toLowerCase().includes(q));
 
     if (!matchesSearch) return false;
-    if (selectedCompany !== 'الكل' && inv.companyName !== selectedCompany) return false;
+    if (selectedSupplier !== 'الكل' && inv.companyName !== selectedSupplier) return false;
     return true;
   });
 
@@ -350,7 +400,7 @@ export default function AdminPurchasesPage() {
 
         <button
           onClick={openNewModal}
-          className="bg-brand-blue hover:bg-brand-blueDark text-white font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95"
+          className="bg-brand-blue hover:bg-brand-blueDark text-white font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>إنشاء فاتورة شراء وتوريد جديدة ⚡</span>
@@ -428,7 +478,7 @@ export default function AdminPurchasesPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث برقم الفاتورة، اسم الماركة، أو الصنف..."
+            placeholder="ابحث برقم الفاتورة، اسم المجهز، أو الصنف..."
             className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pr-9 pl-3 text-xs font-bold text-slate-900 focus:outline-none focus:border-brand-blue"
           />
           <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -436,28 +486,28 @@ export default function AdminPurchasesPage() {
 
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 scrollbar-none">
           <button
-            onClick={() => setSelectedCompany('الكل')}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap ${
-              selectedCompany === 'الكل'
+            onClick={() => setSelectedSupplier('الكل')}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap cursor-pointer ${
+              selectedSupplier === 'الكل'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            جميع الشركات ({invoices.length})
+            جميع المجهزين ({invoices.length})
           </button>
-          {companies.map(comp => {
-            const count = invoices.filter(inv => inv.companyName === comp.name).length;
+          {uniqueSuppliersList.map(supName => {
+            const count = invoices.filter(inv => inv.companyName === supName).length;
             return (
               <button
-                key={comp.id}
-                onClick={() => setSelectedCompany(comp.name)}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap ${
-                  selectedCompany === comp.name
-                    ? 'bg-brand-blue text-white shadow-xs'
+                key={supName}
+                onClick={() => setSelectedSupplier(supName)}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition whitespace-nowrap cursor-pointer ${
+                  selectedSupplier === supName
+                    ? 'bg-purple-700 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {comp.name} ({count})
+                🏭 {supName} ({count})
               </button>
             );
           })}
@@ -482,7 +532,7 @@ export default function AdminPurchasesPage() {
             <p className="text-xs text-slate-500">اضغط على زر إنشاء فاتورة شراء لتسجيل بضاعة جديدة وتحديث المخزون</p>
             <button
               onClick={openNewModal}
-              className="mt-2 bg-brand-blue text-white font-bold py-2 px-5 rounded-xl text-xs"
+              className="mt-2 bg-brand-blue text-white font-bold py-2 px-5 rounded-xl text-xs cursor-pointer hover:bg-brand-blueDark transition"
             >
               + إضافة أول فاتورة شراء
             </button>
@@ -493,10 +543,10 @@ export default function AdminPurchasesPage() {
               <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
                 <tr className="divide-x divide-x-reverse divide-slate-200">
                   <th className="py-3.5 px-4">رقم الفاتورة</th>
-                  <th className="py-3.5 px-4">الشركة المجهزة / الماركة</th>
+                  <th className="py-3.5 px-4">الشركة المجهزة / المورد</th>
                   <th className="py-3.5 px-4">تاريخ الفاتورة</th>
                   <th className="py-3.5 px-4 text-center">عدد الأصناف</th>
-                  <th className="py-3.5 px-4 text-center">طريقة الدفع</th>
+                  <th className="py-3.5 px-4 text-center">طريقة السداد</th>
                   <th className="py-3.5 px-4 text-left">المبلغ الإجمالي</th>
                   <th className="py-3.5 px-4 text-center">الإجراءات</th>
                 </tr>
@@ -508,7 +558,10 @@ export default function AdminPurchasesPage() {
                       <span className="font-mono font-black text-brand-blue text-xs">{inv.invoiceNumber}</span>
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="font-black text-slate-900">{inv.companyName}</div>
+                      <div className="font-black text-slate-900 flex items-center gap-1.5">
+                        <span className="text-purple-600 font-bold">🏭</span>
+                        <span>{inv.companyName}</span>
+                      </div>
                       {inv.notes && <div className="text-[10px] text-slate-400 truncate max-w-xs">{inv.notes}</div>}
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap text-slate-600 font-bold font-mono">
@@ -535,14 +588,14 @@ export default function AdminPurchasesPage() {
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => setSelectedInvoice(inv)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl border border-slate-200 transition"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl border border-slate-200 transition cursor-pointer"
                           title="معاينة وطباعة الفاتورة"
                         >
                           <Eye className="w-3.5 h-3.5 text-brand-blue" />
                         </button>
                         <button
-                          onClick={() => handleDeleteInvoice(inv.id)}
-                          className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition"
+                          onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNumber)}
+                          className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-xl border border-red-200 transition cursor-pointer"
                           title="حذف الفاتورة"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -560,16 +613,21 @@ export default function AdminPurchasesPage() {
       {/* CREATE NEW PURCHASE INVOICE MODAL */}
       {isNewModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 space-y-4 text-xs my-8">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full p-6 space-y-4 text-xs my-8">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Package className="w-5 h-5 text-brand-blue" />
-                <span>تسجيل فاتورة شراء وتوريد بضاعة جديدة 📦</span>
-              </h3>
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-brand-blue" />
+                  <span>تسجيل فاتورة شراء وتوريد بضاعة جديدة 📦</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 font-bold mt-0.5">
+                  اختر الشركة المجهزة من دليل الحسابات وأضف أي أصناف مسجلة في النظام
+                </p>
+              </div>
               <button
                 onClick={() => setIsNewModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -577,23 +635,59 @@ export default function AdminPurchasesPage() {
 
             <form onSubmit={handleSaveInvoice} className="space-y-4">
               
-              {/* Top Row: Company, Date, Payment Method */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              {/* Top Row: Supplier, Date, Payment Method */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-purple-50/40 p-4 rounded-2xl border border-purple-100">
                 
+                {/* Supplier Account Selector */}
                 <div className="space-y-1">
-                  <label className="font-black text-slate-800 block flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-brand-blue" />
-                    <span>الشركة المجهزة / الماركة *:</span>
-                  </label>
-                  <select
-                    value={invCompany}
-                    onChange={(e) => handleCompanyChangeInModal(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue"
-                  >
-                    {companies.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between">
+                    <label className="font-black text-slate-800 flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-purple-700" />
+                      <span>الشركة المجهزة / المورد *:</span>
+                    </label>
+                    <Link
+                      href="/admin/accounting?tab=add_account"
+                      target="_blank"
+                      className="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-0.5 hover:underline"
+                      title="فتح صفحة إضافة حساب مجهز جديد"
+                    >
+                      <span>+ حساب مجهز جديد</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
+
+                  {suppliers.length > 0 ? (
+                    <select
+                      value={invSupplierName}
+                      onChange={(e) => handleSupplierSelect(e.target.value)}
+                      required
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue"
+                    >
+                      <option value="" disabled>-- اختر الشركة المجهزة من دليل الحسابات --</option>
+                      {suppliers.map(s => {
+                        const displayName = s.businessName && s.businessName !== s.name ? `${s.name} (${s.businessName})` : s.name;
+                        return (
+                          <option key={s.phone || s.name} value={s.name}>
+                            🏭 {displayName} {s.city ? `• ${s.city}` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        required
+                        value={invSupplierName}
+                        onChange={(e) => setInvSupplierName(e.target.value)}
+                        placeholder="أدخل اسم الشركة المجهزة أو المورد..."
+                        className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue"
+                      />
+                      <div className="text-[10px] text-amber-700 font-bold">
+                        💡 يمكنك أيضاً <Link href="/admin/accounting?tab=add_account" target="_blank" className="underline font-black text-purple-800">إضافة حساب مجهز من دليل الحسابات</Link>.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -634,11 +728,11 @@ export default function AdminPurchasesPage() {
                     <span>قائمة السلع والأصناف المشتراة في الفاتورة:</span>
                   </label>
                   <span className="text-[10px] text-slate-400 font-bold">
-                    (يفتح سطر جديد تلقائياً بمجرد اختيار الصنف ⚡)
+                    (يمكن اختيار أي صنف مسجل بالنظام • يفتح سطر جديد تلقائياً ⚡)
                   </span>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-[42vh] overflow-y-auto pr-1">
                   {invItems.map((item, idx) => {
                     const totalCartons = Number(item.quantity) || 0;
                     const costPerCarton = Number(item.costPrice) || 0;
@@ -650,14 +744,12 @@ export default function AdminPurchasesPage() {
                         className="bg-slate-50/90 border border-slate-200 p-3 rounded-2xl space-y-2"
                       >
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                          {/* Product Selector */}
+                          {/* Product Selector (Searches across ALL products) */}
                           <div className="sm:col-span-6 space-y-0.5">
-                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف:</label>
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف (جميع الأصناف):</label>
                             <SearchableProductSelect
-                              companyProducts={products.filter(p => p.company === invCompany)}
                               allProducts={products}
                               selectedProductId={item.productId}
-                              companyName={invCompany}
                               onSelect={(prod) => {
                                 updateItemRow(idx, 'productId', prod.id);
                               }}
@@ -718,6 +810,17 @@ export default function AdminPurchasesPage() {
                     );
                   })}
                 </div>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={addItemRow}
+                    className="text-brand-blue hover:text-brand-blueDark font-bold text-xs flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100/80 px-3 py-1.5 rounded-xl border border-blue-200 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ إضافة سطر صنف جديد</span>
+                  </button>
+                </div>
               </div>
 
               {/* Total & Notes */}
@@ -746,13 +849,13 @@ export default function AdminPurchasesPage() {
                 <button
                   type="button"
                   onClick={() => setIsNewModalOpen(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition"
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-brand-blue hover:bg-brand-blueDark text-white font-black py-2.5 rounded-xl shadow-md transition"
+                  className="flex-1 bg-brand-blue hover:bg-brand-blueDark text-white font-black py-2.5 rounded-xl shadow-md transition cursor-pointer"
                 >
                   حفظ الفاتورة وتحديث المخزون 🚀
                 </button>
@@ -778,14 +881,14 @@ export default function AdminPurchasesPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="bg-brand-blue text-white font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 hover:bg-brand-blueDark shadow-xs transition"
+                  className="bg-brand-blue text-white font-bold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 hover:bg-brand-blueDark shadow-xs transition cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   <span>طباعة الفاتورة</span>
                 </button>
                 <button
                   onClick={() => setSelectedInvoice(null)}
-                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -813,8 +916,11 @@ export default function AdminPurchasesPage() {
               {/* Supplier Info */}
               <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold block">الشركة المجهزة / الماركة:</span>
-                  <span className="font-black text-slate-900 text-sm">{selectedInvoice.companyName}</span>
+                  <span className="text-[10px] text-slate-400 font-bold block">الشركة المجهزة / المورد:</span>
+                  <span className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                    <span className="text-purple-600">🏭</span>
+                    <span>{selectedInvoice.companyName}</span>
+                  </span>
                 </div>
                 {selectedInvoice.notes && (
                   <div className="text-left">
@@ -883,29 +989,24 @@ export default function AdminPurchasesPage() {
   );
 }
 
-// 🔍 Searchable Product Combobox Component for High-Volume Company Products
+// 🔍 Searchable Product Combobox Component for High-Volume Catalog Products
 function SearchableProductSelect({
-  companyProducts,
   allProducts,
   selectedProductId,
-  companyName,
   onSelect,
 }: {
-  companyProducts: Product[];
   allProducts: Product[];
   selectedProductId: string;
-  companyName: string;
   onSelect: (product: Product) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const wrapperRef = React.useRef<HTMLDivElement>(null);
 
-  const availableList = companyProducts.length > 0 ? companyProducts : allProducts;
   const selectedProduct = allProducts.find((p) => p.id === selectedProductId);
 
-  // Filter products by typed search term
-  const filteredList = availableList.filter((p) => {
+  // Filter products by typed search term across ALL products
+  const filteredList = allProducts.filter((p) => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase().trim();
     return (
@@ -938,6 +1039,11 @@ function SearchableProductSelect({
           {selectedProduct ? (
             <span className="text-slate-900 flex items-center gap-1.5 truncate">
               <span>{selectedProduct.name}</span>
+              {selectedProduct.company && (
+                <span className="text-[10px] text-slate-400 font-normal">
+                  ({selectedProduct.company})
+                </span>
+              )}
               {(selectedProduct.stock === 0 || selectedProduct.stock < 0) && (
                 <span className="bg-red-100 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded">
                   (نافذ ⚠️)
@@ -945,7 +1051,7 @@ function SearchableProductSelect({
               )}
             </span>
           ) : (
-            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن صنف ({availableList.length} صنف) --</span>
+            <span className="text-slate-400 font-normal">-- اختر أو ابحث عن صنف من النظام ({allProducts.length} صنف) --</span>
           )}
         </span>
         <span className="text-slate-400 text-[10px] shrink-0">▼</span>
@@ -969,7 +1075,7 @@ function SearchableProductSelect({
               autoFocus
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="اكتب اسم الصنف للبحث السريع..."
+              placeholder="اكتب اسم الصنف أو القسم للبحث السريع..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-8 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
@@ -977,7 +1083,7 @@ function SearchableProductSelect({
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-[9px] absolute left-2 top-1/2 -translate-y-1/2 font-bold"
+                className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-[9px] absolute left-2 top-1/2 -translate-y-1/2 font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -987,7 +1093,7 @@ function SearchableProductSelect({
           {/* Results Count / Info */}
           <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
             <span>{filteredList.length} صنف متوفر</span>
-            <span>{companyName || 'الشركة'}</span>
+            <span>جميع الأصناف</span>
           </div>
 
           {/* Product Items List */}
@@ -1017,9 +1123,16 @@ function SearchableProductSelect({
                         : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
-                    <span className="font-black text-xs text-slate-900 truncate">
-                      {p.name}
-                    </span>
+                    <div className="truncate">
+                      <span className="font-black text-xs text-slate-900 block truncate">
+                        {p.name}
+                      </span>
+                      {p.company && (
+                        <span className="text-[10px] text-slate-400 block font-normal">
+                          الماركة: {p.company}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="shrink-0 flex items-center gap-1.5">
                       {isOutOfStock ? (
@@ -1028,7 +1141,7 @@ function SearchableProductSelect({
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-400 font-medium">
-                          متوفر بالمخزن ({p.stock})
+                          متوفر ({p.stock})
                         </span>
                       )}
                       {isSelected && (

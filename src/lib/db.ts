@@ -1707,13 +1707,14 @@ export function getPurchaseInvoiceById(id: string): PurchaseInvoice | null {
 export function createPurchaseInvoice(data: {
   companyName: string;
   companyId?: string;
+  supplierPhone?: string;
   date?: string;
   paymentMethod: 'cash' | 'credit';
   notes?: string;
   items: Array<{
     productId: string;
     productName: string;
-    company: string;
+    company?: string;
     unit: string;
     quantity: number;
     costPrice: number;
@@ -1735,7 +1736,7 @@ export function createPurchaseInvoice(data: {
     return {
       productId: item.productId,
       productName: item.productName,
-      company: item.company || data.companyName,
+      company: item.company || prod?.company || data.companyName,
       unit: item.unit || 'كرتون',
       quantity: qty,
       costPrice: cost,
@@ -1757,6 +1758,7 @@ export function createPurchaseInvoice(data: {
     invoiceNumber: invoiceNum,
     companyId: data.companyId || '',
     companyName: data.companyName,
+    supplierPhone: data.supplierPhone,
     date: data.date || now.toISOString().split('T')[0],
     items: invoiceItems,
     totalAmount,

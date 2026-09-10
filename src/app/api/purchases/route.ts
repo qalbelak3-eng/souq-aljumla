@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { companyName, companyId, date, paymentMethod, notes, items } = body;
+    const { companyName, companyId, supplierPhone, date, paymentMethod, notes, items } = body;
 
     if (!companyName || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     const newInvoice = createPurchaseInvoice({
       companyName,
       companyId,
+      supplierPhone,
       date,
       paymentMethod: paymentMethod || 'cash',
       notes,

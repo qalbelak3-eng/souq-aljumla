@@ -601,7 +601,8 @@ export interface PurchaseInvoice {
   id: string;
   invoiceNumber: string; // رقم الفاتورة (مثال: PUR-1001)
   companyId?: string;
-  companyName: string; // الشركة المجهزة / الماركة
+  companyName: string; // الشركة المجهزة / المورد
+  supplierPhone?: string; // رقم هاتف المجهز للربط المحاسبي
   date: string;
   items: PurchaseInvoiceItem[];
   totalAmount: number; // إجمالي مبلغ فاتورة الشراء
