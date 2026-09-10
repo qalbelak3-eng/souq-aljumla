@@ -818,71 +818,82 @@ function AdminAccountingContent() {
   return (
     <div className="space-y-6 text-xs">
         
-      {/* 4 TOP NAVIGATION TABS */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-200/70 backdrop-blur-xs rounded-2xl max-w-fit shadow-inner no-print print:hidden">
+      {/* 4 TOP NAVIGATION TABS - PROMINENT & COLOR-CODED */}
+      <div className="flex flex-wrap items-center gap-2.5 p-2 bg-slate-100/90 rounded-2xl max-w-fit border border-slate-200/80 shadow-xs no-print print:hidden">
+        
+        {/* Tab 1: Accounts Ledger (Blue) */}
         <button
           type="button"
           onClick={() => setActiveMainTab('accounts')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
             activeMainTab === 'accounts'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-gradient-to-r from-blue-600 to-brand-blue text-white shadow-md shadow-blue-600/30 border border-blue-600 ring-2 ring-blue-400/20'
+              : 'bg-white text-blue-950 hover:bg-blue-50 border border-blue-200/80 hover:border-blue-300'
           }`}
         >
-          <FileText className="w-4 h-4 text-brand-blue" />
-          <span>أستاذ الحسابات والديون 📖</span>
-          <span className="bg-brand-blue/10 text-brand-blue text-[10px] font-mono px-2 py-0.5 rounded-md font-bold">
+          <FileText className={`w-4 h-4 ${activeMainTab === 'accounts' ? 'text-white' : 'text-brand-blue'}`} />
+          <span>أستاذ الحسابات والديون</span>
+          <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
+            activeMainTab === 'accounts' ? 'bg-white/20 text-white' : 'bg-blue-100 text-brand-blue'
+          }`}>
             {accounts.length}
           </span>
         </button>
 
+        {/* Tab 2: Add New Account (Emerald Green) */}
         <button
           type="button"
           onClick={() => setActiveMainTab('add_account')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
             activeMainTab === 'add_account'
-              ? 'bg-white text-emerald-800 shadow-sm'
-              : 'text-slate-600 hover:text-emerald-700 hover:bg-white/50'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-600 ring-2 ring-emerald-400/20'
+              : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-200/80 hover:border-emerald-300'
           }`}
         >
-          <UserPlus className="w-4 h-4 text-emerald-600" />
+          <UserPlus className={`w-4 h-4 ${activeMainTab === 'add_account' ? 'text-white' : 'text-emerald-600'}`} />
           <span>➕ إضافة حساب جديد</span>
         </button>
 
+        {/* Tab 3: Cash Vault 181 (Amber / Gold) */}
         <button
           type="button"
           onClick={() => {
             setActiveMainTab('vault');
             fetchVaultData();
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
             activeMainTab === 'vault'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white shadow-md shadow-amber-500/30 border border-amber-500 ring-2 ring-amber-400/20'
+              : 'bg-white text-amber-950 hover:bg-amber-50 border border-amber-200/80 hover:border-amber-300'
           }`}
         >
-          <Wallet className="w-4 h-4 text-emerald-600" />
-          <span>صندوق النقدية (حساب 181) 💵</span>
-          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-mono px-2 py-0.5 rounded-md font-bold">
+          <Wallet className={`w-4 h-4 ${activeMainTab === 'vault' ? 'text-white' : 'text-amber-600'}`} />
+          <span>صندوق النقدية (حساب 181)</span>
+          <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
+            activeMainTab === 'vault' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+          }`}>
             {(vaultSummary?.currentBalance ?? 0).toLocaleString()} د.ع
           </span>
         </button>
 
+        {/* Tab 4: Audit Log (Purple) */}
         <button
           type="button"
           onClick={() => {
             setActiveMainTab('audit');
             fetchAuditLogs();
           }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
             activeMainTab === 'audit'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-md shadow-purple-600/30 border border-purple-600 ring-2 ring-purple-400/20'
+              : 'bg-white text-purple-950 hover:bg-purple-50 border border-purple-200/80 hover:border-purple-300'
           }`}
         >
-          <ShieldAlert className="w-4 h-4 text-purple-600" />
-          <span>سجل الرقابة وتدقيق الموظفين 🛡️</span>
-          <span className="bg-purple-100 text-purple-800 text-[10px] font-mono px-2 py-0.5 rounded-md font-bold">
+          <ShieldAlert className={`w-4 h-4 ${activeMainTab === 'audit' ? 'text-white' : 'text-purple-600'}`} />
+          <span>سجل الرقابة وتدقيق الموظفين</span>
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-bold ${
+            activeMainTab === 'audit' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'
+          }`}>
             Audit Log
           </span>
         </button>
