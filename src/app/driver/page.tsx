@@ -197,7 +197,7 @@ export default function DriverDashboardPage() {
 
   const openDeliveryModal = (order: Order) => {
     setSelectedOrder(order);
-    setCollectionStatus('collected_cash');
+    setCollectionStatus(order.paymentMethod === 'debt' ? 'debt_unpaid' : 'collected_cash');
     setPartialAmount('');
     setDeliveryNotes('');
   };
@@ -559,6 +559,68 @@ export default function DriverDashboardPage() {
                           </p>
                         </div>
                       )}
+
+                      {/* 💳 شريط طريقة الدفع والتحصيل للسائق (كاش أو دين آجل) */}
+                      <div className="pt-1">
+                        {order.paymentMethod === 'debt' ? (
+                          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-400 text-amber-950 p-3 rounded-2xl flex items-center justify-between gap-2 shadow-2xs">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-base shrink-0 shadow-2xs">
+                                📝
+                              </div>
+                              <div>
+                                <div className="font-black text-xs text-amber-950 flex items-center gap-1.5">
+                                  <span>طريقة الدفع: آجل على الحساب (دين مسجل)</span>
+                                </div>
+                                <div className="text-[10px] text-amber-800 font-bold mt-0.5">
+                                  اتفاق الإدارة: تسليم الطلبية بالآجل • لا تطلب كاش إجباري
+                                </div>
+                              </div>
+                            </div>
+                            <span className="bg-amber-600 text-white font-black text-[10px] px-2.5 py-1 rounded-xl shadow-2xs shrink-0">
+                              تسليم آجل
+                            </span>
+                          </div>
+                        ) : (order.paymentMethod === 'zaincash' || order.paymentMethod === 'qicard' || order.paymentMethod === 'online') ? (
+                          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border-2 border-sky-400 text-sky-950 p-3 rounded-2xl flex items-center justify-between gap-2 shadow-2xs">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center font-black text-base shrink-0 shadow-2xs">
+                                💳
+                              </div>
+                              <div>
+                                <div className="font-black text-xs text-sky-950">
+                                  طريقة الدفع: مسدد إلكترونياً (زين كاش / كي كارد)
+                                </div>
+                                <div className="text-[10px] text-sky-800 font-bold mt-0.5">
+                                  الفاتورة مدفوعة مسبقاً • لا يتم استلام كاش من الزبون
+                                </div>
+                              </div>
+                            </div>
+                            <span className="bg-sky-600 text-white font-black text-[10px] px-2.5 py-1 rounded-xl shadow-2xs shrink-0">
+                              مدفوع مسبقاً
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-500 text-emerald-950 p-3 rounded-2xl flex items-center justify-between gap-2 shadow-2xs">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-base shrink-0 shadow-2xs">
+                                💵
+                              </div>
+                              <div>
+                                <div className="font-black text-xs text-emerald-950">
+                                  طريقة الدفع: كاش نقداً عند الاستلام
+                                </div>
+                                <div className="text-[10px] text-emerald-800 font-bold mt-0.5">
+                                  المطلوب تحصيله كاش من الزبون: <span className="font-mono font-black text-emerald-950">{order.total.toLocaleString()} د.ع</span>
+                                </div>
+                              </div>
+                            </div>
+                            <span className="bg-emerald-600 text-white font-black text-[10px] px-2.5 py-1 rounded-xl shadow-2xs shrink-0">
+                              تحصيل كاش
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Action buttons (Maps & Call) */}
@@ -852,6 +914,28 @@ export default function DriverDashboardPage() {
               >
                 ✕
               </button>
+            </div>
+
+            {/* Payment Method Notice for Driver */}
+            <div className={`p-3 rounded-2xl border-2 flex items-center justify-between text-xs font-bold ${
+              selectedOrder.paymentMethod === 'debt'
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                : 'bg-emerald-50 border-emerald-300 text-emerald-950'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{selectedOrder.paymentMethod === 'debt' ? '📝' : '💵'}</span>
+                <div>
+                  <span className="font-black">طريقة الدفع المسجلة بالفاتورة: </span>
+                  <span className={selectedOrder.paymentMethod === 'debt' ? 'text-amber-900 font-black' : 'text-emerald-900 font-black'}>
+                    {selectedOrder.paymentMethod === 'debt' ? 'آجل على الحساب (دين للتاجر)' : 'كاش عند الاستلام'}
+                  </span>
+                </div>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-xl shadow-2xs ${
+                selectedOrder.paymentMethod === 'debt' ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'
+              }`}>
+                {selectedOrder.paymentMethod === 'debt' ? 'اتفاق آجل ✓' : 'مطلوب كاش'}
+              </span>
             </div>
 
             {/* Collection Method Options */}

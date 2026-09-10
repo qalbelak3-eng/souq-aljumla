@@ -1597,6 +1597,15 @@ export default function AdminDriversPage() {
                                 {ord.customer?.phone && (
                                   <span className="font-mono" dir="ltr">({ord.customer.phone})</span>
                                 )}
+                                {ord.paymentMethod === 'debt' ? (
+                                  <span className="text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded font-black border border-amber-300">
+                                    📝 متفق عليه آجل
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] bg-emerald-100 text-emerald-900 px-1.5 py-0.2 rounded font-black border border-emerald-300">
+                                    💵 كاش مطلوب
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
