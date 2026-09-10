@@ -22,11 +22,13 @@ export default function BannerSlider({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Touch and drag states for standard full-width slider
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+  // Silky Smooth Touch & Drag gesture states
   const [isSwiping, setIsSwiping] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState<number>(0);
+  const isHorizontalSwipe = useRef<boolean | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +42,7 @@ export default function BannerSlider({
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.banners)) {
-          // Filter out campaign showcases that have products slider (they are rendered via CampaignShowcaseCard)
+          // Filter out campaign showcases that have product sliders
           const regularBanners = data.banners.filter((b: Banner) => !b.isCampaignShowcase);
           setBanners(regularBanners);
         }
@@ -108,68 +110,87 @@ export default function BannerSlider({
     return () => clearInterval(interval);
   }, [banners.length, currentIndex, isSwiping, isCompact]);
 
-  // Touch Swipe Handlers for Standard Full-Width Slider
+  // Touch handlers with real-time finger tracking & smart axis lock
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (banners.length <= 1) return;
     setIsSwiping(true);
     setTouchStartX(e.targetTouches[0].clientX);
-    setTouchEndX(e.targetTouches[0].clientX);
+    setTouchStartY(e.targetTouches[0].clientY);
+    isHorizontalSwipe.current = null;
+    setDragOffset(0);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX === null) return;
+    if (touchStartX === null || touchStartY === null || banners.length <= 1) return;
     const currentX = e.targetTouches[0].clientX;
-    setTouchEndX(currentX);
-    const diff = currentX - touchStartX;
-    setDragOffset(diff);
+    const currentY = e.targetTouches[0].clientY;
+    const diffX = currentX - touchStartX;
+    const diffY = currentY - touchStartY;
+
+    if (isHorizontalSwipe.current === null) {
+      if (Math.abs(diffX) > 8 || Math.abs(diffY) > 8) {
+        isHorizontalSwipe.current = Math.abs(diffX) > Math.abs(diffY);
+      }
+    }
+
+    if (isHorizontalSwipe.current) {
+      // Finger follows live horizontally
+      setDragOffset(diffX);
+    }
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX !== null && touchEndX !== null) {
-      const distance = touchStartX - touchEndX;
-      const minSwipeDistance = 45;
+    if (banners.length <= 1) return;
+    const minSwipeDistance = 40;
 
-      if (distance > minSwipeDistance) {
+    if (isHorizontalSwipe.current && dragOffset !== 0) {
+      if (dragOffset < -minSwipeDistance) {
+        // Swiped Left -> Go Next
         setCurrentIndex((prev) => (prev + 1) % banners.length);
-      } else if (distance < -minSwipeDistance) {
+      } else if (dragOffset > minSwipeDistance) {
+        // Swiped Right -> Go Prev
         setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
       }
     }
 
     setIsSwiping(false);
     setTouchStartX(null);
-    setTouchEndX(null);
+    setTouchStartY(null);
     setDragOffset(0);
+    isHorizontalSwipe.current = null;
   };
 
-  // Mouse Drag Handlers for Standard Full-Width Slider
+  // Mouse Drag handlers for Desktop
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (banners.length <= 1) return;
     setIsSwiping(true);
     setTouchStartX(e.clientX);
-    setTouchEndX(e.clientX);
+    setTouchStartY(e.clientY);
+    isHorizontalSwipe.current = true;
+    setDragOffset(0);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isSwiping || touchStartX === null) return;
-    setTouchEndX(e.clientX);
-    setDragOffset(e.clientX - touchStartX);
+    if (!isSwiping || touchStartX === null || banners.length <= 1) return;
+    const diffX = e.clientX - touchStartX;
+    setDragOffset(diffX);
   };
 
   const handleMouseUp = () => {
-    if (isSwiping && touchStartX !== null && touchEndX !== null) {
-      const distance = touchStartX - touchEndX;
-      const minSwipeDistance = 50;
+    if (!isSwiping || banners.length <= 1) return;
+    const minSwipeDistance = 45;
 
-      if (distance > minSwipeDistance) {
-        setCurrentIndex((prev) => (prev + 1) % banners.length);
-      } else if (distance < -minSwipeDistance) {
-        setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
-      }
+    if (dragOffset < -minSwipeDistance) {
+      setCurrentIndex((prev) => (prev + 1) % banners.length);
+    } else if (dragOffset > minSwipeDistance) {
+      setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
     }
 
     setIsSwiping(false);
     setTouchStartX(null);
-    setTouchEndX(null);
+    setTouchStartY(null);
     setDragOffset(0);
+    isHorizontalSwipe.current = null;
   };
 
   if (isLoading) {
@@ -219,7 +240,7 @@ export default function BannerSlider({
             WebkitOverflowScrolling: 'touch',
           }}
         >
-          {banners.map((banner, index) => (
+          {banners.map((banner) => (
             <div
               key={banner.id}
               className="banner-slide-card w-[87%] sm:w-[92%] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_2px_14px_rgba(0,0,0,0.06)] border border-slate-100 aspect-[24/8] bg-white transition-transform active:scale-[0.99]"
@@ -284,7 +305,15 @@ export default function BannerSlider({
     );
   }
 
-  // 2. STANDARD FULL-WIDTH SLIDER (ORIGINAL MAIN BANNERS)
+  // 2. STANDARD FULL-WIDTH SLIDER (SMOOTH REAL-TIME FINGER SWIPING & DRAGGING)
+  const trackTransform = dragOffset !== 0
+    ? `translateX(calc(-${currentIndex * 100}% + ${dragOffset}px))`
+    : `translateX(-${currentIndex * 100}%)`;
+
+  const trackTransition = isSwiping
+    ? 'none'
+    : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)';
+
   return (
     <div
       ref={containerRef}
@@ -297,24 +326,26 @@ export default function BannerSlider({
       onMouseLeave={handleMouseUp}
       className={`relative w-full overflow-hidden rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 select-none group bg-white cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
     >
-      {/* Slides Track container */}
+      {/* Slides Track container with live real-time finger tracking */}
       <div
-        className="flex w-full transition-transform duration-500 ease-out"
+        className="flex w-full will-change-transform"
         style={{
-          transform: `translateX(-${currentIndex * 100}%)`,
+          transform: trackTransform,
+          transition: trackTransition,
           direction: 'ltr',
         }}
       >
-        {banners.map((banner, index) => (
+        {banners.map((banner) => (
           <div key={banner.id} className="w-full flex-shrink-0 relative">
             <Link
               href={banner.linkUrl || '/products'}
               onClick={(e) => {
-                if (Math.abs(dragOffset) > 10) {
+                // Prevent accidental navigation if the user was swiping/dragging
+                if (Math.abs(dragOffset) > 12) {
                   e.preventDefault();
                 }
               }}
-              className="block relative w-full aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px] overflow-hidden"
+              className="block relative w-full aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px] overflow-hidden pointer-events-auto"
             >
               <img
                 src={banner.image}
@@ -327,7 +358,7 @@ export default function BannerSlider({
         ))}
       </div>
 
-      {/* Navigation Arrows (Desktop) */}
+      {/* Navigation Arrows (Desktop Hover) */}
       {banners.length > 1 && (
         <>
           <button
