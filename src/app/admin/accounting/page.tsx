@@ -93,7 +93,7 @@ function AdminAccountingContent() {
   const [newAccEmail, setNewAccEmail] = useState('');
   const [newAccCity, setNewAccCity] = useState('كربلاء المقدسة');
   const [newAccAddress, setNewAccAddress] = useState('');
-  const [newAccPricingTier, setNewAccPricingTier] = useState<'retail' | 'market' | 'wholesale' | 'special'>('retail');
+  const [newAccPricingTier, setNewAccPricingTier] = useState<PricingTier>('retail');
   const [newAccFixedDiscount, setNewAccFixedDiscount] = useState('');
   const [newAccNotes, setNewAccNotes] = useState('');
 
@@ -1133,13 +1133,15 @@ function AdminAccountingContent() {
                         ? { label: 'مندوب 🚚', bg: 'bg-teal-100 text-teal-800' }
                         : { label: 'زبون 🛍️', bg: 'bg-blue-100 text-blue-800' };
 
-                      const pricingLabel = acc.pricingTier === 'wholesale'
+                      const pricingLabel = acc.pricingTier === 'general'
+                        ? 'السعر العام (موردين) 🌐'
+                        : acc.pricingTier === 'wholesale'
                         ? 'سعر الجملة 👑'
                         : acc.pricingTier === 'market'
                         ? 'سعر الماركت 🏪'
                         : acc.pricingTier === 'special'
                         ? 'سعر خاص ⭐'
-                        : 'سعر عام 🏷️';
+                        : 'سعر المفرد 🛒';
 
                       return (
                         <tr key={acc.phone} className="hover:bg-slate-50/80 transition text-[11px]">
@@ -1302,7 +1304,7 @@ function AdminAccountingContent() {
                   <div
                     onClick={() => {
                       setNewAccCategory('customer');
-                      if (newAccPricingTier === 'special') setNewAccPricingTier('retail');
+                      if (newAccPricingTier === 'general') setNewAccPricingTier('retail');
                     }}
                     className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
                       newAccCategory === 'customer'
@@ -1321,7 +1323,10 @@ function AdminAccountingContent() {
 
                   {/* Category: Supplier */}
                   <div
-                    onClick={() => setNewAccCategory('supplier')}
+                    onClick={() => {
+                      setNewAccCategory('supplier');
+                      setNewAccPricingTier('general');
+                    }}
                     className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
                       newAccCategory === 'supplier'
                         ? 'border-purple-600 bg-purple-50/70 text-purple-900 shadow-sm'
@@ -1510,17 +1515,29 @@ function AdminAccountingContent() {
                     <label className="font-bold text-slate-700 block mb-1 text-xs">
                       فئة التسعير المرتبطة بالحساب:
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewAccPricingTier('general')}
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                          newAccPricingTier === 'general'
+                            ? 'bg-white border-purple-600 text-purple-800 shadow-xs font-black ring-2 ring-purple-200'
+                            : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        🌐 السعر العام (موردين)
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setNewAccPricingTier('retail')}
                         className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
                           newAccPricingTier === 'retail'
-                            ? 'bg-white border-brand-blue text-brand-blue shadow-xs font-black'
+                            ? 'bg-white border-brand-blue text-brand-blue shadow-xs font-black ring-2 ring-blue-200'
                             : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
                         }`}
                       >
-                        🏷️ السعر العام (المفرد)
+                        🛒 سعر المفرد (زبائن)
                       </button>
 
                       <button
@@ -1528,7 +1545,7 @@ function AdminAccountingContent() {
                         onClick={() => setNewAccPricingTier('market')}
                         className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
                           newAccPricingTier === 'market'
-                            ? 'bg-white border-blue-600 text-blue-700 shadow-xs font-black'
+                            ? 'bg-white border-blue-600 text-blue-700 shadow-xs font-black ring-2 ring-blue-200'
                             : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
                         }`}
                       >
@@ -1540,7 +1557,7 @@ function AdminAccountingContent() {
                         onClick={() => setNewAccPricingTier('wholesale')}
                         className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
                           newAccPricingTier === 'wholesale'
-                            ? 'bg-white border-purple-600 text-purple-700 shadow-xs font-black'
+                            ? 'bg-white border-amber-600 text-amber-700 shadow-xs font-black ring-2 ring-amber-200'
                             : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
                         }`}
                       >
@@ -1550,13 +1567,13 @@ function AdminAccountingContent() {
                       <button
                         type="button"
                         onClick={() => setNewAccPricingTier('special')}
-                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer col-span-2 sm:col-span-2 ${
                           newAccPricingTier === 'special'
-                            ? 'bg-white border-amber-600 text-amber-700 shadow-xs font-black'
+                            ? 'bg-white border-emerald-600 text-emerald-700 shadow-xs font-black ring-2 ring-emerald-200'
                             : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
                         }`}
                       >
-                        ⭐ السعر الخاص
+                        ⭐ السعر الخاص (اتفاق مخصص)
                       </button>
                     </div>
                   </div>

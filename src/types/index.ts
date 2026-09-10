@@ -266,8 +266,8 @@ export interface User {
   role: UserRole;
   accountType?: AccountType;
   merchantStatus?: MerchantStatus;
-  category?: 'customer' | 'supplier' | 'employee' | 'driver'; // فئة الحساب
-  pricingTier?: 'retail' | 'market' | 'wholesale' | 'special'; // فئة التسعير
+  category?: AccountCategory; // فئة الحساب
+  pricingTier?: PricingTier; // فئة التسعير
   fixedDiscountPercent?: number; // نسبة الخصم المئوية الثابتة
   notes?: string; // ملاحظات الحساب
   merchantTier?: MerchantTier; // برونزي 🥉 | فضي 🥈 | ذهبي VIP 🥇
@@ -488,7 +488,7 @@ export interface PaymentRecord {
 }
 
 export type AccountCategory = 'customer' | 'supplier' | 'employee' | 'driver';
-export type PricingTier = 'retail' | 'market' | 'wholesale' | 'special';
+export type PricingTier = 'general' | 'retail' | 'market' | 'wholesale' | 'special';
 export type OpeningBalanceType = 'debit' | 'credit' | 'none';
 
 export interface AccountOpeningBalance {

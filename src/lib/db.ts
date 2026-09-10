@@ -2675,6 +2675,8 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
       formattedType = 'موظف 💼';
     } else if (u.category === 'driver') {
       formattedType = 'مندوب توصيل 🚚';
+    } else if (u.pricingTier === 'general') {
+      formattedType = 'السعر العام (موردين) 🌐';
     } else if (u.pricingTier === 'wholesale' || u.accountType === 'wholesale') {
       formattedType = 'تاجر جملة 👑';
     } else if (u.pricingTier === 'market' || u.accountType === 'market' || u.accountType === 'merchant') {
@@ -2688,7 +2690,7 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
       businessName: u.businessName && u.businessName !== u.name ? u.businessName : undefined,
       accountType: formattedType,
       category: u.category || (u.role === 'driver' ? 'driver' : 'customer'),
-      pricingTier: u.pricingTier || (u.accountType === 'wholesale' ? 'wholesale' : u.accountType === 'market' || u.accountType === 'merchant' ? 'market' : 'retail'),
+      pricingTier: u.pricingTier || (u.category === 'supplier' ? 'general' : u.accountType === 'wholesale' ? 'wholesale' : u.accountType === 'market' || u.accountType === 'merchant' ? 'market' : 'retail'),
       fixedDiscountPercent: u.fixedDiscountPercent,
       email: u.email,
       city: u.city,
