@@ -181,14 +181,18 @@ export default function BannerSlider({
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 1. COMPACT / SECONDARY PEEK CAROUSEL (مع ميزة فصل الكروت وظهور طرف الإعلان التالي)
+  // 1. COMPACT / SECONDARY PEEK CAROUSEL (وسط الشاشة مع ظهور طرف الإعلانين يميناً ويساراً)
   // ═══════════════════════════════════════════════════════════════════
   if (isCompact) {
-    const stepPercent = 89; // 86% width + 3% gap
+    // عرض الكرت 84% مع مسافة 3% ليتوسط الكرت النشط وتظهر أطراف الإعلانات المتجاورة
+    const cardWidthPercent = 84;
+    const gapPercent = 2.5;
+    const stepPercent = cardWidthPercent + gapPercent; // 86.5%
+    const centerOffset = (100 - cardWidthPercent) / 2; // 8% مسافة متساوية يميناً ويساراً
 
     const compactTransform = dragOffset !== 0
-      ? `translateX(calc(-${currentIndex * stepPercent}% + ${dragOffset}px))`
-      : `translateX(-${currentIndex * stepPercent}%)`;
+      ? `translateX(calc(${centerOffset}% - ${currentIndex * stepPercent}% + ${dragOffset}px))`
+      : `translateX(calc(${centerOffset}% - ${currentIndex * stepPercent}%))`;
 
     const compactTransition = isSwiping
       ? 'none'
@@ -204,22 +208,22 @@ export default function BannerSlider({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
+        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y py-1 ${className}`}
       >
-        {/* Track with live real-time finger tracking & peek effect */}
+        {/* Track with live real-time finger tracking & centered peek effect */}
         <div
-          className="flex items-center will-change-transform py-1 px-1 sm:px-1.5"
+          className="flex items-center will-change-transform"
           style={{
             transform: compactTransform,
             transition: compactTransition,
             direction: 'ltr',
-            gap: '3%',
+            gap: `${gapPercent}%`,
           }}
         >
           {banners.map((banner) => (
             <div
               key={banner.id}
-              className="w-[86%] sm:w-[89%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[22/8] sm:aspect-[24/8] min-h-[135px] sm:min-h-[175px] bg-white transition-transform active:scale-[0.99]"
+              className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[22/8] sm:aspect-[24/8] min-h-[135px] sm:min-h-[175px] bg-white transition-transform active:scale-[0.99]"
             >
               <Link
                 href={banner.linkUrl || '/products'}
