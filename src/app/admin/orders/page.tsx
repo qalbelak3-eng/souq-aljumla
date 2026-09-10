@@ -2340,12 +2340,16 @@ function SearchableMerchantSelect({
       >
         <span className="truncate block">
           {selectedMerchant ? (
-            <span className="text-slate-900">
-              👤 {selectedMerchant.name}{' '}
-              {selectedMerchant.businessName && (
-                <span className="text-emerald-700 font-bold">({selectedMerchant.businessName})</span>
-              )}{' '}
-              <span className="text-slate-400 font-mono text-[11px]">- {selectedMerchant.phone}</span>
+            <span className="text-slate-900 inline-flex items-center gap-1.5 flex-wrap">
+              {selectedMerchant.businessName ? (
+                <>
+                  <span className="text-emerald-800 font-black text-xs">🏪 {selectedMerchant.businessName}</span>
+                  <span className="text-slate-500 font-bold text-[11px]">(صاحب الحساب: {selectedMerchant.name})</span>
+                </>
+              ) : (
+                <span className="font-black text-xs">👤 {selectedMerchant.name}</span>
+              )}
+              <span className="text-slate-400 font-mono text-[11px]" dir="ltr">📱 {selectedMerchant.phone}</span>
             </span>
           ) : (
             <span className="text-slate-400 font-normal">-- اختر أو ابحث عن التاجر / الماركت ({merchants.length} مسجل) --</span>
@@ -2365,7 +2369,7 @@ function SearchableMerchantSelect({
               autoFocus
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="اكتب اسم الزبون، المحل، أو رقم الهاتف..."
+              placeholder="اكتب اسم المحل، الماركت، صاحب الحساب، أو الهاتف..."
               className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-8 pl-6 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
@@ -2383,7 +2387,7 @@ function SearchableMerchantSelect({
           {/* Info */}
           <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-bold shrink-0">
             <span>{filteredMerchants.length} زبون مطابق</span>
-            <span>دليل التجار والزبائن</span>
+            <span>دليل الماركتات والتجار والزبائن</span>
           </div>
 
           {/* List */}
@@ -2396,6 +2400,7 @@ function SearchableMerchantSelect({
             ) : (
               filteredMerchants.map((m) => {
                 const isSelected = m.id === selectedMerchantId;
+                const hasStore = Boolean(m.businessName && m.businessName.trim());
                 return (
                   <button
                     key={m.id}
@@ -2407,25 +2412,42 @@ function SearchableMerchantSelect({
                     }}
                     className={`w-full text-right p-2.5 rounded-xl transition flex items-center justify-between gap-2 cursor-pointer ${
                       isSelected
-                        ? 'bg-blue-50 text-brand-blue font-black border border-blue-200'
+                        ? 'bg-emerald-50 text-emerald-950 font-black border border-emerald-300'
                         : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
                     <div className="truncate">
-                      <div className="font-black text-xs text-slate-900 truncate flex items-center gap-1.5">
-                        <span>{m.name}</span>
-                        {m.businessName && (
-                          <span className="text-emerald-700 font-bold">({m.businessName})</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono font-medium block">
+                      {hasStore ? (
+                        <div>
+                          <div className="font-black text-xs text-emerald-800 truncate flex items-center gap-1.5">
+                            <span>🏪 {m.businessName}</span>
+                            {m.accountType === 'market' && (
+                              <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">ماركت</span>
+                            )}
+                            {(m.accountType === 'wholesale' || m.accountType === 'merchant') && (
+                              <span className="text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded font-bold">تاجر جملة</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-600 font-bold truncate mt-0.5">
+                            👤 صاحب الحساب: <span className="text-slate-900 font-black">{m.name}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-black text-xs text-slate-900 truncate flex items-center gap-1.5">
+                            <span>👤 {m.name}</span>
+                            <span className="text-[9px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-bold">زبون مفرد</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-400 font-mono font-medium block mt-0.5" dir="ltr">
                         📱 {m.phone || 'بدون هاتف'} • 📍 {m.city || 'كربلاء المقدسة'}
                       </div>
                     </div>
 
                     <div className="shrink-0">
                       {isSelected ? (
-                        <span className="text-[10px] text-brand-blue font-bold">محدد ✓</span>
+                        <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-md font-bold">محدد ✓</span>
                       ) : (
                         <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold">
                           اختيار ↵
