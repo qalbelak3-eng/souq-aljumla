@@ -1256,19 +1256,19 @@ function AdminAccountingContent() {
                               {isSupplier ? (
                                 <button
                                   onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
-                                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                                  className="bg-amber-400 hover:bg-amber-500 text-amber-950 font-black py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 border border-amber-500/30 text-xs"
                                   title="تسجيل سند صرف وتسديد دفعة مالية للمجهز"
                                 >
-                                  <CreditCard className="w-3.5 h-3.5" />
+                                  <CreditCard className="w-3.5 h-3.5 text-amber-950" />
                                   <span>سند صرف 💳</span>
                                 </button>
                               ) : (
                                 <button
                                   onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                                  className="bg-amber-400 hover:bg-amber-500 text-amber-950 font-black py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 border border-amber-500/30 text-xs"
                                   title="تسجيل سند قبض واستلام دفعة مالية من العميل"
                                 >
-                                  <Plus className="w-3.5 h-3.5" />
+                                  <Plus className="w-3.5 h-3.5 text-amber-950" />
                                   <span>سند قبض 💵</span>
                                 </button>
                               )}
@@ -1276,10 +1276,10 @@ function AdminAccountingContent() {
                               {/* View Statement Button */}
                               <button
                                 onClick={() => handleOpenStatement(acc.phone)}
-                                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 cursor-pointer"
+                                className="bg-amber-100/80 hover:bg-amber-200 text-amber-900 font-black py-1.5 px-3 rounded-xl transition flex items-center gap-1 border border-amber-300/80 cursor-pointer shadow-xs text-xs"
                                 title="عرض كشف الحساب التفصيلي والطباعة"
                               >
-                                <FileText className="w-3.5 h-3.5 text-brand-blue" />
+                                <FileText className="w-3.5 h-3.5 text-amber-800" />
                                 <span>كشف الحساب 📄</span>
                               </button>
                             </div>
@@ -2088,11 +2088,7 @@ function AdminAccountingContent() {
                 <button
                   type="submit"
                   disabled={isSubmittingPayment}
-                  className={`flex-1 text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer ${
-                    paymentTarget.category === 'supplier'
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                  className="flex-1 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer border border-amber-500/30"
                 >
                   {isSubmittingPayment ? 'جاري الحفظ...' : (paymentTarget.category === 'supplier' ? 'تأكيد وحفظ سند الصرف ✓' : 'تأكيد وحفظ سند القبض ✓')}
                 </button>
