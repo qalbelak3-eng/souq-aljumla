@@ -110,7 +110,7 @@ export default function CheckoutPage() {
     applyCoupon,
     removeCoupon
   } = useCart();
-  const { user, isApprovedMerchant, isPendingApproval } = useAuth();
+  const { user, isApprovedMerchant, isPendingApproval, updateProfile } = useAuth();
   const router = useRouter();
 
   // Coupon state
@@ -450,8 +450,8 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     try {
-      // Save location to localStorage / user profile if checked
-      if (saveThisLocation) {
+      // Save location to user profile in database & localStorage if new or requested
+      if (saveThisLocation || selectedLocationId === 'custom') {
         const newLoc = {
           id: `loc-${Date.now()}`,
           title: locationTitle.trim() || 'موقع محفوظ 📍',
@@ -462,11 +462,16 @@ export default function CheckoutPage() {
           mapsUrl: coords.mapsUrl,
         };
 
-        const updated = [...savedLocations.filter(l => l.id !== selectedLocationId && l.title !== newLoc.title), newLoc];
+        const existingLocs = user?.savedAddresses && user.savedAddresses.length > 0 ? user.savedAddresses : savedLocations;
+        const updated = [...existingLocs.filter(l => l.id !== selectedLocationId && l.title !== newLoc.title), newLoc];
         setSavedLocations(updated);
         try {
           localStorage.setItem('etihad_saved_addresses', JSON.stringify(updated));
         } catch (e) {}
+
+        if (user && updateProfile) {
+          updateProfile({ savedAddresses: updated }).catch(console.error);
+        }
       }
 
       const appliedCashbackDiscount = useCashback ? Math.min(availableCashback, Math.max(0, subtotal - discount)) : 0;
@@ -718,8 +723,9 @@ export default function CheckoutPage() {
                         type="button"
                         onClick={() => {
                           setSelectedLocationId('custom');
-                          setLocationTitle('موقع جديد 📍');
+                          setLocationTitle('موقع العمل 🏢');
                           setAddress('');
+                          setSaveThisLocation(true);
                           setIsEditingAddress(true);
                           handleDetectGps();
                         }}
@@ -794,7 +800,31 @@ export default function CheckoutPage() {
                     <span className="font-bold text-blue-900">✏️ تعديل تفاصيل وموقع التوصيل:</span>
                     <button
                       type="button"
-                      onClick={() => setIsEditingAddress(false)}
+                      onClick={() => {
+                        setIsEditingAddress(false);
+                        if (address.trim()) {
+                          const newLoc = {
+                            id: selectedLocationId === 'custom' ? `loc-${Date.now()}` : selectedLocationId,
+                            title: locationTitle.trim() || 'موقع محفوظ 📍',
+                            city,
+                            address: address.trim(),
+                            lat: coords.lat,
+                            lng: coords.lng,
+                            mapsUrl: coords.mapsUrl,
+                          };
+                          const existingLocs = user?.savedAddresses && user.savedAddresses.length > 0 ? user.savedAddresses : savedLocations;
+                          const updated = [...existingLocs.filter(l => l.id !== newLoc.id && l.title !== newLoc.title), newLoc];
+                          setSavedLocations(updated);
+                          setSelectedLocationId(newLoc.id);
+                          try {
+                            localStorage.setItem('etihad_saved_addresses', JSON.stringify(updated));
+                          } catch (e) {}
+                          if (user && updateProfile) {
+                            updateProfile({ savedAddresses: updated }).catch(console.error);
+                          }
+                          toast.showToast('تم حفظ واعتماد الموقع بنجاح! 📍✓', 'success');
+                        }
+                      }}
                       className="text-blue-700 hover:text-blue-900 font-black px-2.5 py-1 bg-white rounded-lg border border-blue-300 transition cursor-pointer"
                     >
                       اعتماد العنوان المكتوب ✓
