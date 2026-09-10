@@ -46,6 +46,17 @@ export default function ProductBuyModal({
   const [quantity, setQuantity] = useState<number>(existingCartItem ? existingCartItem.quantity : 1);
   const [added, setAdded] = useState(false);
 
+  // Synchronize saleType on open
+  useEffect(() => {
+    if (isOpen) {
+      if (isApprovedMerchant) {
+        setSaleType('wholesale');
+      } else if (initialSaleType) {
+        setSaleType(initialSaleType);
+      }
+    }
+  }, [isOpen, isApprovedMerchant, initialSaleType]);
+
   // When modal opens or saleType/cart changes, sync quantity accurately
   useEffect(() => {
     if (isOpen && product?.id) {
@@ -133,12 +144,12 @@ export default function ProductBuyModal({
             {product.name}
           </h3>
           <p className="text-xs text-slate-500 font-bold">
-            الوحدة المختارة: <span className="text-slate-800 font-black">{currentUnit}</span>
+            الوحدة المعتمدة: <span className="text-slate-800 font-black">{currentUnit}</span>
           </p>
         </div>
 
-        {/* Dual Choice: Buy by Piece (مفرد) OR Buy by Carton/Box (كرتون/علبة) */}
-        {product.wholesalePrice > 0 && product.price > 0 && (
+        {/* Dual Choice (Retail vs Carton) for Regular Consumers ONLY */}
+        {!isApprovedMerchant && product.wholesalePrice > 0 && product.price > 0 ? (
           <div className="grid grid-cols-2 gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60">
             <button
               type="button"
@@ -174,7 +185,20 @@ export default function ProductBuyModal({
               </span>
             </button>
           </div>
-        )}
+        ) : isApprovedMerchant ? (
+          <div className="bg-emerald-50/90 border border-emerald-200 p-2.5 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shrink-0">
+                📦
+              </div>
+              <div>
+                <span className="font-black text-emerald-950 text-xs block leading-tight">{tierLabel || 'سعر جملة الماركت'}</span>
+                <span className="text-[10px] text-emerald-700 font-bold">الشراء بالكرتون: {product.wholesaleUnit || 'كرتون'}</span>
+              </div>
+            </div>
+            <span className="font-mono font-black text-xs sm:text-sm text-emerald-800">{wholesaleCalculatedPrice.toLocaleString()} د.ع</span>
+          </div>
+        ) : null}
 
         {/* Large Price Row */}
         <div className="flex items-baseline justify-between border-y border-slate-100 py-2 px-1">
