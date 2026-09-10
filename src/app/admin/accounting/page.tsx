@@ -41,7 +41,16 @@ import {
   RefreshCw,
   Activity,
   Key,
-  Users
+  Users,
+  UserPlus,
+  Building2,
+  Briefcase,
+  Truck,
+  Tag,
+  Percent,
+  Scale,
+  HelpCircle,
+  Check
 } from 'lucide-react';
 import {
   CustomerAccountSummary,
@@ -53,7 +62,10 @@ import {
   Product,
   CashVaultMovement,
   CashVaultSummary,
-  AuditLogEntry
+  AuditLogEntry,
+  AccountCategory,
+  PricingTier,
+  OpeningBalanceType
 } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
@@ -62,7 +74,7 @@ import EtihadLogo from '@/components/EtihadLogo';
 function AdminAccountingContent() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [activeMainTab, setActiveMainTab] = useState<'accounts' | 'vault' | 'audit'>('accounts');
+  const [activeMainTab, setActiveMainTab] = useState<'accounts' | 'add_account' | 'vault' | 'audit'>('accounts');
   const [currentOperator, setCurrentOperator] = useState<{ name: string; username: string; role: string } | null>(null);
 
   // Accounts & Debt State
@@ -70,7 +82,28 @@ function AdminAccountingContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'debtors' | 'settled'>('all');
+  const [accountCategoryFilter, setAccountCategoryFilter] = useState<'all' | 'customer' | 'supplier' | 'employee' | 'driver' | 'debtors' | 'creditors'>('all');
   const searchParams = useSearchParams();
+
+  // Add New Account Form State
+  const [newAccCategory, setNewAccCategory] = useState<'customer' | 'supplier' | 'employee' | 'driver'>('customer');
+  const [newAccName, setNewAccName] = useState('');
+  const [newAccBusinessName, setNewAccBusinessName] = useState('');
+  const [newAccPhone, setNewAccPhone] = useState('');
+  const [newAccEmail, setNewAccEmail] = useState('');
+  const [newAccCity, setNewAccCity] = useState('كربلاء المقدسة');
+  const [newAccAddress, setNewAccAddress] = useState('');
+  const [newAccPricingTier, setNewAccPricingTier] = useState<'retail' | 'market' | 'wholesale' | 'special'>('retail');
+  const [newAccFixedDiscount, setNewAccFixedDiscount] = useState('');
+  const [newAccNotes, setNewAccNotes] = useState('');
+
+  // Opening Balance Modal State
+  const [isOpeningBalanceModalOpen, setIsOpeningBalanceModalOpen] = useState(false);
+  const [openingBalanceType, setOpeningBalanceType] = useState<'debit' | 'credit' | 'none'>('debit');
+  const [openingBalanceAmount, setOpeningBalanceAmount] = useState('');
+  const [openingBalanceDate, setOpeningBalanceDate] = useState('');
+  const [openingBalanceNotes, setOpeningBalanceNotes] = useState('');
+  const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
 
   // Cash Vault 181 State
   const [vaultSummary, setVaultSummary] = useState<CashVaultSummary | null>(null);
@@ -653,14 +686,106 @@ function AdminAccountingContent() {
     }
   };
 
+  // Add Account Submission Handlers
+  const handleInitiateAddAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccName.trim()) {
+      toast.error('يرجى إدخال اسم الحساب (الاسم الكامل أو اسم المتجر)');
+      return;
+    }
+    if (!newAccPhone.trim()) {
+      toast.error('يرجى إدخال رقم هاتف الحساب');
+      return;
+    }
+    setOpeningBalanceDate(getTodayStr());
+    setIsOpeningBalanceModalOpen(true);
+  };
+
+  const handleConfirmSaveAccount = async () => {
+    setIsSubmittingAccount(true);
+    try {
+      const numBal = Number(openingBalanceAmount) || 0;
+      const hasBalance = openingBalanceType !== 'none' && numBal > 0;
+
+      const payload = {
+        category: newAccCategory,
+        name: newAccName.trim(),
+        businessName: newAccBusinessName.trim() || undefined,
+        phone: newAccPhone.trim(),
+        email: newAccEmail.trim() || undefined,
+        city: newAccCity.trim() || 'العراق',
+        address: newAccAddress.trim() || undefined,
+        pricingTier: newAccPricingTier,
+        fixedDiscountPercent: newAccFixedDiscount ? Number(newAccFixedDiscount) : undefined,
+        notes: newAccNotes.trim() || undefined,
+        openingBalance: hasBalance ? {
+          type: openingBalanceType,
+          amount: numBal,
+          date: openingBalanceDate || getTodayStr(),
+          notes: openingBalanceNotes.trim() || undefined,
+        } : undefined,
+        operator: currentOperator || { name: 'المحاسب', username: 'accountant' },
+      };
+
+      const res = await fetch('/api/accounting/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`تم حفظ الحساب (${newAccName}) بنجاح ✓`);
+        setIsOpeningBalanceModalOpen(false);
+        // Reset form
+        setNewAccName('');
+        setNewAccBusinessName('');
+        setNewAccPhone('');
+        setNewAccEmail('');
+        setNewAccAddress('');
+        setNewAccFixedDiscount('');
+        setNewAccNotes('');
+        setOpeningBalanceAmount('');
+        setOpeningBalanceNotes('');
+        setOpeningBalanceType('debit');
+
+        // Refresh and return to accounts
+        await fetchAccounts(false);
+        setActiveMainTab('accounts');
+      } else {
+        toast.error(data.error || 'فشل حفظ بيانات الحساب');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'حدث خطأ غير متوقع أثناء حفظ الحساب');
+    } finally {
+      setIsSubmittingAccount(false);
+    }
+  };
+
   const filteredAccounts = accounts.filter(acc => {
     const q = searchQuery.toLowerCase().trim();
     const matchesQuery = acc.name.toLowerCase().includes(q) ||
       acc.phone.includes(q) ||
       (acc.businessName && acc.businessName.toLowerCase().includes(q)) ||
-      (acc.city && acc.city.toLowerCase().includes(q));
+      (acc.city && acc.city.toLowerCase().includes(q)) ||
+      (acc.email && acc.email.toLowerCase().includes(q));
 
     if (!matchesQuery) return false;
+
+    // Category / Custom filter
+    if (accountCategoryFilter === 'customer') {
+      if (acc.category && acc.category !== 'customer') return false;
+    } else if (accountCategoryFilter === 'supplier') {
+      if (acc.category !== 'supplier') return false;
+    } else if (accountCategoryFilter === 'employee') {
+      if (acc.category !== 'employee') return false;
+    } else if (accountCategoryFilter === 'driver') {
+      if (acc.category !== 'driver') return false;
+    } else if (accountCategoryFilter === 'debtors') {
+      if (acc.remainingBalance <= 0) return false;
+    } else if (accountCategoryFilter === 'creditors') {
+      if (acc.remainingBalance >= 0) return false;
+    }
 
     if (filterMode === 'debtors') return acc.remainingBalance > 0;
     if (filterMode === 'settled') return acc.remainingBalance <= 0;
@@ -670,7 +795,7 @@ function AdminAccountingContent() {
   return (
     <div className="space-y-6 text-xs">
         
-      {/* 3 TOP NAVIGATION TABS */}
+      {/* 4 TOP NAVIGATION TABS */}
       <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-200/70 backdrop-blur-xs rounded-2xl max-w-fit shadow-inner no-print print:hidden">
         <button
           type="button"
@@ -682,10 +807,23 @@ function AdminAccountingContent() {
           }`}
         >
           <FileText className="w-4 h-4 text-brand-blue" />
-          <span>أستاذ حسابات الزبائن والديون</span>
+          <span>أستاذ الحسابات والديون 📖</span>
           <span className="bg-brand-blue/10 text-brand-blue text-[10px] font-mono px-2 py-0.5 rounded-md font-bold">
             {accounts.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('add_account')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+            activeMainTab === 'add_account'
+              ? 'bg-white text-emerald-800 shadow-sm'
+              : 'text-slate-600 hover:text-emerald-700 hover:bg-white/50'
+          }`}
+        >
+          <UserPlus className="w-4 h-4 text-emerald-600" />
+          <span>➕ إضافة حساب جديد</span>
         </button>
 
         <button
@@ -802,45 +940,129 @@ function AdminAccountingContent() {
               <div>
                 <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-brand-blue" />
-                  <span>أستاذ حسابات العملاء والديون 📖</span>
+                  <span>أستاذ دليل الحسابات والديون 📖</span>
                 </h2>
                 <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                  متابعة أرصدة كل عميل، كشوفات الحساب اللحظية، وتوثيق سندات القبض
+                  إدارة ومتابعة أرصدة الزبائن، المجهزين، الموظفين، والمندوبين وكشوفات الحسابات
                 </p>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Filter Pills */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setFilterMode('all')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${
-                      filterMode === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    الكل ({accounts.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterMode('debtors')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${
-                      filterMode === 'debtors' ? 'bg-[#ef533a] text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    مطلوبين ديون ({accounts.filter(a => a.remainingBalance > 0).length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterMode('settled')}
-                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${
-                      filterMode === 'settled' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    مسددين بالكامل ({accounts.filter(a => a.remainingBalance <= 0).length})
-                  </button>
-                </div>
+                {/* Add New Account Quick Action */}
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('add_account')}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-95"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>➕ إضافة حساب جديد</span>
+                </button>
               </div>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                الكل ({accounts.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('customer')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'customer'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/50'
+                }`}
+              >
+                <span>🛍️ الزبائن</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => !a.category || a.category === 'customer').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('supplier')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'supplier'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/50'
+                }`}
+              >
+                <span>🏭 المجهزين</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => a.category === 'supplier').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('employee')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'employee'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/50'
+                }`}
+              >
+                <span>💼 الموظفين</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => a.category === 'employee').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('driver')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'driver'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200/50'
+                }`}
+              >
+                <span>🚚 المندوبين</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => a.category === 'driver').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('debtors')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'debtors'
+                    ? 'bg-[#ef533a] text-white shadow-sm'
+                    : 'bg-red-50 text-[#ef533a] hover:bg-red-100 border border-red-200/50'
+                }`}
+              >
+                <span>⚠️ مطلوبين لنا (مدين)</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => a.remainingBalance > 0).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountCategoryFilter('creditors')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                  accountCategoryFilter === 'creditors'
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/50'
+                }`}
+              >
+                <span>✅ دائنين علينا</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
+                  {accounts.filter(a => a.remainingBalance < 0).length}
+                </span>
+              </button>
             </div>
 
             {/* Search Input */}
@@ -848,7 +1070,7 @@ function AdminAccountingContent() {
               <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
               <input
                 type="text"
-                placeholder="ابحث باسم الزبون، الماركت، رقم الهاتف، أو المدينة..."
+                placeholder="ابحث باسم الحساب، المتجر، رقم الهاتف، أو المدينة..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pr-10 pl-4 py-2.5 text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-blue"
@@ -860,12 +1082,12 @@ function AdminAccountingContent() {
               <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-black text-[11px]">
-                    <th className="py-3 px-4">العميل / الماركت</th>
+                    <th className="py-3 px-4">اسم الحساب / فئة الحساب</th>
                     <th className="py-3 px-4">رقم الهاتف والمدينة</th>
-                    <th className="py-3 px-4">نوع الحساب</th>
-                    <th className="py-3 px-4">إجمالي المسحوبات</th>
+                    <th className="py-3 px-4">فئة التسعير والخصم</th>
+                    <th className="py-3 px-4">إجمالي المسحوبات / الفواتير</th>
                     <th className="py-3 px-4">المسدد والمدفوع</th>
-                    <th className="py-3 px-4">الرصيد المتبقي (المطلوب)</th>
+                    <th className="py-3 px-4">الرصيد المتبقي</th>
                     <th className="py-3 px-4">حالة الحساب</th>
                     <th className="py-3 px-4 text-center">إجراءات الحساب</th>
                   </tr>
@@ -887,15 +1109,37 @@ function AdminAccountingContent() {
                   ) : (
                     filteredAccounts.map((acc) => {
                       const isDebtor = acc.remainingBalance > 0;
+                      const isCreditor = acc.remainingBalance < 0;
+
+                      const categoryBadge = acc.category === 'supplier'
+                        ? { label: 'مجهز 🏭', bg: 'bg-purple-100 text-purple-800' }
+                        : acc.category === 'employee'
+                        ? { label: 'موظف 💼', bg: 'bg-amber-100 text-amber-800' }
+                        : acc.category === 'driver'
+                        ? { label: 'مندوب 🚚', bg: 'bg-teal-100 text-teal-800' }
+                        : { label: 'زبون 🛍️', bg: 'bg-blue-100 text-blue-800' };
+
+                      const pricingLabel = acc.pricingTier === 'wholesale'
+                        ? 'سعر الجملة 👑'
+                        : acc.pricingTier === 'market'
+                        ? 'سعر الماركت 🏪'
+                        : acc.pricingTier === 'special'
+                        ? 'سعر خاص ⭐'
+                        : 'سعر عام 🏷️';
 
                       return (
                         <tr key={acc.phone} className="hover:bg-slate-50/80 transition text-[11px]">
                           <td className="py-3 px-4">
-                            <div className="font-black text-slate-900 flex items-center gap-1.5">
-                              <span>{acc.businessName || acc.name}</span>
-                              {acc.businessName && (
-                                <span className="text-[10px] font-bold text-slate-400">({acc.name})</span>
+                            <div className="font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>{acc.name}</span>
+                              {acc.businessName && acc.businessName !== acc.name && (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  {acc.businessName}
+                                </span>
                               )}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${categoryBadge.bg}`}>
+                                {categoryBadge.label}
+                              </span>
                             </div>
                           </td>
 
@@ -905,18 +1149,21 @@ function AdminAccountingContent() {
                           </td>
 
                           <td className="py-3 px-4">
-                            <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-[10px] ${
-                              acc.accountType === 'تاجر / ماركت' 
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                                : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              {acc.accountType}
-                            </span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-[10px] bg-slate-100 text-slate-700">
+                                {pricingLabel}
+                              </span>
+                              {acc.fixedDiscountPercent ? (
+                                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-1.5 py-0.5 rounded-md">
+                                  خصم {acc.fixedDiscountPercent}%
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
 
                           <td className="py-3 px-4 font-mono font-bold text-slate-800">
                             {acc.totalInvoiced.toLocaleString()} د.ع
-                            <div className="text-[10px] text-slate-400 font-sans">{acc.ordersCount} طلبية</div>
+                            <div className="text-[10px] text-slate-400 font-sans">{acc.ordersCount} حركة</div>
                           </td>
 
                           <td className="py-3 px-4 font-mono font-bold text-emerald-700">
@@ -928,9 +1175,11 @@ function AdminAccountingContent() {
                             <span className={`px-2 py-1 rounded-lg ${
                               isDebtor 
                                 ? 'bg-red-50 text-[#ef533a] border border-red-200' 
+                                : isCreditor
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}>
-                              {acc.remainingBalance.toLocaleString()} د.ع
+                              {Math.abs(acc.remainingBalance).toLocaleString()} د.ع
                             </span>
                           </td>
 
@@ -938,12 +1187,17 @@ function AdminAccountingContent() {
                             {isDebtor ? (
                               <span className="inline-flex items-center gap-1 bg-red-100 text-[#ef533a] text-[10px] font-bold px-2 py-0.5 rounded-md">
                                 <AlertCircle className="w-3 h-3" />
-                                <span>مطلوب دين</span>
+                                <span>مطلوب لنا</span>
+                              </span>
+                            ) : isCreditor ? (
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                <ArrowDownLeft className="w-3 h-3" />
+                                <span>دائن علينا</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
                                 <CheckCircle2 className="w-3 h-3" />
-                                <span>مسدد بالكامل</span>
+                                <span>خالص</span>
                               </span>
                             )}
                           </td>
@@ -986,7 +1240,381 @@ function AdminAccountingContent() {
       )}
 
       {/* =========================================================================
-          TAB 2: CASH VAULT (صندوق النقدية - حساب 181)
+          TAB 2: ADD NEW ACCOUNT (إضافة حساب جديد في النظام المحاسبي)
+          ========================================================================= */}
+      {activeMainTab === 'add_account' && (
+        <div className="space-y-6 animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 max-w-4xl mx-auto space-y-6">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                  <UserPlus className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                    <span>إضافة حساب جديد إلى دليل الحسابات</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                      Accounting Directory
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-bold mt-0.5">
+                    إضافة زبون، مجهز، موظف، أو مندوب توصيل مع ربط التسعيرة والخصم الثابت وفتح الرصيد الافتتاحي
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('accounts')}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+              >
+                <span>العودة للأستاذ</span>
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleInitiateAddAccount} className="space-y-6">
+              
+              {/* Step 1: Account Category Selection Cards */}
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-800 block">
+                  1. حدد نوع وفئة الحساب <span className="text-red-500">*</span>:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  
+                  {/* Category: Customer */}
+                  <div
+                    onClick={() => {
+                      setNewAccCategory('customer');
+                      if (newAccPricingTier === 'special') setNewAccPricingTier('retail');
+                    }}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
+                      newAccCategory === 'customer'
+                        ? 'border-blue-600 bg-blue-50/70 text-blue-900 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newAccCategory === 'customer' ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 border border-slate-200'}`}>
+                      <Store className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs">حساب زبون 🛍️</div>
+                      <div className="text-[10px] text-slate-500 font-bold mt-0.5">ماركت، مفرد، أو تاجر</div>
+                    </div>
+                  </div>
+
+                  {/* Category: Supplier */}
+                  <div
+                    onClick={() => setNewAccCategory('supplier')}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
+                      newAccCategory === 'supplier'
+                        ? 'border-purple-600 bg-purple-50/70 text-purple-900 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newAccCategory === 'supplier' ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-slate-200'}`}>
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs">حساب مجهز 🏭</div>
+                      <div className="text-[10px] text-slate-500 font-bold mt-0.5">شركات وموردي البضاعة</div>
+                    </div>
+                  </div>
+
+                  {/* Category: Employee */}
+                  <div
+                    onClick={() => setNewAccCategory('employee')}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
+                      newAccCategory === 'employee'
+                        ? 'border-amber-600 bg-amber-50/70 text-amber-900 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newAccCategory === 'employee' ? 'bg-amber-600 text-white' : 'bg-white text-amber-600 border border-slate-200'}`}>
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs">حساب موظف 💼</div>
+                      <div className="text-[10px] text-slate-500 font-bold mt-0.5">كادر وفريق العمل</div>
+                    </div>
+                  </div>
+
+                  {/* Category: Driver */}
+                  <div
+                    onClick={() => setNewAccCategory('driver')}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col items-center text-center gap-2 ${
+                      newAccCategory === 'driver'
+                        ? 'border-teal-600 bg-teal-50/70 text-teal-900 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newAccCategory === 'driver' ? 'bg-teal-600 text-white' : 'bg-white text-teal-600 border border-slate-200'}`}>
+                      <Truck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs">حساب مندوب 🚚</div>
+                      <div className="text-[10px] text-slate-500 font-bold mt-0.5">كباتن وسائقي التوصيل</div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Step 2: Basic Information Grid */}
+              <div className="space-y-4">
+                <div className="text-xs font-black text-slate-800 border-b border-slate-100 pb-2">
+                  2. البيانات الأساسية ومعلومات الاتصال:
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  {/* Name */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      اسم الحساب / الشخص المسؤول <span className="text-red-500">*</span>:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newAccName}
+                      onChange={(e) => setNewAccName(e.target.value)}
+                      placeholder="مثال: علي حسن، شركة النور، محمد عبد الله..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                    />
+                  </div>
+
+                  {/* Business Name / Trade Name / Job Title */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      {newAccCategory === 'employee' ? 'المسمى الوظيفي / القسم:' : newAccCategory === 'driver' ? 'مركبة التوصيل / المنطقة:' : 'اسم المتجر / الشركة / النشاط:'}
+                    </label>
+                    <input
+                      type="text"
+                      value={newAccBusinessName}
+                      onChange={(e) => setNewAccBusinessName(e.target.value)}
+                      placeholder={newAccCategory === 'employee' ? 'مثال: محاسب رئيسي، أمين مستودع' : newAccCategory === 'driver' ? 'مثال: كيا حمل كربلاء' : 'مثال: أسواق النور المركزية'}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                    />
+                  </div>
+
+                  {/* Phone Number */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      رقم الهاتف (الرقم التعريفي) <span className="text-red-500">*</span>:
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      dir="ltr"
+                      value={newAccPhone}
+                      onChange={(e) => setNewAccPhone(e.target.value)}
+                      placeholder="0770xxxxxxx"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold font-mono text-slate-900 focus:bg-white focus:border-emerald-600"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      البريد الإلكتروني (اختياري):
+                    </label>
+                    <input
+                      type="email"
+                      dir="ltr"
+                      value={newAccEmail}
+                      onChange={(e) => setNewAccEmail(e.target.value)}
+                      placeholder="account@example.com"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                    />
+                  </div>
+
+                  {/* City */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      المحافظة / المدينة:
+                    </label>
+                    <select
+                      value={newAccCity}
+                      onChange={(e) => setNewAccCity(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                    >
+                      <option value="كربلاء المقدسة">كربلاء المقدسة</option>
+                      <option value="بغداد - الكرخ">بغداد - الكرخ</option>
+                      <option value="بغداد - الرصافة">بغداد - الرصافة</option>
+                      <option value="النجف الأشرف">النجف الأشرف</option>
+                      <option value="بابل (الحلة)">بابل (الحلة)</option>
+                      <option value="البصرة">البصرة</option>
+                      <option value="أربيل">أربيل</option>
+                      <option value="السليمانية">السليمانية</option>
+                      <option value="دهوك">دهوك</option>
+                      <option value="كركوك">كركوك</option>
+                      <option value="الأنبار">الأنبار</option>
+                      <option value="ديالى">ديالى</option>
+                      <option value="صلاح الدين">صلاح الدين</option>
+                      <option value="واسط (الكوت)">واسط (الكوت)</option>
+                      <option value="ميسان (العمارة)">ميسان (العمارة)</option>
+                      <option value="ذي قار (الناصرية)">ذي قار (الناصرية)</option>
+                      <option value="المثنى (السماوة)">المثنى (السماوة)</option>
+                      <option value="القادسية (الديوانية)">القادسية (الديوانية)</option>
+                      <option value="نينوى (الموصل)">نينوى (الموصل)</option>
+                    </select>
+                  </div>
+
+                  {/* Address */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      العنوان التفصيلي / أقرب نقطة دالة:
+                    </label>
+                    <input
+                      type="text"
+                      value={newAccAddress}
+                      onChange={(e) => setNewAccAddress(e.target.value)}
+                      placeholder="مثال: شارع السناتر، قرب جامع الإمام علي..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                    />
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Step 3: Pricing Tier & Discount Settings */}
+              <div className="space-y-4 bg-slate-50/70 p-4 rounded-3xl border border-slate-200/80">
+                <div className="text-xs font-black text-slate-800 border-b border-slate-200 pb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Tag className="w-4 h-4 text-brand-blue" />
+                    <span>3. ربط الحساب بالتسعيرة ونسبة الخصم:</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold">يحدد الأسعار التلقائية في الفواتير والطلبيات</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  {/* Pricing Tier */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs">
+                      فئة التسعير المرتبطة بالحساب:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewAccPricingTier('retail')}
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                          newAccPricingTier === 'retail'
+                            ? 'bg-white border-brand-blue text-brand-blue shadow-xs font-black'
+                            : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        🏷️ السعر العام (المفرد)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewAccPricingTier('market')}
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                          newAccPricingTier === 'market'
+                            ? 'bg-white border-blue-600 text-blue-700 shadow-xs font-black'
+                            : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        🏪 سعر الماركت
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewAccPricingTier('wholesale')}
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                          newAccPricingTier === 'wholesale'
+                            ? 'bg-white border-purple-600 text-purple-700 shadow-xs font-black'
+                            : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        👑 سعر الجملة
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewAccPricingTier('special')}
+                        className={`p-2.5 rounded-xl font-bold text-xs border text-center transition cursor-pointer ${
+                          newAccPricingTier === 'special'
+                            ? 'bg-white border-amber-600 text-amber-700 shadow-xs font-black'
+                            : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        ⭐ السعر الخاص
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fixed Discount % */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1 text-xs flex items-center justify-between">
+                      <span>نسبة خصم ثابتة للحساب (اختياري):</span>
+                      <span className="text-[10px] text-emerald-600 font-mono font-black">خصم تلقائي بالفاتورة</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={newAccFixedDiscount}
+                        onChange={(e) => setNewAccFixedDiscount(e.target.value)}
+                        placeholder="مثال: 5"
+                        className="w-full bg-white border border-slate-300 rounded-2xl p-2.5 pr-3 pl-8 text-xs font-bold font-mono text-slate-900 focus:border-emerald-600"
+                      />
+                      <Percent className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1">
+                      إذا تم تثبيت نسبة خصم (مثل 5%)، سيتم تطبيقها تلقائياً على كافة مشتريات هذا الحساب.
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Step 4: Notes */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1 text-xs">
+                  ملاحظات وبيان الحساب:
+                </label>
+                <textarea
+                  rows={2}
+                  value={newAccNotes}
+                  onChange={(e) => setNewAccNotes(e.target.value)}
+                  placeholder="أي ملاحظات إضافية حول الحساب، شروط التعامل، حد الائتمان، أو أوقات الاستلام..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-2xl p-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('accounts')}
+                  className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-xs transition cursor-pointer"
+                >
+                  إلغاء والعودة
+                </button>
+
+                <button
+                  type="submit"
+                  className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-2xl text-xs transition flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-98"
+                >
+                  <Scale className="w-4 h-4" />
+                  <span>حفظ ومتابعة (تحديد الرصيد الافتتاحي ⚖️)</span>
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 3: CASH VAULT (صندوق النقدية - حساب 181)
           ========================================================================= */}
       {activeMainTab === 'vault' && (
         <div className="space-y-6 animate-in fade-in-50 duration-200">
@@ -2248,6 +2876,196 @@ function AdminAccountingContent() {
               </div>
 
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          OPENING BALANCE PROMPT MODAL (نافذة تثبيت الرصيد الافتتاحي عند الحفظ)
+          ========================================================================= */}
+      {isOpeningBalanceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in-50 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-100 relative">
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setIsOpeningBalanceModalOpen(false)}
+              className="absolute top-4 left-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md">
+                <Scale className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  هل تريد فتح رصيد افتتاحي؟ ⚖️
+                </h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  تثبيت الرصيد الابتدائي السابق لبدء كشف حساب {newAccName}
+                </p>
+              </div>
+            </div>
+
+            {/* Account Summary Chip */}
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs font-bold text-slate-700">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-400" />
+                <span>{newAccName}</span>
+                {newAccBusinessName && <span className="text-slate-400">({newAccBusinessName})</span>}
+              </div>
+              <span className="font-mono text-slate-500" dir="ltr">{newAccPhone}</span>
+            </div>
+
+            {/* Balance Type Selector Cards */}
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-800 block">
+                اختر نوع الرصيد الافتتاحي:
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                
+                {/* 1. Debit (لنا) */}
+                <div
+                  onClick={() => setOpeningBalanceType('debit')}
+                  className={`p-3 rounded-2xl border-2 transition cursor-pointer text-center space-y-1 ${
+                    openingBalanceType === 'debit'
+                      ? 'border-[#ef533a] bg-red-50 text-red-900 shadow-xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-full bg-red-100 text-[#ef533a] mx-auto flex items-center justify-center font-black">
+                    <ArrowUpRight className="w-4 h-4" />
+                  </div>
+                  <div className="font-black text-xs">لنا (مدين) 🔴</div>
+                  <div className="text-[10px] text-slate-500 font-bold">دين مطلوب منه لنا</div>
+                </div>
+
+                {/* 2. Credit (علينا) */}
+                <div
+                  onClick={() => setOpeningBalanceType('credit')}
+                  className={`p-3 rounded-2xl border-2 transition cursor-pointer text-center space-y-1 ${
+                    openingBalanceType === 'credit'
+                      ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 mx-auto flex items-center justify-center font-black">
+                    <ArrowDownLeft className="w-4 h-4" />
+                  </div>
+                  <div className="font-black text-xs">علينا (دائن) 🟢</div>
+                  <div className="text-[10px] text-slate-500 font-bold">مستحق له بذمتنا</div>
+                </div>
+
+                {/* 3. None (بدون رصيد) */}
+                <div
+                  onClick={() => {
+                    setOpeningBalanceType('none');
+                    setOpeningBalanceAmount('');
+                  }}
+                  className={`p-3 rounded-2xl border-2 transition cursor-pointer text-center space-y-1 ${
+                    openingBalanceType === 'none'
+                      ? 'border-slate-800 bg-slate-100 text-slate-900 shadow-xs'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 mx-auto flex items-center justify-center font-black">
+                    <Minus className="w-4 h-4" />
+                  </div>
+                  <div className="font-black text-xs">بدون رصيد ⚪</div>
+                  <div className="text-[10px] text-slate-500 font-bold">الرصيد الابتدائي 0</div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Inputs if Debit or Credit */}
+            {openingBalanceType !== 'none' && (
+              <div className="space-y-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 animate-in fade-in-50 duration-150">
+                
+                {/* Amount */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1 text-xs">
+                    مبلغ الرصيد الافتتاحي (د.ع) <span className="text-red-500">*</span>:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="250"
+                      value={openingBalanceAmount}
+                      onChange={(e) => setOpeningBalanceAmount(e.target.value)}
+                      placeholder="مثال: 500000"
+                      className="w-full bg-white border border-slate-300 rounded-2xl p-2.5 pr-3 pl-8 text-sm font-mono font-black text-slate-900 focus:border-brand-blue"
+                    />
+                    <span className="absolute left-3 top-2.5 font-bold text-slate-400 text-xs">د.ع</span>
+                  </div>
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1 text-xs">
+                    تاريخ الرصيد الافتتاحي:
+                  </label>
+                  <input
+                    type="date"
+                    value={openingBalanceDate}
+                    onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-2xl p-2 text-xs font-bold text-slate-900"
+                  />
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1 text-xs">
+                    بيان وتفاصيل الرصيد الافتتاحي:
+                  </label>
+                  <input
+                    type="text"
+                    value={openingBalanceNotes}
+                    onChange={(e) => setOpeningBalanceNotes(e.target.value)}
+                    placeholder={openingBalanceType === 'debit' ? 'مثال: رصيد مدور سابق بذمة العميل' : 'مثال: مستحقات سابقة أو بضاعة موردة'}
+                    className="w-full bg-white border border-slate-300 rounded-2xl p-2 text-xs font-bold text-slate-900"
+                  />
+                </div>
+
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsOpeningBalanceModalOpen(false)}
+                className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-2xl text-xs transition"
+              >
+                تعديل البيانات
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmSaveAccount}
+                disabled={isSubmittingAccount || (openingBalanceType !== 'none' && (!openingBalanceAmount || Number(openingBalanceAmount) <= 0))}
+                className="w-2/3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2.5 rounded-2xl text-xs transition flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95"
+              >
+                {isSubmittingAccount ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جاري الحفظ...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>تأكيد وحفظ الحساب نهائياً 💾</span>
+                  </>
+                )}
+              </button>
+            </div>
 
           </div>
         </div>

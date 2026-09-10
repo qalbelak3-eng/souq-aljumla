@@ -266,6 +266,10 @@ export interface User {
   role: UserRole;
   accountType?: AccountType;
   merchantStatus?: MerchantStatus;
+  category?: 'customer' | 'supplier' | 'employee' | 'driver'; // فئة الحساب
+  pricingTier?: 'retail' | 'market' | 'wholesale' | 'special'; // فئة التسعير
+  fixedDiscountPercent?: number; // نسبة الخصم المئوية الثابتة
+  notes?: string; // ملاحظات الحساب
   merchantTier?: MerchantTier; // برونزي 🥉 | فضي 🥈 | ذهبي VIP 🥇
   businessName?: string;
   businessType?: string;
@@ -483,18 +487,40 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+export type AccountCategory = 'customer' | 'supplier' | 'employee' | 'driver';
+export type PricingTier = 'retail' | 'market' | 'wholesale' | 'special';
+export type OpeningBalanceType = 'debit' | 'credit' | 'none';
+
+export interface AccountOpeningBalance {
+  id: string;
+  phone: string;
+  name: string;
+  category: AccountCategory;
+  type: 'debit' | 'credit'; // 'debit' = لنا (مدين), 'credit' = علينا (دائن)
+  amount: number;
+  notes?: string;
+  date: string;
+  createdAt: string;
+}
+
 export interface CustomerAccountSummary {
   phone: string;
   name: string;
   businessName?: string;
   accountType?: string;
+  category?: AccountCategory;
+  pricingTier?: PricingTier;
+  fixedDiscountPercent?: number;
+  email?: string;
   city?: string;
+  address?: string;
   ordersCount: number;
   paymentsCount?: number;
-  totalInvoiced: number; // إجمالي المشتريات
+  totalInvoiced: number; // إجمالي المشتريات / المسحوبات
   totalPaid: number; // إجمالي المسدد
-  remainingBalance: number; // الرصيد المتبقي (مطلوب)
+  remainingBalance: number; // الرصيد المتبقي (موجب = مطلوب لنا، سالب = دائن علينا)
   lastActivityDate: string;
+  notes?: string;
 }
 
 export interface AccountStatement {
@@ -701,6 +727,7 @@ export type AuditActionType =
   | 'customer_updated'
   | 'customer_status_changed'
   | 'customer_deleted'
+  | 'account_created'
   | 'staff_login'
   | 'staff_created'
   | 'staff_updated'

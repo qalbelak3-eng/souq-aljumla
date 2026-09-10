@@ -40,7 +40,10 @@ import {
   NotificationTargetAudience,
   DriverRating,
   LuckyWheelSettings,
-  LuckyWheelPrize
+  LuckyWheelPrize,
+  AccountCategory,
+  PricingTier,
+  AccountOpeningBalance
 } from '@/types';
 import { initialProducts, initialCategories, initialSettings, initialCoupons, initialBanners, initialLuckyWheelSettings } from '@/data/initialData';
 
@@ -63,6 +66,7 @@ interface DatabaseSchema {
   coupons: Coupon[];
   banners?: Banner[];
   payments?: PaymentRecord[];
+  accountOpenings?: AccountOpeningBalance[];
   companies?: Company[];
   offers?: ProductOffer[];
   purchaseInvoices?: PurchaseInvoice[];
@@ -2316,23 +2320,44 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     return cleanPhone && pPhone === cleanPhone;
   });
 
-  if (orders.length === 0 && payments.length === 0 && !user) {
+  // Find all opening balance records for this customer/account
+  const openings = (db.accountOpenings || []).filter(op => {
+    const opPhone = op.phone ? op.phone.replace(/\D/g, '') : '';
+    return cleanPhone && opPhone === cleanPhone;
+  });
+
+  if (orders.length === 0 && payments.length === 0 && openings.length === 0 && !user) {
     return null;
   }
 
   // Derive customer info
   const primaryOrder = orders[0];
-  const customerName = user?.name || primaryOrder?.customer.name || payments[0]?.customerName || 'عميل المتجر';
-  const customerPhone = user?.phone || primaryOrder?.customer.phone || payments[0]?.customerPhone || identifier;
+  const customerName = user?.name || primaryOrder?.customer.name || payments[0]?.customerName || openings[0]?.name || 'عميل المتجر';
+  const customerPhone = user?.phone || primaryOrder?.customer.phone || payments[0]?.customerPhone || openings[0]?.phone || identifier;
   const businessName = user?.businessName || primaryOrder?.customer.businessName;
-  const accountType = user?.accountType === 'merchant' ? 'تاجر / ماركت' : 'زبون عادي / زائر';
+  
+  let accountType = 'زبون عادي / زائر';
+  if (user?.category === 'supplier') {
+    accountType = 'مجهز / مورد بضائع 🏭';
+  } else if (user?.category === 'employee') {
+    accountType = 'موظف / كادر الشركة 💼';
+  } else if (user?.category === 'driver') {
+    accountType = 'مندوب توصيل 🚚';
+  } else if (user?.pricingTier === 'wholesale' || user?.accountType === 'wholesale') {
+    accountType = 'تاجر جملة 👑';
+  } else if (user?.pricingTier === 'market' || user?.accountType === 'merchant' || user?.accountType === 'market') {
+    accountType = 'ماركت ومحل 🏪';
+  } else if (user?.pricingTier === 'special') {
+    accountType = 'حساب خاص ⭐';
+  }
+
   const city = user?.city || primaryOrder?.customer.city || 'العراق';
   const address = user?.address || primaryOrder?.customer.address || '';
 
   // Construct Ledger Transactions (سجل الحركات)
   type RawTx = {
     date: string;
-    type: 'invoice' | 'payment';
+    type: 'invoice' | 'payment' | 'adjustment';
     referenceNumber: string;
     referenceId?: string;
     description: string;
@@ -2343,6 +2368,22 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
   };
 
   const rawTxList: RawTx[] = [];
+
+  // Opening Balances
+  openings.forEach(op => {
+    const isDebit = op.type === 'debit';
+    rawTxList.push({
+      date: op.date || op.createdAt,
+      type: 'adjustment',
+      referenceNumber: `OPN-${op.id.slice(-6)}`,
+      referenceId: op.id,
+      description: isDebit ? 'رصيد افتتاحي (لنا / مدين)' : 'رصيد افتتاحي (علينا / دائن)',
+      debit: isDebit ? op.amount : 0,
+      credit: !isDebit ? op.amount : 0,
+      paymentMethod: 'رصيد افتتاحي',
+      notes: op.notes || (isDebit ? 'رصيد افتتاحي مدين (مطلوب لنا)' : 'رصيد افتتاحي دائن (مستحق بذمتنا)'),
+    });
+  });
 
   // Invoices from orders
   orders.forEach(o => {
@@ -2393,7 +2434,12 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
       id: `tx-${idx + 1}-${tx.referenceNumber}`,
       date: tx.date,
       type: tx.type,
-      typeLabel: tx.type === 'invoice' ? 'فاتورة مبيعات 📦' : 'سند قبض / تسديد 💵',
+      typeLabel:
+        tx.type === 'invoice'
+          ? 'فاتورة مبيعات 📦'
+          : tx.type === 'payment'
+          ? 'سند قبض / تسديد 💵'
+          : 'رصيد افتتاحي ⚖️',
       referenceNumber: tx.referenceNumber,
       referenceId: tx.referenceId,
       description: tx.description,
@@ -2456,14 +2502,161 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
   };
 }
 
-// Get all customer accounts summary for Admin accounting dashboard
+// Create or register a new Accounting Account (زبائن، مجهزين، موظفين، مندوبين)
+export function createAccountingAccount(data: {
+  category: AccountCategory;
+  name: string;
+  businessName?: string;
+  phone: string;
+  email?: string;
+  city?: string;
+  address?: string;
+  pricingTier?: PricingTier;
+  fixedDiscountPercent?: number;
+  notes?: string;
+  openingBalance?: {
+    type: 'debit' | 'credit';
+    amount: number;
+    notes?: string;
+    date?: string;
+  };
+  operator?: { name: string; username: string; role?: string };
+}): { success: boolean; user?: User; openingBalance?: AccountOpeningBalance; error?: string } {
+  const db = ensureDbExists();
+  const cleanPhone = (data.phone || '').trim().replace(/\D/g, '');
+  if (!cleanPhone) {
+    return { success: false, error: 'رقم الهاتف مطلوب وصحيح' };
+  }
+  if (!data.name || !data.name.trim()) {
+    return { success: false, error: 'اسم الحساب مطلوب' };
+  }
+
+  // Check if user already exists
+  let user = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === cleanPhone);
+
+  const role: UserRole = data.category === 'driver' ? 'driver' : 'customer';
+  const accountType: AccountType = data.pricingTier === 'wholesale' ? 'wholesale' : data.pricingTier === 'market' ? 'market' : 'individual';
+
+  if (!user) {
+    user = {
+      id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: data.name.trim(),
+      phone: data.phone.trim(),
+      email: data.email?.trim() || undefined,
+      businessName: data.businessName?.trim() || undefined,
+      role,
+      accountType,
+      category: data.category,
+      pricingTier: data.pricingTier || 'retail',
+      fixedDiscountPercent: data.fixedDiscountPercent ? Number(data.fixedDiscountPercent) : undefined,
+      city: data.city?.trim() || 'العراق',
+      address: data.address?.trim() || undefined,
+      notes: data.notes?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+    db.users.push(user);
+  } else {
+    // Update existing user with accounting info
+    user.name = data.name.trim() || user.name;
+    user.category = data.category;
+    if (data.businessName) user.businessName = data.businessName.trim();
+    if (data.email) user.email = data.email.trim();
+    if (data.city) user.city = data.city.trim();
+    if (data.address) user.address = data.address.trim();
+    if (data.pricingTier) user.pricingTier = data.pricingTier;
+    if (data.fixedDiscountPercent !== undefined) user.fixedDiscountPercent = Number(data.fixedDiscountPercent);
+    if (data.notes) user.notes = data.notes.trim();
+  }
+
+  // If driver category, ensure driver record exists in db.drivers
+  if (data.category === 'driver') {
+    if (!db.drivers) db.drivers = [];
+    let drv = db.drivers.find(d => d.phone && d.phone.replace(/\D/g, '') === cleanPhone);
+    if (!drv) {
+      db.drivers.push({
+        id: `drv-${Date.now()}`,
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        password: Math.floor(1000 + Math.random() * 9000).toString(),
+        vehicleInfo: data.businessName || '',
+        isActive: true,
+        currentCashInHand: 0,
+        notes: data.notes || '',
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Handle Opening Balance
+  let openingRec: AccountOpeningBalance | undefined;
+  if (data.openingBalance && Number(data.openingBalance.amount) > 0 && (data.openingBalance.type === 'debit' || data.openingBalance.type === 'credit')) {
+    if (!db.accountOpenings) db.accountOpenings = [];
+    const now = new Date();
+    openingRec = {
+      id: `opn-${Date.now()}`,
+      phone: data.phone.trim(),
+      name: data.name.trim(),
+      category: data.category,
+      type: data.openingBalance.type,
+      amount: Number(data.openingBalance.amount),
+      notes: data.openingBalance.notes?.trim() || (data.openingBalance.type === 'debit' ? 'رصيد افتتاحي مدين (لنا)' : 'رصيد افتتاحي دائن (علينا)'),
+      date: data.openingBalance.date || now.toISOString().slice(0, 10),
+      createdAt: now.toISOString(),
+    };
+    db.accountOpenings.push(openingRec);
+  }
+
+  saveDb(db);
+
+  // Log to Audit Trail
+  const categoryLabels: Record<AccountCategory, string> = {
+    customer: 'زبون',
+    supplier: 'مجهز / مورد',
+    employee: 'موظف',
+    driver: 'مندوب توصيل',
+  };
+
+  logAuditEvent({
+    actionType: 'account_created',
+    actionLabel: 'إنشاء حساب جديد في النظام المحاسبي 👤',
+    category: 'accounting',
+    categoryLabel: 'دليل الحسابات',
+    operator: {
+      name: data.operator?.name || 'المحاسب',
+      username: data.operator?.username || 'accountant',
+      role: data.operator?.role || 'staff',
+    },
+    target: {
+      type: 'account',
+      id: user.id,
+      referenceNumber: user.phone,
+      name: user.name,
+    },
+    financialImpact: openingRec ? {
+      amount: openingRec.amount,
+      fundType: 'debt',
+    } : undefined,
+    details: `تم إضافة حساب جديد (${data.name}) فئة (${categoryLabels[data.category] || data.category})${openingRec ? ` مع رصيد افتتاحي ${openingRec.amount.toLocaleString()} د.ع (${openingRec.type === 'debit' ? 'لنا' : 'علينا'})` : ''}`,
+    severity: 'info',
+  });
+
+  return { success: true, user, openingBalance: openingRec };
+}
+
+// Get all customer & accounting accounts summary for Admin accounting dashboard
 export function getAllCustomerAccounts(): CustomerAccountSummary[] {
   const db = ensureDbExists();
   const phoneMap = new Map<string, {
     name: string;
     businessName?: string;
     accountType?: string;
+    category?: AccountCategory;
+    pricingTier?: PricingTier;
+    fixedDiscountPercent?: number;
+    email?: string;
     city?: string;
+    address?: string;
+    notes?: string;
     ordersCount: number;
     totalInvoiced: number;
     totalPaid: number;
@@ -2474,18 +2667,33 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
   db.users.forEach(u => {
     if (!u.phone) return;
     const clean = u.phone.replace(/\D/g, '');
-    const formattedType =
-      u.accountType === 'wholesale'
-        ? 'تاجر جملة 👑'
-        : u.accountType === 'market'
-        ? 'ماركت 🏪'
-        : 'زبون عادي 👤';
+    
+    let formattedType = 'زبون عادي 👤';
+    if (u.category === 'supplier') {
+      formattedType = 'مجهز / مورد 🏭';
+    } else if (u.category === 'employee') {
+      formattedType = 'موظف 💼';
+    } else if (u.category === 'driver') {
+      formattedType = 'مندوب توصيل 🚚';
+    } else if (u.pricingTier === 'wholesale' || u.accountType === 'wholesale') {
+      formattedType = 'تاجر جملة 👑';
+    } else if (u.pricingTier === 'market' || u.accountType === 'market' || u.accountType === 'merchant') {
+      formattedType = 'ماركت 🏪';
+    } else if (u.pricingTier === 'special') {
+      formattedType = 'حساب خاص ⭐';
+    }
 
     phoneMap.set(clean, {
       name: u.name,
       businessName: u.businessName && u.businessName !== u.name ? u.businessName : undefined,
       accountType: formattedType,
+      category: u.category || (u.role === 'driver' ? 'driver' : 'customer'),
+      pricingTier: u.pricingTier || (u.accountType === 'wholesale' ? 'wholesale' : u.accountType === 'market' || u.accountType === 'merchant' ? 'market' : 'retail'),
+      fixedDiscountPercent: u.fixedDiscountPercent,
+      email: u.email,
       city: u.city,
+      address: u.address,
+      notes: u.notes,
       ordersCount: 0,
       totalInvoiced: 0,
       totalPaid: 0,
@@ -2493,7 +2701,39 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
     });
   });
 
-  // 2. Ingest Orders
+  // 2. Ingest Opening Balances
+  (db.accountOpenings || []).forEach(op => {
+    const clean = (op.phone || '').replace(/\D/g, '');
+    if (!clean) return;
+
+    const isDebit = op.type === 'debit';
+    const existing = phoneMap.get(clean);
+    if (existing) {
+      if (isDebit) {
+        existing.totalInvoiced += op.amount;
+      } else {
+        existing.totalPaid += op.amount;
+      }
+      if (new Date(op.createdAt).getTime() > new Date(existing.lastDate).getTime()) {
+        existing.lastDate = op.createdAt;
+      }
+      if (!existing.category && op.category) existing.category = op.category;
+      if (!existing.notes && op.notes) existing.notes = op.notes;
+    } else {
+      phoneMap.set(clean, {
+        name: op.name,
+        accountType: op.category === 'supplier' ? 'مجهز / مورد 🏭' : op.category === 'employee' ? 'موظف 💼' : op.category === 'driver' ? 'مندوب توصيل 🚚' : 'زبون 👤',
+        category: op.category,
+        ordersCount: 0,
+        totalInvoiced: isDebit ? op.amount : 0,
+        totalPaid: !isDebit ? op.amount : 0,
+        lastDate: op.createdAt,
+        notes: op.notes,
+      });
+    }
+  });
+
+  // 3. Ingest Orders
   db.orders.forEach(o => {
     if (o.status === 'cancelled') return;
     const clean = (o.customer.phone || '').replace(/\D/g, '');
@@ -2501,7 +2741,7 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
 
     const userForOrder = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === clean);
     const ordType = userForOrder
-      ? (userForOrder.accountType === 'wholesale' ? 'تاجر جملة 👑' : userForOrder.accountType === 'market' ? 'ماركت 🏪' : 'زبون عادي 👤')
+      ? (userForOrder.pricingTier === 'wholesale' || userForOrder.accountType === 'wholesale' ? 'تاجر جملة 👑' : userForOrder.pricingTier === 'market' || userForOrder.accountType === 'market' ? 'ماركت 🏪' : 'زبون عادي 👤')
       : (o.customer.businessName ? 'ماركت / متجر 🏪' : 'زبون مباشر 👤');
 
     const existing = phoneMap.get(clean);
@@ -2521,6 +2761,7 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
         name: o.customer.name || 'عميل المتجر',
         businessName: o.customer.businessName && o.customer.businessName !== o.customer.name ? o.customer.businessName : undefined,
         accountType: ordType,
+        category: 'customer',
         city: o.customer.city,
         ordersCount: 1,
         totalInvoiced: o.total,
@@ -2530,7 +2771,7 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
     }
   });
 
-  // 3. Ingest Payments
+  // 4. Ingest Payments
   (db.payments || []).forEach(p => {
     const clean = (p.customerPhone || '').replace(/\D/g, '');
     if (!clean) return;
@@ -2545,6 +2786,7 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
       phoneMap.set(clean, {
         name: p.customerName,
         accountType: 'زبون مباشر 👤',
+        category: 'customer',
         ordersCount: 0,
         totalInvoiced: 0,
         totalPaid: p.amount,
@@ -2560,7 +2802,13 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
       name: val.name,
       businessName: val.businessName,
       accountType: val.accountType,
+      category: val.category || 'customer',
+      pricingTier: val.pricingTier,
+      fixedDiscountPercent: val.fixedDiscountPercent,
+      email: val.email,
       city: val.city,
+      address: val.address,
+      notes: val.notes,
       ordersCount: val.ordersCount,
       totalInvoiced: val.totalInvoiced,
       totalPaid: val.totalPaid,
