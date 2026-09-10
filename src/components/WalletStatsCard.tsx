@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  Sparkles,
-  Receipt,
+  Coins,
+  FileText,
   ChevronLeft,
-  Wallet
+  ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Order } from '@/types';
@@ -87,71 +87,59 @@ export default function WalletStatsCard() {
 
   return (
     <div className="w-full select-none max-w-5xl mx-auto">
-      {/* ═══ المحفظة والحساب المالي (Ultra Compact Sleek Edition) ═══ */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-[#39297e] via-[#4d3ca2] to-[#322372] text-white rounded-xl p-2 sm:p-2.5 border border-purple-300/30 shadow-[0_4px_16px_rgba(77,60,162,0.18)] flex flex-col justify-between gap-1.5 group">
+      {/* ═══ الشريط البنفسجي الأنيق (Sleek Modern Monochrome Edition) ═══ */}
+      <div className="relative overflow-hidden bg-gradient-to-l from-[#322372] via-[#46359c] to-[#39297e] text-white rounded-2xl p-2 sm:p-2.5 border border-white/20 shadow-md shadow-purple-950/20">
         
-        {/* Subtle Ambient Violet Radial Glows */}
-        <div className="absolute -left-6 -top-6 w-20 h-20 bg-white/10 rounded-full blur-lg pointer-events-none" />
-        <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-purple-300/10 rounded-full blur-md pointer-events-none" />
+        {/* Subtle Ambient Light Reflections */}
+        <div className="absolute -left-10 -top-10 w-28 h-28 bg-white/10 rounded-full blur-xl pointer-events-none" />
+        <div className="absolute -right-8 -bottom-8 w-24 h-24 bg-purple-400/10 rounded-full blur-lg pointer-events-none" />
 
-        {/* Top Row: Section Title & Statement Button */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-1 bg-white/15 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-md">
-            <Sparkles className="w-2.5 h-2.5 text-amber-300 animate-pulse" />
-            <span>محفظة الأرباح والحساب</span>
-          </div>
-
-          <Link
-            href={statementUrl}
-            className="bg-white/15 hover:bg-white/25 active:scale-95 text-white text-[10px] font-bold py-0.5 px-2 rounded-full border border-white/20 backdrop-blur-md transition flex items-center gap-1 group-hover:border-white/40"
-          >
-            <Receipt className="w-2.5 h-2.5 text-white" />
-            <span>كشف الحساب 🧾</span>
-            <ChevronLeft className="w-2.5 h-2.5 transition-transform group-hover:-translate-x-0.5" />
-          </Link>
-        </div>
-
-        {/* 2 Financial Pillars (رصيد أرباحك + المبلغ المتبقي) */}
-        <div className="relative z-10 grid grid-cols-2 gap-1.5 sm:gap-2">
+        {/* 2 Balanced Sleek Columns */}
+        <div className="relative z-10 grid grid-cols-2 gap-2 sm:gap-3">
           
-          {/* Pillar 1: رصيد أرباح الكاش باك */}
-          <div className="bg-white/10 hover:bg-white/15 rounded-lg p-1.5 sm:p-2 border border-white/15 backdrop-blur-md transition space-y-0.5 text-right">
-            <div className="flex items-center justify-end gap-1 text-[9.5px] text-white/90 font-bold">
+          {/* العمود الأول: رصيد أرباحك */}
+          <div className="bg-white/10 hover:bg-white/15 rounded-xl p-2 sm:p-2.5 border border-white/15 backdrop-blur-md transition-all flex flex-col justify-between text-right space-y-1">
+            <div className="flex items-center justify-end gap-1.5 text-[11px] sm:text-xs text-white/90 font-bold">
               <span>رصيد أرباحك</span>
-              <span>💰</span>
+              <Coins className="w-3.5 h-3.5 text-white/90" />
             </div>
+            
             <div className="flex items-baseline justify-end gap-1">
-              <span className="text-sm sm:text-base font-black font-mono text-white leading-none">
-                {profitBalance.toLocaleString()}
+              <span className="text-base sm:text-lg font-black font-mono text-white leading-none tracking-tight">
+                {isLoading ? '...' : profitBalance.toLocaleString()}
               </span>
-              <span className="text-[8.5px] font-bold text-white/80 font-sans">د.ع</span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-white/80 font-sans">د.ع</span>
             </div>
-            <span className="text-[8.5px] sm:text-[9.5px] text-white font-bold block leading-tight truncate">
-              ✨ اربح على كل قطعة تطلبها
-            </span>
+
+            <div className="text-[9.5px] sm:text-[10.5px] text-white/85 font-medium leading-tight truncate">
+              اربح على كل قطعة تطلبها
+            </div>
           </div>
 
-          {/* Pillar 2: المبلغ المتبقي (المطلوب) */}
+          {/* العمود الثاني: المبلغ المتبقي */}
           <Link
             href={statementUrl}
-            className="bg-white/10 hover:bg-white/15 rounded-lg p-1.5 sm:p-2 border border-white/15 backdrop-blur-md transition space-y-0.5 text-right block active:scale-98 group/item"
+            className="bg-white/10 hover:bg-white/15 rounded-xl p-2 sm:p-2.5 border border-white/15 backdrop-blur-md transition-all flex flex-col justify-between text-right space-y-1 active:scale-[0.98] group"
           >
             <div className="flex items-center justify-between">
-              <ChevronLeft className="w-2.5 h-2.5 text-white/80 group-hover/item:-translate-x-0.5 transition-transform" />
-              <div className="flex items-center gap-1 text-[9.5px] text-white/90 font-bold">
+              <ChevronLeft className="w-3 h-3 text-white/70 group-hover:-translate-x-0.5 transition-transform" />
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-white/90 font-bold">
                 <span>المبلغ المتبقي</span>
-                <span>📊</span>
+                <FileText className="w-3.5 h-3.5 text-white/90" />
               </div>
             </div>
+
             <div className="flex items-baseline justify-end gap-1">
-              <span className="text-sm sm:text-base font-black font-mono text-white leading-none">
-                {statementBalance.toLocaleString()}
+              <span className="text-base sm:text-lg font-black font-mono text-white leading-none tracking-tight">
+                {isLoading ? '...' : statementBalance.toLocaleString()}
               </span>
-              <span className="text-[8.5px] font-bold text-white/80 font-sans">د.ع</span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-white/80 font-sans">د.ع</span>
             </div>
-            <span className="text-[8.5px] sm:text-[9.5px] text-white font-bold block leading-tight truncate">
-              {statementBalance > 0 ? '⚠️ مطلوب سداده' : '✅ مسدد بالكامل'}
-            </span>
+
+            <div className="text-[9.5px] sm:text-[10.5px] text-white/85 font-medium leading-tight truncate flex items-center justify-end gap-1">
+              <span>{statementBalance > 0 ? 'مطلوب سداده' : 'مسدد بالكامل'}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
+            </div>
           </Link>
 
         </div>
