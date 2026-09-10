@@ -161,18 +161,18 @@ export async function sendSystemNotification({
           tag: tag || 'etihad-alert-' + Date.now(),
           data: { url },
           vibrate: [200, 100, 200, 100, 200],
-          requireInteraction: true,
+          requireInteraction: false,
         } as any);
         return;
       }
     }
 
-    // Fallback to standard Notification constructor
+    // Fallback to standard Notification constructor with auto-close after 6 seconds
     const notif = new Notification(title, {
       body,
       icon,
       tag: tag || 'etihad-alert-' + Date.now(),
-      requireInteraction: true,
+      requireInteraction: false,
     } as any);
 
     notif.onclick = function () {
@@ -180,8 +180,17 @@ export async function sendSystemNotification({
       if (url) {
         window.location.href = url;
       }
-      notif.close();
+      try {
+        notif.close();
+      } catch {}
     };
+
+    // Auto close after 6 seconds so it doesn't linger on the screen
+    setTimeout(() => {
+      try {
+        notif.close();
+      } catch {}
+    }, 6000);
   } catch (err) {
     console.warn('Failed to send notification:', err);
   }
