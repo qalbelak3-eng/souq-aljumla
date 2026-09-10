@@ -1251,36 +1251,33 @@ function AdminAccountingContent() {
                           </td>
 
                           <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1">
+                            <div className="flex items-center justify-center gap-1.5">
                               {/* Open Payment Modal Button (Compact) */}
                               {isSupplier ? (
                                 <button
                                   onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
-                                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-2.5 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 text-[10.5px] whitespace-nowrap"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded-lg transition shadow-xs cursor-pointer active:scale-95 text-[11px] whitespace-nowrap"
                                   title="تسجيل سند صرف وتسديد دفعة مالية للمجهز"
                                 >
-                                  <CreditCard className="w-3 h-3" />
-                                  <span>سند صرف 💳</span>
+                                  سند صرف
                                 </button>
                               ) : (
                                 <button
                                   onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 text-[10.5px] whitespace-nowrap"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-3 rounded-lg transition shadow-xs cursor-pointer active:scale-95 text-[11px] whitespace-nowrap"
                                   title="تسجيل سند قبض واستلام دفعة مالية من العميل"
                                 >
-                                  <Plus className="w-3 h-3" />
-                                  <span>سند قبض 💵</span>
+                                  سند قبض
                                 </button>
                               )}
 
                               {/* View Statement Button (Compact) */}
                               <button
                                 onClick={() => handleOpenStatement(acc.phone)}
-                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1 px-2.5 rounded-lg transition flex items-center gap-1 border border-slate-200 cursor-pointer text-[10.5px] whitespace-nowrap"
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1 px-3 rounded-lg transition border border-slate-200 cursor-pointer text-[11px] whitespace-nowrap"
                                 title="عرض كشف الحساب التفصيلي والطباعة"
                               >
-                                <FileText className="w-3 h-3 text-brand-blue" />
-                                <span>كشف الحساب 📄</span>
+                                كشف الحساب
                               </button>
                             </div>
                           </td>
