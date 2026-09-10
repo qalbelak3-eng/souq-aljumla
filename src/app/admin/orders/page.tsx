@@ -286,17 +286,19 @@ export default function AdminOrdersPage() {
       } catch (e) {}
     }
 
-    // 2. Fetch fresh data in background
+    // 2. Fetch fresh data on mount
     fetchOrders(orders.length > 0);
     fetchProductsAndMerchants();
+  }, []);
 
+  useEffect(() => {
     // Smart background polling: only when page is active/visible
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (!isManualOrderModalOpen && !editingOrder) {
         fetchOrders(true);
       }
-    }, 12000);
+    }, 20000);
 
     const handleFocus = () => {
       if (!isManualOrderModalOpen && !editingOrder) {

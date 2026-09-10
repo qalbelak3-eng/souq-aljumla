@@ -169,10 +169,35 @@ export default function AdminReportsPage() {
 
   // Initial Load
   useEffect(() => {
-    fetchInventoryReport(startDate, endDate, 'اليوم');
-    fetchProfitReport(startDate, endDate, 'اليوم');
-    fetchReconciliationReport(reconciliationDate);
-    fetchAccounts();
+    setIsLoading(true);
+    Promise.all([
+      fetch(`/api/reports/inventory?startDate=${startDate}&endDate=${endDate}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.report) setInventoryReport(d.report);
+        })
+        .catch(() => {}),
+      fetch(`/api/reports/profits?startDate=${startDate}&endDate=${endDate}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.report) setProfitReport(d.report);
+        })
+        .catch(() => {}),
+      fetch(`/api/reports/reconciliation?date=${encodeURIComponent(reconciliationDate)}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.report) setReconciliationReport(d.report);
+        })
+        .catch(() => {}),
+      fetch('/api/accounting/accounts', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && Array.isArray(d.accounts)) setAccounts(d.accounts);
+        })
+        .catch(() => {}),
+    ]).finally(() => {
+      setIsLoading(false);
+    });
   }, []);
 
   // Quick Period handlers for Inventory & Profits
