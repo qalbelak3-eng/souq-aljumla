@@ -33,6 +33,7 @@ import { Order, OrderItem, OrderStatus, Product, User as UserType, Driver, Vehic
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 import EtihadLogo from '@/components/EtihadLogo';
+import { getProductPriceForUser } from '@/lib/pricing';
 
 export default function AdminOrdersPage() {
   const toast = useToast();
@@ -399,7 +400,11 @@ export default function AdminOrdersPage() {
     if (!prod) return;
 
     const isWholesale = editingOrder?.items[0]?.saleType === 'wholesale';
-    const price = isWholesale ? prod.wholesalePrice : prod.price;
+    const orderUser = editingOrder?.customer?.userId
+      ? merchants.find((u) => u.id === editingOrder.customer.userId)
+      : merchants.find((u) => u.phone && editingOrder?.customer?.phone && u.phone.replace(/\D/g, '') === editingOrder.customer.phone.replace(/\D/g, ''));
+
+    const { price } = getProductPriceForUser(prod, isWholesale ? 'wholesale' : 'retail', orderUser);
     const unitLabel = isWholesale ? prod.wholesaleUnit : prod.retailUnit;
 
     const existingIdx = editItems.findIndex((it) => it.productId === prod.id);
@@ -549,18 +554,7 @@ export default function AdminOrdersPage() {
     if (!prod) return;
 
     const selectedMerchant = merchants.find((u) => u.id === manualSelectedMerchantId);
-    const tier = selectedMerchant?.merchantTier || 'bronze';
-
-    let price = prod.price;
-    if (manualSaleType === 'wholesale') {
-      if (tier === 'gold') {
-        price = prod.vipPrice || prod.specialPrice || prod.wholesalePrice;
-      } else if (tier === 'silver') {
-        price = prod.specialPrice || prod.wholesalePrice;
-      } else {
-        price = prod.wholesalePrice;
-      }
-    }
+    const { price } = getProductPriceForUser(prod, manualSaleType, selectedMerchant);
     const unitLabel = manualSaleType === 'wholesale' ? prod.wholesaleUnit : prod.retailUnit;
 
     const existingIdx = manualItems.findIndex((it) => it.productId === prod.id);
@@ -1682,8 +1676,16 @@ export default function AdminOrdersPage() {
               {manualCustomerType === 'registered' && manualSelectedMerchantId ? (
                 (() => {
                   const selectedM = merchants.find((u) => u.id === manualSelectedMerchantId);
-                  const isMerchant = selectedM?.accountType === 'merchant' || selectedM?.accountType === 'wholesale' || selectedM?.accountType === 'market' || !!selectedM?.businessName || selectedM?.merchantStatus === 'approved';
-                  const tierLabel = selectedM?.merchantTier === 'gold' ? 'ذهبـي VIP 🥇' : selectedM?.merchantTier === 'silver' ? 'فضـي 🥈' : 'برونـزي 🥉';
+                  const isMarket = selectedM?.accountType === 'market';
+                  const isWholesaleMerchant = selectedM?.accountType === 'wholesale' || selectedM?.accountType === 'merchant';
+                  const isMerchant = isMarket || isWholesaleMerchant || !!selectedM?.businessName || selectedM?.merchantStatus === 'approved';
+                  const tierLabel = isMarket
+                    ? 'سعر جملة الماركتات والمحلات 🏪'
+                    : selectedM?.merchantTier === 'gold'
+                    ? 'ذهبـي VIP 🥇'
+                    : selectedM?.merchantTier === 'silver'
+                    ? 'فضـي 🥈'
+                    : 'برونـزي 🥉';
 
                   return (
                     <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
@@ -1693,19 +1695,25 @@ export default function AdminOrdersPage() {
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
                           isMerchant ? 'bg-emerald-600 text-white' : 'bg-brand-blue text-white'
                         }`}>
-                          {isMerchant ? '👑' : '🛒'}
+                          {isMarket ? '🏪' : isMerchant ? '👑' : '🛒'}
                         </div>
                         <div>
                           <span className="font-black text-slate-900 text-xs block">
-                            {isMerchant ? (
+                            {isMarket ? (
+                              <span>ماركت معتمد: <span className="text-emerald-800">{selectedM?.businessName || selectedM?.name}</span></span>
+                            ) : isWholesaleMerchant ? (
+                              <span>تاجر جملة معتمد: <span className="text-emerald-800">{selectedM?.businessName || selectedM?.name}</span></span>
+                            ) : isMerchant ? (
                               <span>تاجر / ماركت معتمد: <span className="text-emerald-800">{selectedM?.businessName || selectedM?.name}</span></span>
                             ) : (
                               <span>زبون تجزئة ومفرد مسجل: <span className="text-brand-blue">{selectedM?.name}</span></span>
                             )}
                           </span>
                           <span className="text-[10px] text-slate-500 font-bold block">
-                            {isMerchant
-                              ? `الفئة: (${tierLabel}) — تم اعتماد أسعار كراتين الجملة والماركتات آلياً ✓`
+                            {isMarket
+                              ? 'الفئة: (سعر جملة الماركتات والمحلات 🏪) — تم اعتماد أسعار كراتين الماركت آلياً ✓'
+                              : isMerchant
+                              ? `الفئة: (${tierLabel}) — تم اعتماد أسعار كراتين الجملة آلياً ✓`
                               : 'تم اعتماد أسعار المفرد والقطاعي آلياً ✓'}
                           </span>
                         </div>
@@ -1716,7 +1724,7 @@ export default function AdminOrdersPage() {
                           ? 'bg-emerald-600 text-white border-emerald-700'
                           : 'bg-brand-blue text-white border-blue-700'
                       }`}>
-                        {isMerchant ? '📦 تسعير كراتين الجملة' : '🛒 تسعير المفرد'}
+                        {isMarket ? '🏪 تسعير جملة الماركت' : isMerchant ? '📦 تسعير كراتين الجملة' : '🛒 تسعير المفرد'}
                       </span>
                     </div>
                   );
@@ -1766,20 +1774,9 @@ export default function AdminOrdersPage() {
                   merchantId={manualSelectedMerchantId}
                   merchants={merchants}
                   onSelectProduct={(prod) => {
-                    // ⚡ بمجرد اختيار الصنف، يُضاف فوراً للطلبية
+                    // ⚡ بمجرد اختيار الصنف، يُضاف فوراً للطلبية بالاعتماد التلقائي على فئة الزبون
                     const selectedMerchant = merchants.find((u) => u.id === manualSelectedMerchantId);
-                    const tier = selectedMerchant?.merchantTier || 'bronze';
-
-                    let price = prod.price;
-                    if (manualSaleType === 'wholesale') {
-                      if (tier === 'gold') {
-                        price = prod.vipPrice || prod.specialPrice || prod.wholesalePrice;
-                      } else if (tier === 'silver') {
-                        price = prod.specialPrice || prod.wholesalePrice;
-                      } else {
-                        price = prod.wholesalePrice;
-                      }
-                    }
+                    const { price } = getProductPriceForUser(prod, manualSaleType, selectedMerchant);
                     const unitLabel = manualSaleType === 'wholesale' ? prod.wholesaleUnit : prod.retailUnit;
 
                     const existingIdx = manualItems.findIndex((it) => it.productId === prod.id);
@@ -2545,16 +2542,7 @@ function SearchableProductOrderSelect({
               </div>
             ) : (
               filteredProducts.map((p) => {
-                let price = p.price;
-                if (saleType === 'wholesale') {
-                  if (tier === 'gold') {
-                    price = p.vipPrice || p.specialPrice || p.wholesalePrice;
-                  } else if (tier === 'silver') {
-                    price = p.specialPrice || p.wholesalePrice;
-                  } else {
-                    price = p.wholesalePrice;
-                  }
-                }
+                const { price } = getProductPriceForUser(p, saleType, selectedMerchant);
                 const unit = saleType === 'wholesale' ? p.wholesaleUnit || 'كرتون' : p.retailUnit || 'قطعة';
                 const isOutOfStock = p.stock === 0 || p.stock < 0;
 
