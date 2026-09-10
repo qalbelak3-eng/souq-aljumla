@@ -520,7 +520,7 @@ export default function AdminDriversPage() {
         <div>
           <h1 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
             <Truck className="w-6 h-6 text-amber-500" />
-            <span>إدارة أسطول النقل وسائقي وسيارات التوصيل 🚚🚗</span>
+            <span>إدارة أسطول النقل وسائقي وسيارات التوصيل</span>
           </h1>
           <p className="text-xs text-slate-500 font-bold mt-1">
             إضافة السائقين، تسجيل سيارات ومركبات الأسطول، إسناد طلبيات الزبائن، وتصفية العهد النقدية
@@ -534,7 +534,7 @@ export default function AdminDriversPage() {
             className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs py-3 px-4 rounded-2xl border border-slate-200 transition flex items-center gap-1.5"
           >
             <ExternalLink className="w-4 h-4 text-amber-600" />
-            <span>بوابة السائق (للموبايل) 📱</span>
+            <span>بوابة السائق (للموبايل)</span>
           </Link>
 
           {activeTab === 'drivers' ? (
@@ -543,7 +543,7 @@ export default function AdminDriversPage() {
               className="bg-brand-blue hover:bg-brand-blueDark text-white font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ إضافة سائق جديد ⚡</span>
+              <span>+ إضافة سائق جديد</span>
             </button>
           ) : (
             <button
@@ -551,48 +551,99 @@ export default function AdminDriversPage() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-3 px-5 rounded-2xl shadow-md transition flex items-center gap-2 transform active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ إضافة سيارة / مركبة جديدة 🚗</span>
+              <span>+ إضافة سيارة / مركبة جديدة</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* TABS SELECTOR */}
-      <div className="flex items-center gap-2 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 w-fit flex-wrap">
+      {/* TABS SELECTOR - PROMINENT & HIGH VISIBILITY */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
+          type="button"
           onClick={() => { setActiveTab('drivers'); setSearchQuery(''); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 shadow-xs cursor-pointer text-right ${
             activeTab === 'drivers'
-              ? 'bg-brand-blue text-white shadow-sm'
-              : 'text-slate-700 hover:bg-white/60'
+              ? 'bg-gradient-to-r from-blue-700 to-indigo-800 text-white border-blue-700 shadow-md ring-2 ring-blue-400/40'
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 hover:border-slate-300'
           }`}
         >
-          <Truck className="w-4 h-4" />
-          <span>👨‍✈️ أسطول السائقين والمناديب ({drivers.length})</span>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 ${
+              activeTab === 'drivers' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700 border border-blue-100'
+            }`}>
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-black text-sm block">أسطول السائقين والمناديب</span>
+              <span className={`text-[11px] font-bold block ${activeTab === 'drivers' ? 'text-blue-100' : 'text-slate-500'}`}>
+                إدارة المناديب وتوزيع المهام
+              </span>
+            </div>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono shrink-0 ${
+            activeTab === 'drivers' ? 'bg-white text-blue-900 shadow-xs' : 'bg-blue-100 text-blue-800'
+          }`}>
+            {drivers.length}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => { setActiveTab('vehicles'); setSearchQuery(''); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 shadow-xs cursor-pointer text-right ${
             activeTab === 'vehicles'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-700 hover:bg-white/60'
+              ? 'bg-gradient-to-r from-emerald-700 to-teal-800 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400/40'
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 hover:border-slate-300'
           }`}
         >
-          <Car className="w-4 h-4" />
-          <span>🚗 أسطول السيارات والمركبات ({vehicles.length})</span>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 ${
+              activeTab === 'vehicles' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+            }`}>
+              <Car className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-black text-sm block">أسطول السيارات والمركبات</span>
+              <span className={`text-[11px] font-bold block ${activeTab === 'vehicles' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                المركبات، اللوحات والجاهزية
+              </span>
+            </div>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono shrink-0 ${
+            activeTab === 'vehicles' ? 'bg-white text-emerald-900 shadow-xs' : 'bg-emerald-100 text-emerald-800'
+          }`}>
+            {vehicles.length}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => { setActiveTab('ratings'); setSearchQuery(''); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer ${
+          className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 shadow-xs cursor-pointer text-right ${
             activeTab === 'ratings'
-              ? 'bg-amber-500 text-white shadow-sm'
-              : 'text-slate-700 hover:bg-white/60'
+              ? 'bg-gradient-to-r from-amber-600 to-orange-700 text-white border-amber-600 shadow-md ring-2 ring-amber-400/40'
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 hover:border-slate-300'
           }`}
         >
-          <Star className="w-4 h-4" />
-          <span>⭐ سجل تقييمات وآراء الزبائن ({allRatings.length})</span>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0 ${
+              activeTab === 'ratings' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700 border border-amber-100'
+            }`}>
+              <Star className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-black text-sm block">سجل تقييمات وآراء الزبائن</span>
+              <span className={`text-[11px] font-bold block ${activeTab === 'ratings' ? 'text-amber-100' : 'text-slate-500'}`}>
+                ملاحظات العملاء والتقييمات
+              </span>
+            </div>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono shrink-0 ${
+            activeTab === 'ratings' ? 'bg-white text-amber-900 shadow-xs' : 'bg-amber-100 text-amber-800'
+          }`}>
+            {allRatings.length}
+          </span>
         </button>
       </div>
 
@@ -676,8 +727,8 @@ export default function AdminDriversPage() {
                   <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
                     <tr className="divide-x divide-x-reverse divide-slate-100">
                       <th className="py-3 px-4">السائق والمعلومات</th>
-                      <th className="py-3 px-4 text-center">⭐ تقييم الزبائن والأداء</th>
-                      <th className="py-3 px-4">المركبة الافتراضية 🚗</th>
+                      <th className="py-3 px-4 text-center">تقييم الزبائن والأداء</th>
+                      <th className="py-3 px-4">المركبة الافتراضية</th>
                       <th className="py-3 px-4">الطلبيات النشطة</th>
                       <th className="py-3 px-4">المسلّم اليوم</th>
                       <th className="py-3 px-4">العهدة النقدية بيده (الكاش)</th>
@@ -703,11 +754,11 @@ export default function AdminDriversPage() {
                                   <span className="font-bold text-slate-900">{driver.name}</span>
                                   {driver.isActive ? (
                                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                                      نشط ✅
+                                      نشط
                                     </span>
                                   ) : (
                                     <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                                      متوقف
+                                      غير نشط
                                     </span>
                                   )}
                                 </div>
@@ -907,7 +958,7 @@ export default function AdminDriversPage() {
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-black text-[11px]">
                     <tr className="divide-x divide-x-reverse divide-slate-100">
-                      <th className="py-3 px-4">اسم وموديل السيارة 🚗</th>
+                      <th className="py-3 px-4">اسم وموديل السيارة</th>
                       <th className="py-3 px-4">رقم اللوحة / التسجيل</th>
                       <th className="py-3 px-4">نوع المركبة</th>
                       <th className="py-3 px-4">سنة الموديل</th>
@@ -949,20 +1000,20 @@ export default function AdminDriversPage() {
                         <td className="py-4 px-4 whitespace-nowrap">
                           {veh.isActive !== false ? (
                             <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <span>جاهزة للعمل ✅</span>
+                              جاهزة للعمل
                             </span>
                           ) : (
-                            <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                              <span>في الصيانة 🔧</span>
+                            <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                              خارج الخدمة / صيانة
                             </span>
                           )}
                         </td>
 
                         <td className="py-4 px-4 whitespace-nowrap font-mono font-bold text-slate-700">
-                          {veh.completedDeliveries || 0} طلبيات
+                          {veh.completedDeliveries || 0} طلبية
                         </td>
 
-                        <td className="py-4 px-4 max-w-[200px] text-slate-500 truncate" title={veh.notes}>
+                        <td className="py-4 px-4 text-slate-500 max-w-xs truncate">
                           {veh.notes || '-'}
                         </td>
 
@@ -1017,7 +1068,7 @@ export default function AdminDriversPage() {
                 <span className="text-2xl font-black text-slate-900 font-mono mt-1 block">
                   {allRatings.length > 0
                     ? (allRatings.reduce((sum, r) => sum + r.rating, 0) / allRatings.length).toFixed(1)
-                    : '5.0'} / 5 ⭐
+                    : '5.0'} / 5
                 </span>
               </div>
               <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
@@ -1060,10 +1111,10 @@ export default function AdminDriversPage() {
                   onChange={(e) => setRatingFilterDriver(e.target.value)}
                   className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-none focus:border-brand-blue"
                 >
-                  <option value="all">👥 كافة السائقين ({drivers.length})</option>
+                  <option value="all">كافة السائقين ({drivers.length})</option>
                   {drivers.map((d) => (
                     <option key={d.id} value={d.id}>
-                      🛵 {d.name} ({allRatings.filter((r) => r.driverId === d.id).length} تقييم)
+                      {d.name} ({allRatings.filter((r) => r.driverId === d.id).length} تقييم)
                     </option>
                   ))}
                 </select>
@@ -1074,10 +1125,10 @@ export default function AdminDriversPage() {
                   onChange={(e) => setRatingFilterStars(e.target.value)}
                   className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-800 focus:outline-none focus:border-brand-blue"
                 >
-                  <option value="all">⭐ كافة النجوم والدرجات</option>
-                  <option value="5">⭐⭐⭐⭐⭐ ممتاز (5 نجوم)</option>
-                  <option value="4">⭐⭐⭐⭐ جيد جداً (4 نجوم)</option>
-                  <option value="low">⚠️ تقييمات منخفضة / شكاوى (1-3 نجوم)</option>
+                  <option value="all">كافة التقييمات والدرجات</option>
+                  <option value="5">ممتاز (5 نجوم)</option>
+                  <option value="4">جيد جداً (4 نجوم)</option>
+                  <option value="low">تقييمات منخفضة (1-3 نجوم)</option>
                 </select>
 
                 {/* Filter Has Comments Only */}
@@ -1091,14 +1142,16 @@ export default function AdminDriversPage() {
                   }`}
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
-                  <span>التعليقات والملاحظات المكتوبة فقط 💬</span>
+                  <span>التعليقات والملاحظات المكتوبة فقط</span>
                 </button>
               </div>
             </div>
 
             {filteredRatings.length === 0 ? (
               <div className="p-12 text-center space-y-2">
-                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto text-xl">⭐</div>
+                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto text-xl">
+                  <Star className="w-6 h-6 text-amber-500" />
+                </div>
                 <h4 className="font-black text-slate-800 text-sm">لا توجد تقييمات مطابقة للفلاتر المحددة</h4>
                 <p className="text-xs text-slate-500">جرب تغيير السائق المختار أو خيارات النجوم لإظهار التقييمات.</p>
               </div>
@@ -1120,7 +1173,7 @@ export default function AdminDriversPage() {
                       <tr key={rate.id} className="hover:bg-slate-50/80 transition divide-x divide-x-reverse divide-slate-100">
                         <td className="py-4 px-4 whitespace-nowrap font-bold text-slate-900">
                           <span className="bg-amber-50 border border-amber-200 px-2 py-1 rounded-xl text-amber-950">
-                            🛵 {rate.driverName || 'مندوب التوصيل'}
+                            {rate.driverName || 'مندوب التوصيل'}
                           </span>
                         </td>
                         <td className="py-4 px-4 whitespace-nowrap">
