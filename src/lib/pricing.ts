@@ -121,3 +121,54 @@ export function getProductCashbackRate(
   }
   return 0;
 }
+
+/**
+ * حساب إجمالي رصيد الأرباح المكتسب والمستخدم للمستخدم من سجل طلبياته الفعلية
+ */
+export function calculateUserCashbackFromOrders(
+  orders: any[],
+  user?: User | null,
+  products?: Product[] | null
+): { totalEarned: number; totalUsed: number; netBalance: number; totalItemsCount: number } {
+  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+    return { totalEarned: 0, totalUsed: 0, netBalance: 0, totalItemsCount: 0 };
+  }
+
+  const productsMap: Record<string, Product> = {};
+  if (products && Array.isArray(products)) {
+    for (const p of products) {
+      if (p && p.id) productsMap[p.id] = p;
+    }
+  }
+
+  const validOrders = orders.filter((o) => o && o.status !== 'cancelled');
+
+  let totalEarned = 0;
+  let totalUsed = 0;
+  let totalItemsCount = 0;
+
+  for (const order of validOrders) {
+    totalUsed += Number(order.usedCashbackDiscount || 0);
+
+    for (const item of (order.items || [])) {
+      const qty = Number(item.quantity) || 0;
+      totalItemsCount += qty;
+
+      if (typeof item.earnedCashback === 'number' && !isNaN(item.earnedCashback)) {
+        totalEarned += item.earnedCashback;
+      } else if (typeof item.cashbackPerUnit === 'number' && !isNaN(item.cashbackPerUnit)) {
+        totalEarned += item.cashbackPerUnit * qty;
+      } else {
+        // Fallback: look up product from catalog if available
+        const prod = productsMap[item.productId];
+        if (prod) {
+          const rate = getProductCashbackRate(prod, user, null, item.saleType);
+          totalEarned += rate * qty;
+        }
+      }
+    }
+  }
+
+  const netBalance = Math.max(0, totalEarned - totalUsed);
+  return { totalEarned, totalUsed, netBalance, totalItemsCount };
+}

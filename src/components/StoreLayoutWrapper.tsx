@@ -18,6 +18,7 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   const isDriverRoute = pathname.startsWith('/driver');
   const isAuthRoute = pathname === '/register' || pathname === '/login';
   const isStatementRoute = pathname === '/statement';
+  const isProfileRoute = pathname.startsWith('/profile');
   const isCheckoutRoute = pathname === '/checkout';
   const isOrderSuccessRoute = pathname.startsWith('/order-success');
   const isCampaignRoute = pathname.startsWith('/campaigns');
@@ -38,10 +39,10 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
     );
   }
 
-  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isCheckoutRoute || isOrderSuccessRoute) {
+  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isProfileRoute || isCheckoutRoute || isOrderSuccessRoute) {
     // Isolated Dedicated View: No customer header, no announcement bar, no floating widgets, no footer
     return (
-      <main className="flex-1 min-h-screen flex flex-col justify-center bg-[#f3f8fc]">
+      <main className="flex-1 min-h-screen flex flex-col justify-start bg-[#f3f8fc]">
         {children}
       </main>
     );

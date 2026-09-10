@@ -33,7 +33,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PaymentMethod, StoreSettings } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
-import { getUserCashbackRate } from '@/lib/pricing';
+import { getUserCashbackRate, calculateUserCashbackFromOrders } from '@/lib/pricing';
 import {
   calculateDeliveryFeeByDistance,
   calculateDistanceKm,
@@ -218,10 +218,11 @@ export default function CheckoutPage() {
 
     if (user) {
       Promise.all([
-        fetch('/api/orders').then((r) => r.json()),
+        fetch('/api/orders').then((r) => r.json()).catch(() => ({ success: false })),
+        fetch('/api/products').then((r) => r.json()).catch(() => ({ success: false })),
         fetch('/api/settings').then((r) => r.json()).catch(() => ({ success: false })),
       ])
-        .then(([ordersData, settingsData]) => {
+        .then(([ordersData, productsData, settingsData]) => {
           if (settingsData?.success && settingsData?.settings) {
             setStoreSettings(settingsData.settings);
           }
@@ -229,23 +230,18 @@ export default function CheckoutPage() {
           setCashbackRate(rate);
 
           if (ordersData?.success && Array.isArray(ordersData.orders)) {
+            const userPhoneClean = user.phone ? user.phone.replace(/\D/g, '') : '';
             const userOrders = ordersData.orders.filter(
-              (o: any) =>
-                o.status !== 'cancelled' &&
-                ((o.customer.userId && o.customer.userId === user.id) ||
-                  (o.customer.phone && o.customer.phone === user.phone))
+              (o: any) => {
+                const oPhoneClean = o.customer?.phone ? o.customer.phone.replace(/\D/g, '') : '';
+                return (
+                  o.status !== 'cancelled' &&
+                  ((o.customer?.userId && o.customer.userId === user.id) ||
+                    (userPhoneClean && oPhoneClean && (oPhoneClean === userPhoneClean || oPhoneClean.endsWith(userPhoneClean) || userPhoneClean.endsWith(oPhoneClean))))
+                );
+              }
             );
-            const totalPieces = userOrders.reduce(
-              (sum: number, o: any) =>
-                sum + (o.items || []).reduce((s: number, i: any) => (i.saleType === 'wholesale' ? s : s + (i.quantity || 0)), 0),
-              0
-            );
-            const totalEarned = totalPieces * rate;
-            const totalUsed = userOrders.reduce(
-              (sum: number, o: any) => sum + Number(o.usedCashbackDiscount || 0),
-              0
-            );
-            const netBalance = Math.max(0, totalEarned - totalUsed);
+            const { netBalance } = calculateUserCashbackFromOrders(userOrders, user, productsData?.products);
             setAvailableCashback(netBalance);
           }
         })

@@ -170,6 +170,8 @@ export interface OrderItem {
   saleType: SaleType;
   unitLabel: string;
   image: string;
+  cashbackPerUnit?: number; // قيمة مكافأة القطعة/الكرتون المكتسبة
+  earnedCashback?: number; // إجمالي المكافأة المكتسبة لهذا البند (cashbackPerUnit * quantity)
 }
 
 export type DeliveryCollectionStatus = 'pending' | 'collected_cash' | 'debt_unpaid' | 'partial' | 'returned';
@@ -227,6 +229,7 @@ export interface Order {
   deliveryFee?: number;
   discount: number;
   usedCashbackDiscount?: number; // مبلغ الخصم المستقطع من رصيد الأرباح والمكافآت (كاش باك)
+  earnedCashback?: number; // إجمالي رصيد الأرباح المكتسب من هذه الطلبية
   total: number;
   status: OrderStatus;
   paymentMethod: PaymentMethod;

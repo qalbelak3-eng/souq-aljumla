@@ -9,20 +9,20 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Order } from '@/types';
-import { getUserCashbackRate } from '@/lib/pricing';
+import { Order, Product } from '@/types';
+import { calculateUserCashbackFromOrders } from '@/lib/pricing';
 
 export default function WalletStatsCard() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [cashbackRate, setCashbackRate] = useState<number>(150);
+  const [products, setProducts] = useState<Product[]>([]);
   const [statementBalance, setStatementBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const promises: Promise<any>[] = [
       fetch('/api/orders').then((res) => res.json()).catch(() => ({ success: false })),
-      fetch('/api/settings').then((res) => res.json()).catch(() => ({ success: false })),
+      fetch('/api/products').then((res) => res.json()).catch(() => ({ success: false })),
     ];
 
     if (user?.phone) {
@@ -34,19 +34,18 @@ export default function WalletStatsCard() {
     }
 
     Promise.all(promises)
-      .then(([ordersData, settingsData, statementData]) => {
-        if (settingsData?.success && settingsData?.settings) {
-          const rate = getUserCashbackRate(user, settingsData.settings);
-          setCashbackRate(rate);
+      .then(([ordersData, productsData, statementData]) => {
+        if (productsData?.success && Array.isArray(productsData.products)) {
+          setProducts(productsData.products);
         }
 
         if (ordersData?.success && Array.isArray(ordersData.orders)) {
           if (user) {
             const userPhoneClean = user.phone ? user.phone.replace(/\D/g, '') : '';
             const userOrders = ordersData.orders.filter((o: Order) => {
-              const oPhoneClean = o.customer.phone ? o.customer.phone.replace(/\D/g, '') : '';
+              const oPhoneClean = o.customer?.phone ? o.customer.phone.replace(/\D/g, '') : '';
               return (
-                (o.customer.userId && o.customer.userId === user.id) ||
+                (o.customer?.userId && o.customer.userId === user.id) ||
                 (userPhoneClean && oPhoneClean && (oPhoneClean === userPhoneClean || oPhoneClean.endsWith(userPhoneClean) || userPhoneClean.endsWith(oPhoneClean)))
               );
             });
@@ -70,14 +69,7 @@ export default function WalletStatsCard() {
       });
   }, [user]);
 
-  const validOrders = orders.filter((o) => o.status !== 'cancelled');
-  const totalItemsSold = validOrders.reduce(
-    (sum, o) => sum + o.items.reduce((s, i) => (i.saleType === 'wholesale' ? s : s + (i.quantity || 0)), 0),
-    0
-  );
-  const totalEarnedCashback = totalItemsSold * cashbackRate;
-  const totalUsedCashback = validOrders.reduce((sum, o) => sum + Number(o.usedCashbackDiscount || 0), 0);
-  const profitBalance = Math.max(0, totalEarnedCashback - totalUsedCashback);
+  const { netBalance: profitBalance } = calculateUserCashbackFromOrders(orders, user, products);
 
   const statementUrl = user?.phone
     ? `/statement?phone=${encodeURIComponent(user.phone)}`

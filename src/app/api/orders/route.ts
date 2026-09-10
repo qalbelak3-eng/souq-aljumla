@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOrders, createOrder, getSettings, getUsers, getProducts, validateCoupon } from '@/lib/db';
-import { getProductPriceForUser } from '@/lib/pricing';
+import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
 
@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     }
 
     // Server-side recalculation of each item price based on verified product catalog
+    const settings = getSettings();
     const allProducts = getProducts();
     let calculatedSubtotal = 0;
 
@@ -94,6 +95,9 @@ export async function POST(request: Request) {
       const itemTotal = officialPrice * qty;
       calculatedSubtotal += itemTotal;
 
+      const cashbackRate = prod ? getProductCashbackRate(prod, existingUser, settings, saleType) : 0;
+      const earnedCashback = cashbackRate * qty;
+
       return {
         ...item,
         productId: prod?.id || item.productId || item.id,
@@ -104,10 +108,13 @@ export async function POST(request: Request) {
         unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : 'مفرد'),
         image: (prod?.images?.[0] && !prod.images[0].startsWith('data:image/')) ? prod.images[0] : (item.image && !item.image.startsWith('data:image/')) ? item.image : '',
         costPrice: prod?.costPrice,
+        cashbackPerUnit: cashbackRate,
+        earnedCashback: earnedCashback,
       };
     });
 
-    const settings = getSettings();
+    const totalEarnedCashback = verifiedItems.reduce((s: number, it: any) => s + (Number(it.earnedCashback) || 0), 0);
+
     const minOrder = Number(settings.minOrderAmount) || 0;
     if (minOrder > 0 && calculatedSubtotal < minOrder) {
       return NextResponse.json({
@@ -145,6 +152,7 @@ export async function POST(request: Request) {
       deliveryFee: verifiedDeliveryFee,
       discount: verifiedDiscount,
       usedCashbackDiscount: verifiedCashbackDiscount > 0 ? verifiedCashbackDiscount : undefined,
+      earnedCashback: totalEarnedCashback > 0 ? totalEarnedCashback : undefined,
       total: finalTotal,
       notes: notes || '',
       paymentMethod: paymentMethod || 'cod',

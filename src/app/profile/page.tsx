@@ -32,14 +32,16 @@ import {
   Wallet,
   ShoppingBag,
   ExternalLink,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Order, SavedAddress, UserComplaint } from '@/types';
+import { Order, SavedAddress, UserComplaint, Product } from '@/types';
+import EtihadLogo from '@/components/EtihadLogo';
 import MerchantTierBadge from '@/components/MerchantTierBadge';
 import MerchantStatsCard from '@/components/MerchantStatsCard';
 import WalletStatsCard from '@/components/WalletStatsCard';
-import { getUserCashbackRate } from '@/lib/pricing';
+import { calculateUserCashbackFromOrders } from '@/lib/pricing';
 
 const PRESET_AVATARS = [
   { id: 'merchant_1', name: 'تاجر أعمال أنيق 👔', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300' },
@@ -59,6 +61,7 @@ function ProfileContent() {
 
   const [activeTab, setActiveTab] = useState<'orders' | 'rewards' | 'complaints' | 'locations' | 'account'>('orders');
   const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isFetchingOrders, setIsFetchingOrders] = useState(true);
 
   // Modern In-App Toast Notification State
@@ -221,13 +224,12 @@ function ProfileContent() {
       if (user.email) params.set('email', user.email);
 
       Promise.all([
-        fetch(`/api/orders?${params.toString()}`).then((res) => res.json()),
-        fetch('/api/settings').then((res) => res.json()).catch(() => ({ success: false })),
+        fetch(`/api/orders?${params.toString()}`).then((res) => res.json()).catch(() => ({ success: false })),
+        fetch('/api/products').then((res) => res.json()).catch(() => ({ success: false })),
       ])
-        .then(([ordersData, settingsData]) => {
-          if (settingsData?.success && settingsData?.settings) {
-            const rate = getUserCashbackRate(user, settingsData.settings);
-            setCashbackRate(rate);
+        .then(([ordersData, productsData]) => {
+          if (productsData?.success && Array.isArray(productsData.products)) {
+            setProducts(productsData.products);
           }
           if (ordersData?.success && Array.isArray(ordersData?.orders)) {
             setOrders(ordersData.orders);
@@ -431,14 +433,13 @@ function ProfileContent() {
     );
   }
 
-  // Calculate Rewards / Pieces (تطبق مكافأة القطع على مبيعات المفرد فقط)
-  const validProfileOrders = orders.filter((o) => o.status !== 'cancelled');
-  const totalPiecesCount = validProfileOrders.reduce((sum, ord) => {
-    return sum + ord.items.reduce((s, it) => (it.saleType === 'wholesale' ? s : s + (it.quantity || 0)), 0);
-  }, 0);
-  const totalEarnedRewards = totalPiecesCount * cashbackRate;
-  const totalUsedRewards = validProfileOrders.reduce((sum, ord) => sum + Number(ord.usedCashbackDiscount || 0), 0);
-  const rewardCashbackAmount = Math.max(0, totalEarnedRewards - totalUsedRewards);
+  // Calculate Rewards / Pieces accurately per-product and order
+  const {
+    totalEarned: totalEarnedRewards,
+    totalUsed: totalUsedRewards,
+    netBalance: rewardCashbackAmount,
+    totalItemsCount: totalPiecesCount
+  } = calculateUserCashbackFromOrders(orders, user, products);
 
   const statusLabels: Record<string, { label: string; color: string }> = {
     pending: { label: 'قيد المراجعة', color: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -449,7 +450,27 @@ function ProfileContent() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 text-xs select-none relative">
+    <div className="min-h-screen bg-[#f3f8fc] text-slate-900 pb-20">
+      {/* Top Clean Minimal Header Bar */}
+      <div className="bg-white border-b border-slate-100 shadow-xs py-3.5 px-4 sm:px-6 sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <EtihadLogo size="md" />
+          </Link>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="text-xs font-black text-slate-700 hover:text-brand-blue flex items-center gap-1.5 bg-slate-50 hover:bg-blue-50 px-3.5 py-2 rounded-xl border border-slate-200 hover:border-blue-200 transition active:scale-95 shadow-2xs"
+            >
+              <ArrowRight className="w-3.5 h-3.5 text-brand-blue" />
+              <span>العودة للرئيسية</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 text-xs select-none relative">
       
       {/* FLOATING IN-APP TOAST NOTIFICATION (No more browser alert popup) */}
       {toast.show && (
@@ -1561,6 +1582,7 @@ function ProfileContent() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }
