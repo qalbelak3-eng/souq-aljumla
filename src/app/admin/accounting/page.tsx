@@ -1118,7 +1118,7 @@ function AdminAccountingContent() {
             <div className="overflow-x-auto border border-slate-100 rounded-2xl">
               <table className="w-full text-right border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-black text-[11px]">
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-black text-[11px] whitespace-nowrap">
                     <th className="py-3 px-4">اسم الحساب / فئة الحساب</th>
                     <th className="py-3 px-4">رقم الهاتف والمدينة</th>
                     <th className="py-3 px-4">فئة التسعير والخصم</th>
@@ -1170,7 +1170,7 @@ function AdminAccountingContent() {
 
                       return (
                         <tr key={acc.phone} className="hover:bg-slate-50/80 transition text-[11px]">
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 whitespace-nowrap">
                             <div className="font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
                               <span>{acc.name}</span>
                               {acc.businessName && acc.businessName !== acc.name && (
@@ -1184,12 +1184,12 @@ function AdminAccountingContent() {
                             </div>
                           </td>
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 whitespace-nowrap">
                             <div className="font-mono text-slate-600 font-bold" dir="ltr">{acc.phone}</div>
                             <div className="text-[10px] text-slate-400">{acc.city || 'العراق'}</div>
                           </td>
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 whitespace-nowrap">
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-[10px] bg-slate-100 text-slate-700">
                                 {pricingLabel}
@@ -1202,18 +1202,18 @@ function AdminAccountingContent() {
                             </div>
                           </td>
 
-                          <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-800 whitespace-nowrap">
                             {acc.totalInvoiced.toLocaleString()} د.ع
                             <div className="text-[10px] text-slate-400 font-sans">{acc.ordersCount} حركة</div>
                           </td>
 
-                          <td className="py-3 px-4 font-mono font-bold text-emerald-700">
+                          <td className="py-3 px-4 font-mono font-bold text-emerald-700 whitespace-nowrap">
                             {acc.totalPaid.toLocaleString()} د.ع
                             <div className="text-[10px] text-slate-400 font-sans">{acc.paymentsCount || 0} دفعة</div>
                           </td>
 
-                          <td className="py-3 px-4 font-mono font-black">
-                            <span className={`px-2 py-1 rounded-lg ${
+                          <td className="py-3 px-4 font-mono font-black whitespace-nowrap">
+                            <span className={`px-2.5 py-1 rounded-lg inline-block whitespace-nowrap font-mono font-black ${
                               isOwedToUs 
                                 ? 'bg-red-50 text-[#ef533a] border border-red-200' 
                                 : isOwedByUs && isSupplier
@@ -1226,24 +1226,24 @@ function AdminAccountingContent() {
                             </span>
                           </td>
 
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 whitespace-nowrap">
                             {isSettled ? (
-                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap">
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>خالص</span>
                               </span>
                             ) : isOwedToUs ? (
-                              <span className="inline-flex items-center gap-1 bg-red-100 text-[#ef533a] text-[10px] font-bold px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 bg-red-100 text-[#ef533a] text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap">
                                 <AlertCircle className="w-3 h-3" />
                                 <span>مطلوب لنا</span>
                               </span>
                             ) : isSupplier ? (
-                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap">
                                 <ArrowDownLeft className="w-3 h-3" />
                                 <span>دائن علينا</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap">
                                 <ArrowDownLeft className="w-3 h-3" />
                                 <span>دائن علينا</span>
                               </span>
