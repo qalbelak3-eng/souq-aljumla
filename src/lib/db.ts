@@ -1772,7 +1772,14 @@ export function createPurchaseInvoice(data: {
   }
 
   const now = new Date();
-  const invoiceNum = `PUR-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}-${(db.purchaseInvoices.length + 1).toString().padStart(3, '0')}`;
+  const maxPurSeq = (db.purchaseInvoices || []).reduce((max, inv) => {
+    const parts = (inv.invoiceNumber || '').split('-');
+    const lastPart = parts[parts.length - 1];
+    const num = parseInt(lastPart || '0', 10);
+    const finalNum = num < 1000 && num > 0 ? 1000 + num : (num >= 1000 && num < 100000 ? num : 1000);
+    return finalNum > max ? finalNum : max;
+  }, 1000);
+  const invoiceNum = `PUR-${maxPurSeq + 1}`;
 
   const newInvoice: PurchaseInvoice = {
     id: `pur-${Date.now()}`,
@@ -2321,6 +2328,15 @@ function formatShortRef(ref: string, defaultPrefix: string): string {
     const parts = ref.split('-');
     return `REC-${parts[parts.length - 1]}`;
   }
+  if (ref.startsWith('PUR-')) {
+    const parts = ref.split('-');
+    if (parts.length > 2) {
+      const lastPart = parts[parts.length - 1];
+      const seqNum = parseInt(lastPart, 10);
+      return isNaN(seqNum) ? `PUR-${lastPart}` : `PUR-${seqNum < 1000 ? 1000 + seqNum : seqNum}`;
+    }
+    return ref;
+  }
   return ref;
 }
 
@@ -2459,7 +2475,7 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     rawTxList.push({
       date: inv.date || inv.createdAt,
       type: 'invoice',
-      referenceNumber: inv.invoiceNumber,
+      referenceNumber: formatShortRef(inv.invoiceNumber, 'PUR'),
       referenceId: inv.id,
       description: `فاتورة شراء وتوريد (${inv.items.length} أصناف)${isPartial ? ' - دفع جزئي' : isCash ? ' - نقد' : ' - آجل'}`,
       debit: inv.totalAmount, // إجمالي قيمة التوريد
