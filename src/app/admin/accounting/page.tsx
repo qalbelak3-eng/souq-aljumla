@@ -1151,12 +1151,12 @@ function AdminAccountingContent() {
                       const isSettled = acc.remainingBalance === 0;
 
                       const categoryBadge = isSupplier
-                        ? { label: 'مجهز 🏭', bg: 'bg-purple-100 text-purple-800' }
+                        ? { label: 'مجهز', bg: 'bg-purple-100 text-purple-800' }
                         : acc.category === 'employee'
-                        ? { label: 'موظف 💼', bg: 'bg-amber-100 text-amber-800' }
+                        ? { label: 'موظف', bg: 'bg-amber-100 text-amber-800' }
                         : acc.category === 'driver'
-                        ? { label: 'مندوب 🚚', bg: 'bg-teal-100 text-teal-800' }
-                        : { label: 'زبون 🛍️', bg: 'bg-blue-100 text-blue-800' };
+                        ? { label: 'مندوب', bg: 'bg-teal-100 text-teal-800' }
+                        : { label: 'زبون', bg: 'bg-blue-100 text-blue-800' };
 
                       const pricingLabel = acc.pricingTier === 'general'
                         ? 'السعر العام (موردين) 🌐'
