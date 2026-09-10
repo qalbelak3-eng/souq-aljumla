@@ -20,9 +20,38 @@ export default function SuggestedCartProducts({
   const { isApprovedMerchant } = useAuth();
   const toast = useToast();
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [settings, setSettings] = useState<StoreSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_suggested_products_cache') || localStorage.getItem('souq_store_products_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const [settings, setSettings] = useState<StoreSettings | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_store_settings_cache');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('souq_suggested_products_cache') || localStorage.getItem('souq_store_products_cache');
+        if (cached && JSON.parse(cached).length > 0) return false;
+      } catch (e) {}
+    }
+    return true;
+  });
 
   useEffect(() => {
     const loadData = async () => {
@@ -34,10 +63,20 @@ export default function SuggestedCartProducts({
 
         if (settingsRes.success && settingsRes.settings) {
           setSettings(settingsRes.settings);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('souq_store_settings_cache', JSON.stringify(settingsRes.settings));
+            } catch (e) {}
+          }
         }
 
         if (productsRes.success && Array.isArray(productsRes.products)) {
           setProducts(productsRes.products);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('souq_suggested_products_cache', JSON.stringify(productsRes.products));
+            } catch (e) {}
+          }
         }
       } catch (err) {
         console.error('Error loading suggested products', err);
@@ -49,7 +88,7 @@ export default function SuggestedCartProducts({
     loadData();
   }, []);
 
-  if (isLoading) return null;
+  if (isLoading && products.length === 0) return null;
   if (settings?.enableSuggestedProducts === false) return null;
 
   // Selected suggested IDs from Admin Settings
