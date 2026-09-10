@@ -398,78 +398,94 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[#f3f8fc] text-slate-800 flex flex-col text-xs">
       
       {/* Top Header */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between shadow-xs print:hidden">
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between shadow-xs print:hidden">
+        {/* Right side: Logo & Admin profile badge */}
         <div className="flex items-center gap-3">
           <EtihadLogo size="sm" />
           
           {/* Logged in Admin / Staff Badge */}
-          <div className="flex items-center gap-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/80 px-2.5 py-1 rounded-xl">
-            <div className="w-5 h-5 rounded-lg bg-purple-600 text-white flex items-center justify-center text-[10px] font-black">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-2xl">
+            <div className="w-6 h-6 rounded-xl bg-purple-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
               {isMasterAdmin ? '👑' : '👤'}
             </div>
             <div className="text-right">
               <span className="font-black text-slate-900 text-xs block leading-tight">
                 {currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}
               </span>
-              <span className="text-[9px] text-purple-700 font-bold block">
+              <span className="text-[10px] text-purple-700 font-bold block">
                 {currentAdmin?.jobTitle || (isMasterAdmin ? 'مدير النظام الرئيسي' : 'موظف النظام')}
               </span>
             </div>
           </div>
+        </div>
 
-          {totalPendingActions > 0 && (
-            <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-              <span>{totalPendingActions} حركات معلقة</span>
-            </span>
-          )}
-
+        {/* Left side: Clean Icon Actions & Controls */}
+        <div className="flex items-center gap-2">
+          
+          {/* Expiry Alert Icon Indicator */}
           {totalExpiryAlertsCount > 0 && (
             <Link
               href="/admin/reports"
-              className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition animate-pulse"
-              title="يوجد مواد منتهية الصلاحية أو قاربت على الانتهاء بالمخزن"
+              className="relative w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-600 flex items-center justify-center border border-amber-200 transition"
+              title={`تنبيهات انتهاء الصلاحية بالمخزن (${totalExpiryAlertsCount})`}
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              <span>{totalExpiryAlertsCount} تنبيه صلاحية</span>
+              <AlertTriangle className="w-4 h-4" />
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center animate-pulse">
+                {totalExpiryAlertsCount}
+              </span>
             </Link>
           )}
-        </div>
 
-        {/* Notifications Bar & Quick Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          
-          {/* Notification Permission */}
+          {/* Pending Actions Icon Indicator */}
+          {totalPendingActions > 0 && (
+            <Link
+              href="/admin/orders"
+              className="relative w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center border border-red-200 transition"
+              title={`حركات معلقة بانتظار الإجراء (${totalPendingActions})`}
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center animate-pulse">
+                {totalPendingActions}
+              </span>
+            </Link>
+          )}
+
+          {/* Notification Status Icon */}
           {notificationPermission !== 'granted' ? (
             <button
               onClick={handleRequestPermission}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black py-1.5 px-3 rounded-xl shadow-xs transition animate-pulse cursor-pointer"
-              title="اضغط لتفعيل إشعارات الشاشة والصوت على الموبايل والكمبيوتر عند وصول طلبية أو تسليم السائق"
+              className="w-8 h-8 rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center shadow-xs transition animate-pulse cursor-pointer"
+              title="اضغط لتفعيل إشعارات الشاشة والصوت الفورية"
             >
-              <BellRing className="w-3.5 h-3.5" />
-              <span>تفعيل إشعارات الشاشة والصوت</span>
+              <BellRing className="w-4 h-4" />
             </button>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <span className="hidden md:flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold py-1 px-2.5 rounded-lg">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>إشعارات النظام مفعلة ✓</span>
-              </span>
+            <div
+              className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center cursor-default"
+              title="إشعارات النظام مفعلة ✓"
+            >
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           )}
 
+          {/* View Store Icon Button */}
           <Link
             href="/"
-            className="text-xs text-brand-blue hover:text-brand-blueDark font-bold py-1.5 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition border border-slate-200/80"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-8 h-8 rounded-xl bg-slate-50 hover:bg-slate-100 text-brand-blue flex items-center justify-center transition border border-slate-200"
+            title="عرض المتجر"
           >
-            عرض المتجر
+            <Store className="w-4 h-4" />
           </Link>
 
+          {/* Logout Icon Button */}
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 font-bold py-1.5 px-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100 cursor-pointer"
+            className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition border border-red-100 cursor-pointer"
+            title="تسجيل الخروج"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>خروج</span>
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
