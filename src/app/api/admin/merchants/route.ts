@@ -79,6 +79,7 @@ export async function POST(request: Request) {
     }
 
     const type = (accountType || 'market') as AccountType;
+    const isSupplier = type === 'supplier';
     const isMerchant = type === 'wholesale' || type === 'merchant';
     const isMarket = type === 'market';
 
@@ -88,10 +89,11 @@ export async function POST(request: Request) {
       email: email ? email.trim() : undefined,
       password: password ? password.trim() : '123456',
       accountType: type,
-      merchantStatus: isMerchant || isMarket ? 'approved' : undefined,
+      category: isSupplier ? 'supplier' : undefined,
+      merchantStatus: isMerchant || isMarket || isSupplier ? 'approved' : undefined,
       merchantTier: isMerchant ? 'gold' : isMarket ? 'silver' : undefined,
-      businessName: businessName ? businessName.trim() : (isMarket ? `ماركت ${name.trim()}` : isMerchant ? `تجارة ${name.trim()}` : undefined),
-      businessType: businessType ? businessType.trim() : (isMarket ? 'ميني ماركت وبقالة' : isMerchant ? 'تجارة مواد غذائية جملة' : undefined),
+      businessName: businessName ? businessName.trim() : (isSupplier ? `شركة ${name.trim()}` : isMarket ? `ماركت ${name.trim()}` : isMerchant ? `تجارة ${name.trim()}` : undefined),
+      businessType: businessType ? businessType.trim() : (isSupplier ? 'شركة توريد وتجهيز مواد غذائية' : isMarket ? 'ميني ماركت وبقالة' : isMerchant ? 'تجارة مواد غذائية جملة' : undefined),
       city: city ? city.trim() : 'كربلاء المقدسة',
       address: address ? address.trim() : 'مركز المدينة',
     });

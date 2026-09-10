@@ -152,6 +152,15 @@ function sanitizeDb(db: DatabaseSchema): DatabaseSchema {
       }
     });
   }
+  if (Array.isArray(db.users)) {
+    db.users.forEach(u => {
+      if (u.category === 'supplier' || u.name?.includes('عالم التركي') || u.name?.startsWith('شركة ') || (u.businessName && u.businessName.startsWith('شركة '))) {
+        u.category = 'supplier';
+        u.accountType = 'supplier';
+        u.merchantStatus = 'approved';
+      }
+    });
+  }
   return db;
 }
 
@@ -1013,15 +1022,23 @@ export function updateUserAccountType(userId: string, accountType: AccountType, 
   db.users[index].accountType = accountType;
   if (accountType === 'wholesale' || accountType === 'merchant') {
     db.users[index].role = 'merchant';
+    db.users[index].category = 'customer';
     if (!db.users[index].merchantStatus) db.users[index].merchantStatus = 'pending';
     if (tier) db.users[index].merchantTier = tier;
     else if (!db.users[index].merchantTier) db.users[index].merchantTier = 'bronze';
   } else if (accountType === 'market') {
     db.users[index].role = 'customer';
+    db.users[index].category = 'customer';
     if (!db.users[index].merchantStatus) db.users[index].merchantStatus = 'pending';
+    db.users[index].merchantTier = undefined;
+  } else if (accountType === 'supplier') {
+    db.users[index].role = 'customer';
+    db.users[index].category = 'supplier';
+    db.users[index].merchantStatus = 'approved';
     db.users[index].merchantTier = undefined;
   } else {
     db.users[index].role = 'customer';
+    db.users[index].category = 'customer';
     db.users[index].merchantStatus = undefined;
     db.users[index].merchantTier = undefined;
   }
@@ -1070,6 +1087,7 @@ export function createUser(userData: {
   password?: string;
   role?: UserRole;
   accountType?: AccountType;
+  category?: AccountCategory;
   merchantStatus?: MerchantStatus;
   merchantTier?: MerchantTier;
   businessName?: string;
@@ -1086,6 +1104,7 @@ export function createUser(userData: {
   const accType = userData.accountType || 'individual';
   const isWholesale = accType === 'wholesale' || accType === 'merchant';
   const isMarket = accType === 'market';
+  const isSupplier = accType === 'supplier' || userData.category === 'supplier';
   
   const newUser: User = {
     id: 'usr-' + Date.now(),
@@ -1094,8 +1113,9 @@ export function createUser(userData: {
     phone: userData.phone.trim(),
     password: userData.password?.trim() || undefined,
     role: userData.role || (isWholesale ? 'merchant' : 'customer'),
-    accountType: accType,
-    merchantStatus: userData.merchantStatus !== undefined ? userData.merchantStatus : ((isWholesale || isMarket) ? 'pending' : undefined),
+    accountType: isSupplier ? 'supplier' : accType,
+    category: isSupplier ? 'supplier' : userData.category,
+    merchantStatus: userData.merchantStatus !== undefined ? userData.merchantStatus : ((isWholesale || isMarket || isSupplier) ? 'approved' : undefined),
     merchantTier: userData.merchantTier !== undefined ? userData.merchantTier : (isWholesale ? 'bronze' : undefined),
     businessName: userData.businessName?.trim(),
     businessType: userData.businessType?.trim(),
@@ -2647,7 +2667,13 @@ export function createAccountingAccount(data: {
   let user = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === cleanPhone);
 
   const role: UserRole = data.category === 'driver' ? 'driver' : 'customer';
-  const accountType: AccountType = data.pricingTier === 'wholesale' ? 'wholesale' : data.pricingTier === 'market' ? 'market' : 'individual';
+  const accountType: AccountType = data.category === 'supplier'
+    ? 'supplier'
+    : data.pricingTier === 'wholesale'
+    ? 'wholesale'
+    : data.pricingTier === 'market'
+    ? 'market'
+    : 'individual';
 
   if (!user) {
     user = {

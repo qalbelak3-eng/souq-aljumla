@@ -260,7 +260,7 @@ export interface Order {
 export type UserRole = 'customer' | 'merchant' | 'admin' | 'driver';
 export type MerchantStatus = 'pending' | 'approved' | 'rejected' | 'none';
 export type MerchantTier = 'bronze' | 'silver' | 'gold';
-export type AccountType = 'individual' | 'market' | 'wholesale' | 'merchant';
+export type AccountType = 'individual' | 'market' | 'wholesale' | 'merchant' | 'supplier';
 
 export interface User {
   id: string;

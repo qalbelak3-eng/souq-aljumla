@@ -47,7 +47,7 @@ export default function AdminMerchantsPage() {
     }
     return [];
   });
-  const [typeFilter, setTypeFilter] = useState<'all' | 'wholesale' | 'market' | 'retail'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'wholesale' | 'market' | 'retail' | 'supplier'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [purchaseFilter, setPurchaseFilter] = useState<'all' | 'purchased' | 'never_purchased'>('all');
   const [tierFilter, setTierFilter] = useState<string>('all');
@@ -264,10 +264,12 @@ export default function AdminMerchantsPage() {
 
   const filteredCustomers = customers.filter((c) => {
     // 1. Type Filter
-    const isWholesale = c.accountType === 'wholesale' || c.accountType === 'merchant' || (c.role === 'merchant' && c.accountType !== 'market');
-    const isMarket = c.accountType === 'market';
-    const isRetail = !isWholesale && !isMarket;
+    const isSupplier = c.accountType === 'supplier' || c.category === 'supplier';
+    const isWholesale = !isSupplier && (c.accountType === 'wholesale' || c.accountType === 'merchant' || (c.role === 'merchant' && c.accountType !== 'market'));
+    const isMarket = !isSupplier && c.accountType === 'market';
+    const isRetail = !isSupplier && !isWholesale && !isMarket;
 
+    if (typeFilter === 'supplier' && !isSupplier) return false;
     if (typeFilter === 'wholesale' && !isWholesale) return false;
     if (typeFilter === 'market' && !isMarket) return false;
     if (typeFilter === 'retail' && !isRetail) return false;
@@ -310,9 +312,10 @@ export default function AdminMerchantsPage() {
 
   // KPI Counts
   const totalCount = customers.length;
-  const wholesaleCount = customers.filter((c) => c.accountType === 'wholesale' || c.accountType === 'merchant' || (c.role === 'merchant' && c.accountType !== 'market')).length;
-  const marketCount = customers.filter((c) => c.accountType === 'market').length;
-  const retailCount = customers.filter((c) => c.accountType !== 'wholesale' && c.accountType !== 'merchant' && c.accountType !== 'market' && c.role !== 'merchant').length;
+  const supplierCount = customers.filter((c) => c.accountType === 'supplier' || c.category === 'supplier').length;
+  const wholesaleCount = customers.filter((c) => (c.accountType === 'wholesale' || c.accountType === 'merchant' || (c.role === 'merchant' && c.accountType !== 'market')) && c.accountType !== 'supplier' && c.category !== 'supplier').length;
+  const marketCount = customers.filter((c) => c.accountType === 'market' && c.category !== 'supplier').length;
+  const retailCount = customers.filter((c) => c.accountType !== 'wholesale' && c.accountType !== 'merchant' && c.accountType !== 'market' && c.role !== 'merchant' && c.accountType !== 'supplier' && c.category !== 'supplier').length;
   
   const pendingCount = customers.filter((c) => c.merchantStatus === 'pending').length;
   const purchasedCount = customers.filter((c) => (c.totalOrdersCount || 0) > 0).length;
@@ -350,7 +353,7 @@ export default function AdminMerchantsPage() {
       )}
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-[11px] font-bold">إجمالي المسجلين</span>
@@ -358,6 +361,16 @@ export default function AdminMerchantsPage() {
           </div>
           <span className="text-lg font-black text-slate-900 font-mono block">
             {totalCount} <span className="text-[10px] font-bold text-slate-400">حساب</span>
+          </span>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-50 to-white p-3.5 rounded-2xl border border-purple-200 shadow-2xs space-y-1">
+          <div className="flex items-center justify-between text-purple-800">
+            <span className="text-[11px] font-black">المجهزون والشركات 🏭</span>
+            <Building className="w-4 h-4 text-purple-600" />
+          </div>
+          <span className="text-lg font-black text-purple-950 font-mono block">
+            {supplierCount} <span className="text-[10px] font-bold text-purple-600">مجهز</span>
           </span>
         </div>
 
@@ -425,6 +438,19 @@ export default function AdminMerchantsPage() {
         >
           <Users className="w-3.5 h-3.5" />
           <span>الكل ({totalCount})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTypeFilter('supplier')}
+          className={`flex-1 py-2 px-3 rounded-xl font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            typeFilter === 'supplier'
+              ? 'bg-purple-700 text-white shadow-sm'
+              : 'text-slate-700 hover:bg-white/80'
+          }`}
+        >
+          <Building className="w-3.5 h-3.5 text-purple-200" />
+          <span>🏭 المجهزون والشركات ({supplierCount})</span>
         </button>
 
         <button
@@ -615,8 +641,9 @@ export default function AdminMerchantsPage() {
                   const isApproved = customer.merchantStatus === 'approved';
                   const isPending = customer.merchantStatus === 'pending';
                   const isRejected = customer.merchantStatus === 'rejected';
-                  const isWholesale = customer.accountType === 'wholesale' || customer.accountType === 'merchant' || (customer.role === 'merchant' && customer.accountType !== 'market');
-                  const isMarket = customer.accountType === 'market';
+                  const isSupplier = customer.accountType === 'supplier' || customer.category === 'supplier';
+                  const isWholesale = !isSupplier && (customer.accountType === 'wholesale' || customer.accountType === 'merchant' || (customer.role === 'merchant' && customer.accountType !== 'market'));
+                  const isMarket = !isSupplier && customer.accountType === 'market';
                   const tier = customer.merchantTier || 'bronze';
 
                   let phoneClean = (customer.phone || '').replace(/\D/g, '');
@@ -653,7 +680,7 @@ export default function AdminMerchantsPage() {
                               </>
                             ) : (
                               <span className="text-base">
-                                {isWholesale ? '👑' : isMarket ? '🏪' : '👤'}
+                                {isSupplier ? '🏭' : isWholesale ? '👑' : isMarket ? '🏪' : '👤'}
                               </span>
                             )}
                           </div>
@@ -778,7 +805,12 @@ export default function AdminMerchantsPage() {
                           
                           {/* Badge */}
                           <div>
-                            {isWholesale ? (
+                            {isSupplier ? (
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 font-black px-2 py-0.5 rounded-lg text-[9px] shadow-2xs">
+                                <Building className="w-3 h-3 text-purple-700" />
+                                <span>🏭 مجهز / شركة موردة</span>
+                              </span>
+                            ) : isWholesale ? (
                               <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-950 border border-amber-300 font-black px-2 py-0.5 rounded-lg text-[9px] shadow-2xs">
                                 <Crown className="w-3 h-3 text-amber-600" />
                                 <span>👑 تاجر جملة ({tier === 'gold' ? 'VIP' : tier === 'silver' ? 'خاص' : 'برونزي'})</span>
@@ -800,7 +832,7 @@ export default function AdminMerchantsPage() {
                           <div className="flex items-center gap-1">
                             <select
                               disabled={updatingId === customer.id}
-                              value={isWholesale ? 'wholesale' : isMarket ? 'market' : 'individual'}
+                              value={isSupplier ? 'supplier' : isWholesale ? 'wholesale' : isMarket ? 'market' : 'individual'}
                               onChange={(e) => {
                                 const newType = e.target.value as AccountType;
                                 handleUpdateAccountType(customer.id, newType, newType === 'wholesale' ? 'bronze' : undefined);
@@ -808,6 +840,7 @@ export default function AdminMerchantsPage() {
                               className="w-full bg-slate-50 border border-slate-200 rounded-md px-1.5 py-0.5 text-[9px] font-bold text-slate-700 focus:bg-white cursor-pointer"
                               title="تغيير تصنيف الحساب"
                             >
+                              <option value="supplier">🏭 مجهز / شركة موردة</option>
                               <option value="wholesale">👑 تاجر جملة</option>
                               <option value="market">🏪 ماركت</option>
                               <option value="individual">👤 زبون عادي</option>
@@ -1156,7 +1189,7 @@ export default function AdminMerchantsPage() {
               {/* Account Type Selector */}
               <div>
                 <label className="font-black text-slate-800 block mb-1.5">تصنيف الحساب ونوع التعامل *:</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setNewCustomerAccountType('market')}
@@ -1181,6 +1214,19 @@ export default function AdminMerchantsPage() {
                   >
                     <span className="block text-base mb-0.5">👑</span>
                     <span className="text-[11px] block font-black">تاجر جملة وموزع</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCustomerAccountType('supplier')}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition cursor-pointer ${
+                      newCustomerAccountType === 'supplier'
+                        ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="block text-base mb-0.5">🏭</span>
+                    <span className="text-[11px] block font-black">مجهز / شركة موردة</span>
                   </button>
 
                   <button
@@ -1230,12 +1276,14 @@ export default function AdminMerchantsPage() {
               {newCustomerAccountType !== 'individual' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                   <div>
-                    <label className="font-black text-slate-800 block mb-1">اسم المحل / الماركت / النشاط:</label>
+                    <label className="font-black text-slate-800 block mb-1">
+                      {newCustomerAccountType === 'supplier' ? 'اسم الشركة المجهزة / المعمل:' : 'اسم المحل / الماركت / النشاط:'}
+                    </label>
                     <input
                       type="text"
                       value={newCustomerBusinessName}
                       onChange={(e) => setNewCustomerBusinessName(e.target.value)}
-                      placeholder="مثال: أسواق الكوثر المركزية"
+                      placeholder={newCustomerAccountType === 'supplier' ? 'مثال: شركة عالم التركي' : 'مثال: أسواق الكوثر المركزية'}
                       className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -1246,7 +1294,7 @@ export default function AdminMerchantsPage() {
                       type="text"
                       value={newCustomerBusinessType}
                       onChange={(e) => setNewCustomerBusinessType(e.target.value)}
-                      placeholder="مثال: ميني ماركت وبقالة"
+                      placeholder={newCustomerAccountType === 'supplier' ? 'مثال: استيراد وتجهيز مواد غذائية' : 'مثال: ميني ماركت وبقالة'}
                       className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
