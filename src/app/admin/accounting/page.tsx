@@ -1171,11 +1171,15 @@ function AdminAccountingContent() {
                       return (
                         <tr key={acc.phone} className="hover:bg-slate-50/80 transition text-[11px]">
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
-                              <span>{acc.name}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {/* Main Commercial Name (Store / Market / Supplier) */}
+                              <span className="font-black text-slate-900 text-xs sm:text-[12px]">
+                                {acc.businessName && acc.businessName !== acc.name ? acc.businessName : acc.name}
+                              </span>
+                              {/* Secondary Personal Name (Owner / Person in small badge) */}
                               {acc.businessName && acc.businessName !== acc.name && (
-                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                  {acc.businessName}
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  👤 {acc.name}
                                 </span>
                               )}
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${categoryBadge.bg}`}>
