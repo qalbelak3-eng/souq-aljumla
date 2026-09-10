@@ -23,7 +23,10 @@ import {
   Ticket,
   X,
   Navigation,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  Home,
+  Store
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -37,6 +40,61 @@ import {
   KARBALA_AREAS,
   KarbalaAreaOption,
 } from '@/lib/delivery';
+
+const getLocationStyle = (title: string, index: number, isSelected: boolean) => {
+  const t = (title || '').toLowerCase();
+  
+  if (t.includes('بيت') || t.includes('منزل') || t.includes('دار') || t.includes('home')) {
+    return {
+      icon: <Home className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-blue-600 text-white shadow-sm border border-blue-600 ring-2 ring-blue-300/40'
+        : 'bg-blue-50/90 text-blue-900 border border-blue-200 hover:bg-blue-100 hover:border-blue-300'
+    };
+  }
+  
+  if (t.includes('عمل') || t.includes('دوام') || t.includes('شركة') || t.includes('مكتب') || t.includes('work')) {
+    return {
+      icon: <Building className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-amber-600 text-white shadow-sm border border-amber-600 ring-2 ring-amber-300/40'
+        : 'bg-amber-50/90 text-amber-950 border border-amber-200 hover:bg-amber-100 hover:border-amber-300'
+    };
+  }
+
+  if (t.includes('ماركت') || t.includes('محل') || t.includes('متجر') || t.includes('دكان') || t.includes('store') || t.includes('shop')) {
+    return {
+      icon: <Store className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-purple-600 text-white shadow-sm border border-purple-600 ring-2 ring-purple-300/40'
+        : 'bg-purple-50/90 text-purple-950 border border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+    };
+  }
+
+  // Fallback palette for other custom locations
+  const fallbackStyles = [
+    {
+      icon: <MapPin className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-teal-600 text-white shadow-sm border border-teal-600 ring-2 ring-teal-300/40'
+        : 'bg-teal-50/90 text-teal-950 border border-teal-200 hover:bg-teal-100 hover:border-teal-300'
+    },
+    {
+      icon: <MapPin className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-rose-600 text-white shadow-sm border border-rose-600 ring-2 ring-rose-300/40'
+        : 'bg-rose-50/90 text-rose-950 border border-rose-200 hover:bg-rose-100 hover:border-rose-300'
+    },
+    {
+      icon: <MapPin className="w-3.5 h-3.5" />,
+      className: isSelected
+        ? 'bg-indigo-600 text-white shadow-sm border border-indigo-600 ring-2 ring-indigo-300/40'
+        : 'bg-indigo-50/90 text-indigo-950 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'
+    }
+  ];
+
+  return fallbackStyles[index % fallbackStyles.length];
+};
 
 export default function CheckoutPage() {
   const toast = useToast();
@@ -638,22 +696,20 @@ export default function CheckoutPage() {
                       <span>📍 موقع التوصيل المختار:</span>
                       <span className="text-[11px] text-slate-400">انقر للتبديل السريع</span>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {savedLocations.map((loc) => {
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {savedLocations.map((loc, idx) => {
                         const isSelected = selectedLocationId === loc.id;
+                        const style = getLocationStyle(loc.title, idx, isSelected);
                         return (
                           <button
                             key={loc.id}
                             type="button"
                             onClick={() => handleSelectSavedLocation(loc)}
-                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer ${
-                              isSelected
-                                ? 'bg-brand-blue text-white shadow-2xs'
-                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                            }`}
+                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 ${style.className}`}
                           >
+                            {style.icon}
                             <span>{loc.title}</span>
-                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
                           </button>
                         );
                       })}
@@ -667,9 +723,10 @@ export default function CheckoutPage() {
                           setIsEditingAddress(true);
                           handleDetectGps();
                         }}
-                        className="py-1.5 px-3 rounded-xl font-bold text-xs border border-dashed border-slate-300 text-slate-600 hover:bg-white transition flex items-center gap-1 cursor-pointer"
+                        className="py-1.5 px-3.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white border border-emerald-500 shadow-xs hover:shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                       >
-                        <span>+ موقع جديد</span>
+                        <Plus className="w-3.5 h-3.5 text-white" />
+                        <span>إضافة موقع جديد</span>
                       </button>
                     </div>
                   </div>
@@ -801,21 +858,19 @@ export default function CheckoutPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap pt-1">
-                      {savedLocations.map((loc) => {
+                      {savedLocations.map((loc, idx) => {
                         const isSelected = selectedLocationId === loc.id;
+                        const style = getLocationStyle(loc.title, idx, isSelected);
                         return (
                           <button
                             key={loc.id}
                             type="button"
                             onClick={() => handleSelectSavedLocation(loc)}
-                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
-                              isSelected
-                                ? 'bg-brand-blue text-white shadow-xs'
-                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                            }`}
+                            className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 ${style.className}`}
                           >
+                            {style.icon}
                             <span>{loc.title}</span>
-                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
                           </button>
                         );
                       })}
