@@ -20,7 +20,8 @@ import {
   Settings,
   MessageSquare,
   Truck,
-  Flame
+  Flame,
+  AlertTriangle
 } from 'lucide-react';
 import { Order, Product, User } from '@/types';
 
@@ -52,9 +53,63 @@ export default function AdminDashboardPage() {
   const pendingOrders = orders.filter((o) => o.status === 'pending').length;
   const pendingMerchants = merchants.filter((m) => m.merchantStatus === 'pending').length;
 
+  const nowTime = Date.now();
+  const expiredProducts = products.filter((p) => {
+    if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
+    return new Date(p.expiryDate).getTime() <= nowTime;
+  });
+  const warningExpiryProducts = products.filter((p) => {
+    if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
+    const expTime = new Date(p.expiryDate).getTime();
+    if (expTime <= nowTime) return false;
+    const alertDays = p.expiryAlertDays ?? 30;
+    const daysLeft = (expTime - nowTime) / (1000 * 60 * 60 * 24);
+    return daysLeft <= alertDays;
+  });
+  const totalExpiryAlerts = expiredProducts.length + warningExpiryProducts.length;
+
   return (
     <div className="space-y-6 text-xs">
       
+      {/* Expiry Critical Alert Banner */}
+      {totalExpiryAlerts > 0 && (
+        <div className="bg-gradient-to-r from-red-600 via-amber-600 to-orange-600 text-white p-4 rounded-3xl shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-amber-400/40 animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6 text-yellow-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-sm sm:text-base">⚠️ تنبيه رقابة المخزون وصلاحية المواد!</span>
+                <span className="bg-white/20 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                  إجمالي {totalExpiryAlerts} تنبيه
+                </span>
+              </div>
+              <p className="text-xs text-amber-100 font-bold mt-1">
+                {expiredProducts.length > 0 && (
+                  <span className="bg-red-900/60 px-2 py-0.5 rounded-md ml-2 border border-red-400">
+                    ❌ {expiredProducts.length} مواد منتهية الصلاحية
+                  </span>
+                )}
+                {warningExpiryProducts.length > 0 && (
+                  <span className="bg-amber-900/60 px-2 py-0.5 rounded-md border border-amber-300">
+                    ⏳ {warningExpiryProducts.length} مواد قاربت على الانتهاء بالمخزن
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href="/admin/reports"
+            className="bg-white hover:bg-slate-100 text-slate-900 font-black text-xs py-2.5 px-4 rounded-2xl shrink-0 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+          >
+            <span>فحص تقرير الصلاحيات والمطابقة</span>
+            <span>←</span>
+          </Link>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -63,6 +118,16 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {totalExpiryAlerts > 0 && (
+            <Link
+              href="/admin/reports"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>{totalExpiryAlerts} تنبيه صلاحية ⚠️</span>
+            </Link>
+          )}
+
           {pendingOrders > 0 && (
             <Link
               href="/admin/orders"

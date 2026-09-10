@@ -55,8 +55,24 @@ export async function GET() {
       city: m.city || 'كربلاء',
     }));
 
-    // 3. Products low stock
+    // 3. Products low stock & Expiry warnings
     const lowStockCount = products.filter((p: Product) => Number(p.stock || 0) <= 5).length;
+    const nowTime = Date.now();
+    const expiredProductsCount = products.filter((p: Product) => {
+      if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
+      return new Date(p.expiryDate).getTime() <= nowTime;
+    }).length;
+
+    const warningExpiryProductsCount = products.filter((p: Product) => {
+      if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
+      const expTime = new Date(p.expiryDate).getTime();
+      if (expTime <= nowTime) return false;
+      const alertDays = p.expiryAlertDays ?? 30;
+      const daysLeft = (expTime - nowTime) / (1000 * 60 * 60 * 24);
+      return daysLeft <= alertDays;
+    }).length;
+
+    const totalExpiryAlertsCount = expiredProductsCount + warningExpiryProductsCount;
 
     // 4. Drivers cash stats
     const driversWithCustody = drivers.filter(
@@ -97,6 +113,9 @@ export async function GET() {
       pendingOrdersCount,
       pendingMerchantsCount,
       lowStockCount,
+      expiredProductsCount,
+      warningExpiryProductsCount,
+      totalExpiryAlertsCount,
       driversCustodyCount,
       totalCustodyAmount,
       unsettledDebtsCount,

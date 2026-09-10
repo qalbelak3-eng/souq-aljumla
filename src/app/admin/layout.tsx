@@ -62,6 +62,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [pendingOrdersCount, setPendingOrdersCount] = useState<number>(0);
   const [pendingMerchantsCount, setPendingMerchantsCount] = useState<number>(0);
   const [lowStockCount, setLowStockCount] = useState<number>(0);
+  const [totalExpiryAlertsCount, setTotalExpiryAlertsCount] = useState<number>(0);
   const [activeOffersCount, setActiveOffersCount] = useState<number>(0);
   const [driversCustodyCount, setDriversCustodyCount] = useState<number>(0);
   const [totalCustodyAmount, setTotalCustodyAmount] = useState<number>(0);
@@ -70,7 +71,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Notification Permission State
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-  const [hasTestedAlert, setHasTestedAlert] = useState(false);
 
   // Tracking delta references for background notification triggers
   const isFirstAlertsLoadRef = useRef(true);
@@ -101,21 +101,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         url: '/admin/orders',
         soundType: 'test',
       });
-      setHasTestedAlert(true);
     } else if (perm === 'denied') {
       alert('تم حظر الإشعارات من المتصفح. يرجى الضغط على علامة القفل 🔒 بجانب رابط الموقع وتفعيل (Notifications / الأذونات).');
     }
-  };
-
-  const handleTestNotification = () => {
-    playNotificationSound('order');
-    sendSystemNotification({
-      title: '🛒 تجربة تنبيه: طلبية جديدة وصلت (#1099)',
-      body: 'من: سوبرماركت النور - الإجمالي: 45,000 د.ع (إشعار يعمل في الخلفية بنجاح ✓)',
-      url: '/admin/orders',
-      soundType: 'order',
-    });
-    setHasTestedAlert(true);
   };
 
   const fetchLiveAlerts = useCallback(async () => {
@@ -130,6 +118,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setPendingOrdersCount(data.pendingOrdersCount || 0);
         setPendingMerchantsCount(data.pendingMerchantsCount || 0);
         setLowStockCount(data.lowStockCount || 0);
+        setTotalExpiryAlertsCount(data.totalExpiryAlertsCount || 0);
         setDriversCustodyCount(data.driversCustodyCount || 0);
         setTotalCustodyAmount(data.totalCustodyAmount || 0);
         setUnsettledDebtsCount(data.unsettledDebtsCount || 0);
@@ -323,7 +312,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       badge: unsettledDebtsCount > 0 ? `${unsettledDebtsCount} مطلوبين` : null,
       badgeColor: 'bg-indigo-600 text-white animate-pulse shadow-xs',
     },
-    { label: 'التقارير والمطابقات', href: '/admin/reports', icon: TrendingUp, permission: 'reports' },
+    {
+      label: 'التقارير والمطابقات',
+      href: '/admin/reports',
+      icon: TrendingUp,
+      permission: 'reports',
+      badge: totalExpiryAlertsCount > 0 ? `${totalExpiryAlertsCount} تنبيه صلاحية` : null,
+      badgeColor: 'bg-amber-600 text-white animate-pulse shadow-xs font-black',
+    },
     {
       label: 'إدارة السلع والمخزون',
       href: '/admin/products',
@@ -423,15 +419,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {totalPendingActions > 0 && (
             <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-              <span>{totalPendingActions} حركات معلقة بانتظار إجرائك</span>
+              <span>{totalPendingActions} حركات معلقة</span>
             </span>
+          )}
+
+          {totalExpiryAlertsCount > 0 && (
+            <Link
+              href="/admin/reports"
+              className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition animate-pulse"
+              title="يوجد مواد منتهية الصلاحية أو قاربت على الانتهاء بالمخزن"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>{totalExpiryAlertsCount} تنبيه صلاحية</span>
+            </Link>
           )}
         </div>
 
         {/* Notifications Bar & Quick Controls */}
         <div className="flex items-center gap-2 flex-wrap">
           
-          {/* Notification Permission & Test Button */}
+          {/* Notification Permission */}
           {notificationPermission !== 'granted' ? (
             <button
               onClick={handleRequestPermission}
@@ -447,15 +454,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 <span>إشعارات النظام مفعلة ✓</span>
               </span>
-
-              <button
-                onClick={handleTestNotification}
-                className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-brand-blue border border-blue-200 text-[11px] font-bold py-1.5 px-2.5 rounded-xl transition cursor-pointer"
-                title="اضغط لتجربة صوت الجرس والإشعار الفوري على جهازك"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>تجربة التنبيه</span>
-              </button>
             </div>
           )}
 
