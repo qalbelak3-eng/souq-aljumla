@@ -177,6 +177,7 @@ export default function AdminOffersPage() {
               price: p.price,
               wholesalePrice: p.wholesalePrice,
               boxPrice: p.boxPrice,
+              images: Array.isArray(p.images) && p.images.length > 0 ? [p.images[0]] : p.image ? [p.image] : [],
             }));
             localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
           } catch (e) {}
@@ -995,7 +996,7 @@ export default function AdminOffersPage() {
                         <div className="flex items-center gap-2.5">
                           <div className="w-12 h-12 rounded-2xl bg-slate-100 p-1 flex items-center justify-center shrink-0 border border-slate-200">
                             <img
-                              src={o.productImage || prod?.images[0] || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800'}
+                              src={o.productImage || prod?.images?.[0] || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800'}
                               alt={o.productName}
                               className="w-full h-full object-contain"
                             />
@@ -2165,7 +2166,7 @@ export default function AdminOffersPage() {
                           className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition text-xs"
                         >
                           <div className="flex items-center gap-2">
-                            <img src={p.images[0]} alt={p.name} className="w-8 h-8 object-contain rounded-lg bg-slate-100 p-0.5" />
+                            <img src={p.images?.[0] || '/images/placeholder.png'} alt={p.name} className="w-8 h-8 object-contain rounded-lg bg-slate-100 p-0.5" />
                             <div>
                               <span className="font-bold text-slate-900 block">{p.name}</span>
                               <span className="text-[10px] text-slate-500">{p.company}</span>

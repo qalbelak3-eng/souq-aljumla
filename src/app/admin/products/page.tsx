@@ -133,6 +133,7 @@ export default function AdminProductsPage() {
               boxPrice: p.boxPrice,
               costPrice: p.costPrice,
               stock: p.stock,
+              images: Array.isArray(p.images) && p.images.length > 0 ? [p.images[0]] : p.image ? [p.image] : [],
             }));
             localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
             localStorage.setItem('souq_admin_categories_cache', JSON.stringify(prodRes.categories || []));
@@ -246,7 +247,7 @@ export default function AdminProductsPage() {
     setItemsPerBox(p.itemsPerBox || (p.itemsPerWholesaleUnit ? Math.max(1, Math.round(p.itemsPerWholesaleUnit / (p.boxesPerCarton || 6))) : 24));
     setRetailUnit(p.retailUnit || 'قطعة مفردة');
     setWholesaleUnit(p.wholesaleUnit || `كرتون جملة (${p.boxesPerCarton || 6} علب × ${p.itemsPerBox || 24} قطعة)`);
-    setImageUrl(p.images[0] || '');
+    setImageUrl(p.images?.[0] || '');
     setStock(p.stock);
     setMinStockAlert(p.minStockAlert ?? 15);
     setOrigin(p.origin || 'العراق');
@@ -607,7 +608,7 @@ export default function AdminProductsPage() {
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
                         <img
-                          src={p.images[0]}
+                          src={p.images?.[0] || '/images/placeholder.png'}
                           alt={p.name}
                           className="w-12 h-12 object-contain rounded-2xl bg-slate-50 border border-slate-200 p-1 shrink-0"
                         />
