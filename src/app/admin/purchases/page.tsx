@@ -22,8 +22,7 @@ import {
   TrendingDown,
   UserCheck,
   ExternalLink,
-  ChevronDown,
-  Image as ImageIcon
+  ChevronDown
 } from 'lucide-react';
 import { PurchaseInvoice, PurchaseInvoiceItem, Company, Product, CustomerAccountSummary } from '@/types';
 import { useToast } from '@/context/ToastContext';
@@ -120,7 +119,6 @@ export default function AdminPurchasesPage() {
   const [invItems, setInvItems] = useState<Array<{
     productId: string;
     productName: string;
-    productImage?: string;
     company: string;
     unit: string;
     quantity: number;
@@ -128,7 +126,7 @@ export default function AdminPurchasesPage() {
     boxesPerCarton: number;
     itemsPerBox: number;
   }>>([
-    { productId: '', productName: '', productImage: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
+    { productId: '', productName: '', company: '', unit: 'كرتون', quantity: 10, costPrice: 0, boxesPerCarton: 1, itemsPerBox: 1 }
   ]);
 
   // View Invoice Modal
@@ -224,7 +222,6 @@ export default function AdminPurchasesPage() {
         {
           productId: firstProd.id,
           productName: firstProd.name,
-          productImage: firstProd.images?.[0] || '',
           company: firstProd.company || '',
           unit: firstProd.wholesaleUnit || 'كرتون',
           quantity: 10,
@@ -238,7 +235,6 @@ export default function AdminPurchasesPage() {
         {
           productId: '',
           productName: '',
-          productImage: '',
           company: '',
           unit: 'كرتون',
           quantity: 10,
@@ -257,7 +253,6 @@ export default function AdminPurchasesPage() {
       {
         productId: '',
         productName: '',
-        productImage: '',
         company: '',
         unit: 'كرتون',
         quantity: 10,
@@ -283,7 +278,6 @@ export default function AdminPurchasesPage() {
             ...next[index],
             productId: prod.id,
             productName: prod.name,
-            productImage: prod.images?.[0] || '',
             company: prod.company || '',
             unit: prod.wholesaleUnit || 'كرتون',
             costPrice: prod.costPrice || next[index].costPrice || 0,
@@ -296,7 +290,6 @@ export default function AdminPurchasesPage() {
             next.push({
               productId: '',
               productName: '',
-              productImage: '',
               company: '',
               unit: 'كرتون',
               quantity: 10,
@@ -340,7 +333,7 @@ export default function AdminPurchasesPage() {
       paid = 0;
       remaining = total;
     } else if (invPaymentMethod === 'partial') {
-      paid = Number(invPaidAmount) || 0;
+      paid = Number(invPaidAmount.replace(/\D/g, '')) || 0;
       remaining = Math.max(0, total - paid);
     }
 
@@ -752,7 +745,7 @@ export default function AdminPurchasesPage() {
                         setInvPaidAmount(total > 0 ? String(Math.round(total / 2)) : '');
                       }
                     }}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue"
+                    className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:border-brand-blue font-bold"
                   >
                     <option value="cash">💵 نقداً (واصل ومسدد بالكامل)</option>
                     <option value="credit">⏳ آجل (دين على الحساب بالكامل)</option>
@@ -772,18 +765,26 @@ export default function AdminPurchasesPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="font-bold text-slate-700 block">
-                        المبلغ المدفوع نقد / واصل (د.ع) *:
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-slate-700 block">
+                          المبلغ المدفوع نقد / واصل (د.ع) *:
+                        </label>
+                        {invPaidAmount && Number(invPaidAmount.replace(/\D/g, '')) > 0 && (
+                          <span className="text-[11px] font-black text-emerald-700 font-mono bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            {Number(invPaidAmount.replace(/\D/g, '')).toLocaleString()} د.ع
+                          </span>
+                        )}
+                      </div>
                       <input
-                        type="number"
-                        min="0"
-                        step="250"
+                        type="text"
                         required
-                        value={invPaidAmount}
-                        onChange={(e) => setInvPaidAmount(e.target.value)}
-                        placeholder="أدخل المبلغ المسدد نقداً..."
-                        className="w-full bg-white border border-blue-300 rounded-xl py-2 px-3 text-xs font-black text-emerald-700 font-mono focus:border-blue-600"
+                        value={invPaidAmount ? Number(invPaidAmount.replace(/\D/g, '')).toLocaleString() : ''}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, '');
+                          setInvPaidAmount(raw);
+                        }}
+                        placeholder="أدخل المبلغ المسدد نقداً (مثال: 1,500,000)..."
+                        className="w-full bg-white border border-blue-300 rounded-xl py-2 px-3 text-xs font-black text-emerald-700 font-mono text-left focus:border-blue-600 focus:outline-none"
                       />
                     </div>
 
@@ -791,10 +792,10 @@ export default function AdminPurchasesPage() {
                       <div>
                         <span className="text-[10px] text-slate-400 font-bold block">المبلغ المتبقي دين (علينا للمجهز):</span>
                         <span className="text-base font-black text-amber-700 font-mono">
-                          {Math.max(0, calculateModalTotal() - (Number(invPaidAmount) || 0)).toLocaleString()} د.ع
+                          {Math.max(0, calculateModalTotal() - (Number(invPaidAmount.replace(/\D/g, '')) || 0)).toLocaleString()} د.ع
                         </span>
                       </div>
-                      <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-1 rounded-lg">
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-lg">
                         دين آجل ⏳
                       </span>
                     </div>
@@ -809,7 +810,7 @@ export default function AdminPurchasesPage() {
                     <span>قائمة السلع والأصناف المشتراة في الفاتورة:</span>
                   </label>
                   <span className="text-[10px] text-slate-400 font-bold">
-                    (تظهر صور وأسماء جميع الأصناف • يفتح سطر جديد تلقائياً ⚡)
+                    (يمكنك اختيار أو البحث عن أي صنف • يفتح سطر جديد تلقائياً ⚡)
                   </span>
                 </div>
 
@@ -825,9 +826,9 @@ export default function AdminPurchasesPage() {
                         className="bg-slate-50/90 border border-slate-200 p-3 rounded-2xl space-y-2 relative"
                       >
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
-                          {/* Product Selector with Image Thumbnail */}
+                          {/* Product Selector */}
                           <div className="sm:col-span-6 space-y-0.5">
-                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف وصورته:</label>
+                            <label className="text-[10px] font-bold text-slate-700 block pb-0.5">اسم الصنف:</label>
                             <SearchableProductSelect
                               allProducts={products}
                               selectedProductId={item.productId}
@@ -1042,21 +1043,10 @@ export default function AdminPurchasesPage() {
                         <tr key={idx}>
                           <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
                           <td className="py-2 px-3">
-                            <div className="flex items-center gap-2">
-                              {it.productImage && (
-                                <img
-                                  src={it.productImage}
-                                  alt={it.productName}
-                                  className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0 bg-slate-50"
-                                />
-                              )}
-                              <div>
-                                <span className="font-bold text-slate-900 block">{it.productName}</span>
-                                <span className="text-[10px] text-slate-500">
-                                  (الكرتون: {boxes} علب × {piecesPerBox} قطعة) • تكلفة القطعة: {unitCost} د.ع
-                                </span>
-                              </div>
-                            </div>
+                            <span className="font-bold text-slate-900 block">{it.productName}</span>
+                            <span className="text-[10px] text-slate-500">
+                              (الكرتون: {boxes} علب × {piecesPerBox} قطعة) • تكلفة القطعة: {unitCost} د.ع
+                            </span>
                           </td>
                           <td className="py-2 px-3 text-center font-mono font-bold text-slate-700">
                             <div>{it.quantity} {it.unit}</div>
@@ -1259,7 +1249,7 @@ function SearchableSupplierSelect({
   );
 }
 
-// 🔍 Searchable Product Combobox Component with Image Thumbnails
+// 🔍 Searchable Product Combobox Component (Clean Text Presentation)
 function SearchableProductSelect({
   allProducts,
   selectedProductId,
@@ -1325,18 +1315,7 @@ function SearchableProductSelect({
       >
         <span className="truncate block">
           {selectedProduct ? (
-            <span className="text-slate-900 flex items-center gap-2 truncate">
-              {selectedProduct.images?.[0] ? (
-                <img
-                  src={selectedProduct.images[0]}
-                  alt={selectedProduct.name}
-                  className="w-6 h-6 rounded-md object-cover border border-slate-200 shrink-0 bg-slate-50"
-                />
-              ) : (
-                <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                  <Package className="w-3.5 h-3.5" />
-                </div>
-              )}
+            <span className="text-slate-900 flex items-center gap-1.5 truncate">
               <span className="font-black truncate">{selectedProduct.name}</span>
               {selectedProduct.company && (
                 <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-normal shrink-0">
@@ -1406,7 +1385,6 @@ function SearchableProductSelect({
               filteredList.map((p) => {
                 const isSelected = p.id === selectedProductId;
                 const isOutOfStock = p.stock === 0 || p.stock < 0;
-                const prodImg = p.images?.[0];
 
                 return (
                   <button
@@ -1423,36 +1401,21 @@ function SearchableProductSelect({
                         : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 truncate">
-                      {/* Product Thumbnail Image */}
-                      {prodImg ? (
-                        <img
-                          src={prodImg}
-                          alt={p.name}
-                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-slate-50"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                          <Package className="w-4 h-4" />
-                        </div>
-                      )}
-
-                      <div className="truncate">
-                        <span className="font-black text-xs text-slate-900 block truncate">
-                          {p.name}
-                        </span>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                          {p.company && (
-                            <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-normal">
-                              {p.company}
-                            </span>
-                          )}
-                          {p.boxesPerCarton && p.itemsPerBox && (
-                            <span>
-                              (الكرتون: {p.boxesPerCarton} علب × {p.itemsPerBox} قطعة)
-                            </span>
-                          )}
-                        </div>
+                    <div className="truncate">
+                      <span className="font-black text-xs text-slate-900 block truncate">
+                        {p.name}
+                      </span>
+                      <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                        {p.company && (
+                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-normal">
+                            {p.company}
+                          </span>
+                        )}
+                        {p.boxesPerCarton && p.itemsPerBox && (
+                          <span>
+                            (الكرتون: {p.boxesPerCarton} علب × {p.itemsPerBox} قطعة)
+                          </span>
+                        )}
                       </div>
                     </div>
 
