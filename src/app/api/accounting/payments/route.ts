@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { customerPhone, customerName, amount, paymentMethod, notes, receivedBy } = body;
+    const { customerPhone, customerName, amount, paymentMethod, notes, receivedBy, operatorName, operatorUsername } = body;
 
     if (!customerPhone || !customerName || !amount) {
       return NextResponse.json(
@@ -41,7 +41,9 @@ export async function POST(request: Request) {
       amount: numAmount,
       paymentMethod: paymentMethod || 'cash',
       notes,
-      receivedBy: receivedBy || 'كادر المحاسبة',
+      receivedBy: receivedBy || operatorName || 'كادر المحاسبة',
+      operatorName,
+      operatorUsername,
     });
 
     const updatedStatement = getCustomerStatement(customerPhone);

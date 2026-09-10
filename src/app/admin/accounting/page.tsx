@@ -144,9 +144,18 @@ function AdminAccountingContent() {
   const [statementStartDate, setStatementStartDate] = useState('');
   const [statementEndDate, setStatementEndDate] = useState('');
 
-  // Payment Receipt Modal State
+  // Payment Receipt / Disbursement Voucher Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState<{ phone: string; name: string; balance: number; category?: string } | null>(null);
+  const [paymentMode, setPaymentMode] = useState<'receipt' | 'disbursement'>('receipt');
+  const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
+  const [paymentTarget, setPaymentTarget] = useState<{
+    phone: string;
+    name: string;
+    businessName?: string;
+    balance: number;
+    category?: string;
+    city?: string;
+  } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'zaincash' | 'qicard' | 'bank_transfer' | 'other'>('cash');
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -428,22 +437,37 @@ function AdminAccountingContent() {
     }
   };
 
-  // Open Payment Modal
-  const handleOpenPayment = (phone: string, name: string, balance: number, category?: string) => {
-    setPaymentTarget({ phone, name, balance, category });
-    setPaymentAmount(Math.abs(balance) > 0 ? String(Math.abs(balance)) : '');
+  // Open Quick Voucher Modal from Top Bar (Smart Search Mode)
+  const handleOpenQuickVoucher = (mode: 'receipt' | 'disbursement') => {
+    setPaymentMode(mode);
+    setPaymentTarget(null);
+    setVoucherSearchQuery('');
+    setPaymentAmount('');
     setPaymentNotes('');
     setPaymentSuccessMessage('');
     setIsPaymentModalOpen(true);
   };
 
-  // Submit Payment
+  // Open Payment / Disbursement Modal for specific target
+  const handleOpenPayment = (phone: string, name: string, balance: number, category?: string, businessName?: string, city?: string) => {
+    const mode = category === 'supplier' ? 'disbursement' : 'receipt';
+    setPaymentMode(mode);
+    setPaymentTarget({ phone, name, businessName, balance, category, city });
+    setPaymentAmount(Math.abs(balance) > 0 ? String(Math.abs(balance)) : '');
+    setVoucherSearchQuery('');
+    setPaymentNotes('');
+    setPaymentSuccessMessage('');
+    setIsPaymentModalOpen(true);
+  };
+
+  // Submit Payment / Disbursement Voucher
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentTarget || !paymentAmount || Number(paymentAmount) <= 0) return;
 
     setIsSubmittingPayment(true);
     try {
+      const isSup = paymentMode === 'disbursement' || paymentTarget.category === 'supplier';
       const res = await fetch('/api/accounting/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -453,27 +477,32 @@ function AdminAccountingContent() {
           amount: Number(paymentAmount),
           paymentMethod,
           notes: paymentNotes,
+          operatorName: currentOperator?.name || 'المحاسب',
+          operatorUsername: currentOperator?.username || 'admin',
         }),
       });
 
       const data = await res.json();
       if (data.success) {
-        const isSup = paymentTarget.category === 'supplier';
         setPaymentSuccessMessage(
           isSup
             ? `تم تسجيل سند الصرف والتسديد رقم #${data.payment.receiptNumber} بمبلغ ${Number(paymentAmount).toLocaleString()} د.ع للمجهز بنجاح!`
             : `تم تسجيل سند القبض رقم #${data.payment.receiptNumber} بمبلغ ${Number(paymentAmount).toLocaleString()} د.ع بنجاح!`
         );
-        fetchAccounts();
+        fetchAccounts(true);
+        fetchVaultData(true);
+        fetchAuditLogs(true);
         if (selectedStatement && selectedStatement.customer.phone.replace(/\D/g, '') === paymentTarget.phone.replace(/\D/g, '')) {
           handleViewStatement(paymentTarget.phone, statementStartDate, statementEndDate);
         }
         setTimeout(() => {
           setIsPaymentModalOpen(false);
         }, 1200);
+      } else {
+        toast.error(data.error || 'فشل تسجيل السند');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'حدث خطأ أثناء تسجيل السند');
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -818,85 +847,120 @@ function AdminAccountingContent() {
   return (
     <div className="space-y-6 text-xs">
         
-      {/* 4 TOP NAVIGATION TABS - PROMINENT & COLOR-CODED */}
-      <div className="flex flex-wrap items-center gap-2.5 p-2 bg-slate-100/90 rounded-2xl max-w-fit border border-slate-200/80 shadow-xs no-print print:hidden">
+      {/* TOP NAVIGATION & QUICK ACTION BAR - PROMINENT & COLOR-CODED */}
+      <div className="flex flex-wrap items-center justify-between gap-3 no-print print:hidden">
         
-        {/* Tab 1: Accounts Ledger (Blue) */}
-        <button
-          type="button"
-          onClick={() => setActiveMainTab('accounts')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
-            activeMainTab === 'accounts'
-              ? 'bg-gradient-to-r from-blue-600 to-brand-blue text-white shadow-md shadow-blue-600/30 border border-blue-600 ring-2 ring-blue-400/20'
-              : 'bg-white text-blue-950 hover:bg-blue-50 border border-blue-200/80 hover:border-blue-300'
-          }`}
-        >
-          <FileText className={`w-4 h-4 ${activeMainTab === 'accounts' ? 'text-white' : 'text-brand-blue'}`} />
-          <span>أستاذ الحسابات والديون</span>
-          <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
-            activeMainTab === 'accounts' ? 'bg-white/20 text-white' : 'bg-blue-100 text-brand-blue'
-          }`}>
-            {accounts.length}
-          </span>
-        </button>
+        {/* Left: 4 Main Navigation Tabs */}
+        <div className="flex flex-wrap items-center gap-2.5 p-2 bg-slate-100/90 rounded-2xl max-w-fit border border-slate-200/80 shadow-xs">
+          
+          {/* Tab 1: Accounts Ledger (Blue) */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('accounts')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
+              activeMainTab === 'accounts'
+                ? 'bg-gradient-to-r from-blue-600 to-brand-blue text-white shadow-md shadow-blue-600/30 border border-blue-600 ring-2 ring-blue-400/20'
+                : 'bg-white text-blue-950 hover:bg-blue-50 border border-blue-200/80 hover:border-blue-300'
+            }`}
+          >
+            <FileText className={`w-4 h-4 ${activeMainTab === 'accounts' ? 'text-white' : 'text-brand-blue'}`} />
+            <span>أستاذ الحسابات والديون</span>
+            <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
+              activeMainTab === 'accounts' ? 'bg-white/20 text-white' : 'bg-blue-100 text-brand-blue'
+            }`}>
+              {accounts.length}
+            </span>
+          </button>
 
-        {/* Tab 2: Add New Account (Emerald Green) */}
-        <button
-          type="button"
-          onClick={() => setActiveMainTab('add_account')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
-            activeMainTab === 'add_account'
-              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-600 ring-2 ring-emerald-400/20'
-              : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-200/80 hover:border-emerald-300'
-          }`}
-        >
-          <UserPlus className={`w-4 h-4 ${activeMainTab === 'add_account' ? 'text-white' : 'text-emerald-600'}`} />
-          <span>➕ إضافة حساب جديد</span>
-        </button>
+          {/* Tab 2: Add New Account (Emerald Green) */}
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('add_account')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
+              activeMainTab === 'add_account'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30 border border-emerald-600 ring-2 ring-emerald-400/20'
+                : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-200/80 hover:border-emerald-300'
+            }`}
+          >
+            <UserPlus className={`w-4 h-4 ${activeMainTab === 'add_account' ? 'text-white' : 'text-emerald-600'}`} />
+            <span>➕ إضافة حساب جديد</span>
+          </button>
 
-        {/* Tab 3: Cash Vault 181 (Amber / Gold) */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveMainTab('vault');
-            fetchVaultData();
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
-            activeMainTab === 'vault'
-              ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white shadow-md shadow-amber-500/30 border border-amber-500 ring-2 ring-amber-400/20'
-              : 'bg-white text-amber-950 hover:bg-amber-50 border border-amber-200/80 hover:border-amber-300'
-          }`}
-        >
-          <Wallet className={`w-4 h-4 ${activeMainTab === 'vault' ? 'text-white' : 'text-amber-600'}`} />
-          <span>صندوق النقدية (حساب 181)</span>
-          <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
-            activeMainTab === 'vault' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
-          }`}>
-            {(vaultSummary?.currentBalance ?? 0).toLocaleString()} د.ع
-          </span>
-        </button>
+          {/* Tab 3: Cash Vault 181 (Amber / Gold) */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveMainTab('vault');
+              fetchVaultData();
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
+              activeMainTab === 'vault'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-white shadow-md shadow-amber-500/30 border border-amber-500 ring-2 ring-amber-400/20'
+                : 'bg-white text-amber-950 hover:bg-amber-50 border border-amber-200/80 hover:border-amber-300'
+            }`}
+          >
+            <Wallet className={`w-4 h-4 ${activeMainTab === 'vault' ? 'text-white' : 'text-amber-600'}`} />
+            <span>صندوق النقدية (حساب 181)</span>
+            <span className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md font-black ${
+              activeMainTab === 'vault' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+            }`}>
+              {(vaultSummary?.currentBalance ?? 0).toLocaleString()} د.ع
+            </span>
+          </button>
 
-        {/* Tab 4: Audit Log (Purple) */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveMainTab('audit');
-            fetchAuditLogs();
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
-            activeMainTab === 'audit'
-              ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-md shadow-purple-600/30 border border-purple-600 ring-2 ring-purple-400/20'
-              : 'bg-white text-purple-950 hover:bg-purple-50 border border-purple-200/80 hover:border-purple-300'
-          }`}
-        >
-          <ShieldAlert className={`w-4 h-4 ${activeMainTab === 'audit' ? 'text-white' : 'text-purple-600'}`} />
-          <span>سجل الرقابة وتدقيق الموظفين</span>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-bold ${
-            activeMainTab === 'audit' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'
-          }`}>
-            Audit Log
-          </span>
-        </button>
+          {/* Tab 4: Audit Log (Purple) */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveMainTab('audit');
+              fetchAuditLogs();
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shadow-xs active:scale-98 ${
+              activeMainTab === 'audit'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-md shadow-purple-600/30 border border-purple-600 ring-2 ring-purple-400/20'
+                : 'bg-white text-purple-950 hover:bg-purple-50 border border-purple-200/80 hover:border-purple-300'
+            }`}
+          >
+            <ShieldAlert className={`w-4 h-4 ${activeMainTab === 'audit' ? 'text-white' : 'text-purple-600'}`} />
+            <span>سجل الرقابة وتدقيق الموظفين</span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-bold ${
+              activeMainTab === 'audit' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'
+            }`}>
+              Audit Log
+            </span>
+          </button>
+
+        </div>
+
+        {/* Right: Quick Action Buttons (سند قبض سريع + سند صرف سريع) */}
+        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 shadow-xs">
+          
+          {/* Quick Receipt Voucher (سند قبض للزبائن) */}
+          <button
+            type="button"
+            onClick={() => handleOpenQuickVoucher('receipt')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-600/25 border border-emerald-500 transition-all cursor-pointer active:scale-95"
+            title="إنشاء سند قبض سريع مع بحث ذكي عن الزبون وحساب الرصيد"
+          >
+            <Banknote className="w-4 h-4 text-white" />
+            <span>💵 سند قبض سريع</span>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-md font-sans">زبون</span>
+          </button>
+
+          {/* Quick Disbursement Voucher (سند صرف للمجهزين) */}
+          <button
+            type="button"
+            onClick={() => handleOpenQuickVoucher('disbursement')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs text-white bg-gradient-to-r from-purple-700 to-indigo-800 hover:from-purple-800 hover:to-indigo-900 shadow-md shadow-purple-700/25 border border-purple-600 transition-all cursor-pointer active:scale-95"
+            title="إنشاء سند صرف سريع مع بحث ذكي عن المجهز وحساب الرصيد"
+          >
+            <CreditCard className="w-4 h-4 text-white" />
+            <span>💳 سند صرف سريع</span>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-md font-sans">مجهز</span>
+          </button>
+
+        </div>
+
       </div>
 
       {/* =========================================================================
@@ -1270,7 +1334,7 @@ function AdminAccountingContent() {
                               {/* Open Payment Modal Button (Compact) */}
                               {isSupplier ? (
                                 <button
-                                  onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
+                                  onClick={() => handleOpenPayment(acc.phone, acc.name, acc.remainingBalance, acc.category, acc.businessName, acc.city)}
                                   className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded-lg transition shadow-xs cursor-pointer active:scale-95 text-[11px] whitespace-nowrap"
                                   title="تسجيل سند صرف وتسديد دفعة مالية للمجهز"
                                 >
@@ -1278,7 +1342,7 @@ function AdminAccountingContent() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
+                                  onClick={() => handleOpenPayment(acc.phone, acc.name, acc.remainingBalance, acc.category, acc.businessName, acc.city)}
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-3 rounded-lg transition shadow-xs cursor-pointer active:scale-95 text-[11px] whitespace-nowrap"
                                   title="تسجيل سند قبض واستلام دفعة مالية من العميل"
                                 >
@@ -1988,129 +2052,476 @@ function AdminAccountingContent() {
         </div>
       )}
 
-      {/* MODAL 1: RECORD PAYMENT / DISBURSEMENT VOUCHER */}
-      {isPaymentModalOpen && paymentTarget && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-xs animate-in zoom-in-95">
+      {/* MODAL 1: RECORD PAYMENT / DISBURSEMENT VOUCHER (SMART SEARCH & LIVE BALANCE CALCULATION) */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in-50 duration-150">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-5 sm:p-6 space-y-4 text-xs animate-in zoom-in-95 relative max-h-[92vh] flex flex-col">
             
+            {/* Modal Top Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                {paymentTarget.category === 'supplier' ? (
-                  <>
-                    <CreditCard className="w-5 h-5 text-purple-600" />
-                    <span>تسجيل سند صرف / دفع للمجهز 💳</span>
-                  </>
+              <div className="flex items-center gap-2">
+                {paymentMode === 'disbursement' ? (
+                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
                 ) : (
-                  <>
-                    <Banknote className="w-5 h-5 text-emerald-600" />
-                    <span>تسجيل سند قبض / دفعة نقدية 💵</span>
-                  </>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <Banknote className="w-4 h-4" />
+                  </div>
                 )}
-              </h3>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900">
+                    {paymentMode === 'disbursement' ? 'سند صرف وتسديد مجهز 💳' : 'سند قبض واستلام دفعة 💵'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold">
+                    {paymentTarget
+                      ? (paymentMode === 'disbursement' ? `تسجيل دفعة للمورد: ${paymentTarget.businessName || paymentTarget.name}` : `تسديد دفعة من العميل: ${paymentTarget.businessName || paymentTarget.name}`)
+                      : (paymentMode === 'disbursement' ? 'بحث ذكي سريع واختيار المجهز' : 'بحث ذكي سريع واختيار الزبون')
+                    }
+                  </p>
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={() => setIsPaymentModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Target Info */}
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1">
-              <div className="flex justify-between font-bold">
-                <span className="text-slate-500">
-                  {paymentTarget.category === 'supplier' ? 'اسم المجهز / الشركة:' : 'اسم العميل:'}
-                </span>
-                <span className="text-slate-900 font-black">{paymentTarget.name}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span className="text-slate-500">رقم الهاتف:</span>
-                <span className="text-slate-900 font-mono" dir="ltr">{paymentTarget.phone}</span>
-              </div>
-              <div className="flex justify-between font-bold pt-1 border-t border-slate-200">
-                <span className="text-slate-500">
-                  {paymentTarget.category === 'supplier' ? 'المستحق بذمتنا للمجهز:' : 'الرصيد المتبقي (مطلوب لنا):'}
-                </span>
-                <span className={`font-mono font-black ${paymentTarget.category === 'supplier' ? 'text-purple-700' : 'text-[#e0452c]'}`}>
-                  {Math.abs(paymentTarget.balance).toLocaleString()} د.ع
-                </span>
-              </div>
+            {/* Mode Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentMode('receipt');
+                  setPaymentTarget(null);
+                  setPaymentAmount('');
+                  setVoucherSearchQuery('');
+                }}
+                className={`py-2 rounded-xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  paymentMode === 'receipt'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                <span>💵 سند قبض (زبائن)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentMode('disbursement');
+                  setPaymentTarget(null);
+                  setPaymentAmount('');
+                  setVoucherSearchQuery('');
+                }}
+                className={`py-2 rounded-xl font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  paymentMode === 'disbursement'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>💳 سند صرف (مجهزين)</span>
+              </button>
             </div>
 
-            {paymentSuccessMessage && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-2xl font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{paymentSuccessMessage}</span>
+            {/* =========================================================================
+                VIEW 1: SMART ACCOUNT SEARCH (إذا لم يتم اختيار حساب بعد)
+                ========================================================================= */}
+            {!paymentTarget ? (
+              <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+                
+                {/* Search Input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={voucherSearchQuery}
+                    onChange={(e) => setVoucherSearchQuery(e.target.value)}
+                    placeholder={
+                      paymentMode === 'receipt'
+                        ? '🔍 ابحث باسم الزبون، الماركت، المحل، أو الهاتف...'
+                        : '🔍 ابحث باسم الشركة، المجهز، المورد، أو الهاتف...'
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 rounded-2xl py-2.5 pr-10 pl-8 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue focus:outline-none"
+                  />
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  {voucherSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setVoucherSearchQuery('')}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtered List Header */}
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
+                  <span>
+                    {paymentMode === 'receipt' ? 'قائمة حسابات الزبائن والماركتات:' : 'قائمة حسابات الشركات والمجهزين:'}
+                  </span>
+                  <span className="font-mono text-slate-400">
+                    {(() => {
+                      const matched = accounts.filter(acc => {
+                        const isSup = acc.category === 'supplier';
+                        if (paymentMode === 'receipt' && isSup) return false;
+                        if (paymentMode === 'disbursement' && !isSup) return false;
+                        if (!voucherSearchQuery.trim()) return true;
+                        const q = voucherSearchQuery.toLowerCase().trim();
+                        return (
+                          acc.name.toLowerCase().includes(q) ||
+                          acc.phone.includes(q) ||
+                          (acc.businessName && acc.businessName.toLowerCase().includes(q)) ||
+                          (acc.city && acc.city.toLowerCase().includes(q))
+                        );
+                      });
+                      return `${matched.length} حساب`;
+                    })()}
+                  </span>
+                </div>
+
+                {/* Scrollable Results List */}
+                <div className="overflow-y-auto max-h-[320px] space-y-2 pr-1 flex-1">
+                  {(() => {
+                    const matchedAccounts = accounts
+                      .filter(acc => {
+                        const isSup = acc.category === 'supplier';
+                        if (paymentMode === 'receipt' && isSup) return false;
+                        if (paymentMode === 'disbursement' && !isSup) return false;
+                        if (!voucherSearchQuery.trim()) return true;
+                        const q = voucherSearchQuery.toLowerCase().trim();
+                        return (
+                          acc.name.toLowerCase().includes(q) ||
+                          acc.phone.includes(q) ||
+                          (acc.businessName && acc.businessName.toLowerCase().includes(q)) ||
+                          (acc.city && acc.city.toLowerCase().includes(q))
+                        );
+                      })
+                      .sort((a, b) => {
+                        return Math.abs(b.remainingBalance) - Math.abs(a.remainingBalance);
+                      });
+
+                    if (matchedAccounts.length === 0) {
+                      return (
+                        <div className="py-10 text-center space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto text-base">
+                            🔍
+                          </div>
+                          <p className="font-bold text-slate-600 text-xs">لا يوجد حساب يطابق البحث</p>
+                          <p className="text-[10px] text-slate-400">
+                            جرب كتابة رقم الهاتف أو اسم المتجر أو اختر الفئة الصحيحة
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return matchedAccounts.map((acc) => {
+                      const isOwed = acc.remainingBalance > 0;
+
+                      return (
+                        <div
+                          key={acc.phone}
+                          onClick={() => {
+                            setPaymentTarget({
+                              phone: acc.phone,
+                              name: acc.name,
+                              businessName: acc.businessName,
+                              balance: acc.remainingBalance,
+                              category: acc.category,
+                              city: acc.city,
+                            });
+                            setPaymentAmount(Math.abs(acc.remainingBalance) > 0 ? String(Math.abs(acc.remainingBalance)) : '');
+                            setPaymentNotes('');
+                            setPaymentSuccessMessage('');
+                          }}
+                          className="bg-white hover:bg-slate-50 border border-slate-200 hover:border-brand-blue/50 p-3 rounded-2xl transition cursor-pointer shadow-2xs flex items-center justify-between gap-3 group active:scale-[0.99]"
+                        >
+                          <div className="min-w-0 space-y-0.5">
+                            {/* Business & Personal Name */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-black text-slate-900 text-xs group-hover:text-brand-blue transition">
+                                {acc.businessName || acc.name}
+                              </span>
+                              {acc.businessName && acc.name && acc.name !== acc.businessName && (
+                                <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.2 rounded-md">
+                                  {acc.name}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Phone & City */}
+                            <div className="flex items-center gap-2 text-[10.5px] text-slate-500 font-mono">
+                              <span dir="ltr">{acc.phone}</span>
+                              {acc.city && <span className="font-sans text-slate-400">• {acc.city}</span>}
+                            </div>
+                          </div>
+
+                          {/* Balance & Select Badge */}
+                          <div className="text-left shrink-0 space-y-1">
+                            {paymentMode === 'receipt' ? (
+                              isOwed ? (
+                                <span className="inline-block bg-red-50 text-[#ef533a] border border-red-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  مطلوب: {acc.remainingBalance.toLocaleString()} د.ع
+                                </span>
+                              ) : (
+                                <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  خالص 0 د.ع
+                                </span>
+                              )
+                            ) : (
+                              isOwed ? (
+                                <span className="inline-block bg-purple-50 text-purple-800 border border-purple-200 text-[11px] font-mono font-black px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  دائن: {acc.remainingBalance.toLocaleString()} د.ع
+                                </span>
+                              ) : (
+                                <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                  خالص 0 د.ع
+                                </span>
+                              )
+                            )}
+
+                            <div className="text-[10px] text-brand-blue font-bold group-hover:underline flex items-center justify-end gap-0.5">
+                              <span>اختيار</span>
+                              <span>👈</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+              </div>
+            ) : (
+              /* =========================================================================
+                 VIEW 2: VOUCHER DETAILS & LIVE REAL-TIME BALANCE CALCULATION
+                 ========================================================================= */
+              <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+                
+                {/* Selected Account Info Strip + Change Button */}
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/90 flex items-center justify-between gap-3">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-[10px] text-slate-400 font-bold block">
+                      {paymentMode === 'disbursement' ? 'المجهز / الشركة المحددة:' : 'الزبون / المتجر المحدد:'}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-black text-slate-900 text-xs">
+                        {paymentTarget.businessName || paymentTarget.name}
+                      </span>
+                      {paymentTarget.businessName && paymentTarget.name && paymentTarget.name !== paymentTarget.businessName && (
+                        <span className="bg-slate-200/80 text-slate-700 text-[10px] font-bold px-1.5 py-0.2 rounded-md">
+                          {paymentTarget.name}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-slate-500 text-[10.5px] block" dir="ltr">
+                      {paymentTarget.phone} {paymentTarget.city ? `• ${paymentTarget.city}` : ''}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentTarget(null);
+                      setPaymentAmount('');
+                    }}
+                    className="bg-white hover:bg-slate-100 text-brand-blue font-bold px-2.5 py-1.5 rounded-xl border border-slate-200 transition text-[11px] shrink-0 cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="تغيير الحساب والبحث عن آخر"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>تغيير الحساب</span>
+                  </button>
+                </div>
+
+                {/* 3-BOX FINANCIAL BREAKDOWN & LIVE MATH */}
+                {(() => {
+                  const prevBalance = Math.abs(paymentTarget.balance);
+                  const paidNum = Number(paymentAmount) || 0;
+                  const newBalance = prevBalance - paidNum;
+
+                  return (
+                    <div className="space-y-3">
+                      
+                      <div className="grid grid-cols-2 gap-2.5">
+                        
+                        {/* 1. المبلغ السابق */}
+                        <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-0.5">
+                          <span className="text-[10px] text-slate-500 font-bold block">
+                            {paymentMode === 'disbursement' ? 'المستحق السابق (دائن علينا):' : 'الرصيد السابق (مطلوب لنا):'}
+                          </span>
+                          <div className={`font-mono font-black text-sm ${paymentMode === 'disbursement' ? 'text-purple-800' : 'text-[#ef533a]'}`}>
+                            {prevBalance.toLocaleString()} <span className="text-[10px] font-sans font-bold">د.ع</span>
+                          </div>
+                        </div>
+
+                        {/* 2. المبلغ الحالي بعد السند (Live Calculated) */}
+                        <div className={`p-2.5 rounded-2xl border transition-all space-y-0.5 ${
+                          newBalance === 0
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                            : newBalance < 0
+                            ? 'bg-sky-50 border-sky-300 text-sky-900'
+                            : 'bg-amber-50 border-amber-300 text-amber-900'
+                        }`}>
+                          <span className="text-[10px] font-bold block opacity-80">
+                            المبلغ المتبقي بعد السند:
+                          </span>
+                          <div className="font-mono font-black text-sm">
+                            {newBalance === 0 ? (
+                              <span className="text-emerald-700 font-sans text-xs flex items-center gap-1 font-black">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>خالص ومسدد (0)</span>
+                              </span>
+                            ) : newBalance < 0 ? (
+                              <span>+{Math.abs(newBalance).toLocaleString()} <span className="text-[9px] font-sans">د.ع (فائض)</span></span>
+                            ) : (
+                              <span>{newBalance.toLocaleString()} <span className="text-[10px] font-sans font-bold">د.ع</span></span>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Success Feedback Alert */}
+                      {paymentSuccessMessage && (
+                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-2xl font-bold flex items-center gap-2 animate-in fade-in-50">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>{paymentSuccessMessage}</span>
+                        </div>
+                      )}
+
+                      {/* Form Inputs */}
+                      <form onSubmit={handleRecordPayment} className="space-y-3 pt-1">
+                        
+                        {/* Amount Input */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="font-black text-slate-800 block text-xs">
+                              {paymentMode === 'disbursement' ? 'المبلغ المراد صرفه وتسديده (د.ع) *:' : 'المبلغ المراد قبضه واستلامه (د.ع) *:'}
+                            </label>
+
+                            {/* Quick Shortcuts */}
+                            {prevBalance > 0 && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentAmount(String(prevBalance))}
+                                  className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-md transition cursor-pointer"
+                                >
+                                  كامل المبلغ
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentAmount(String(Math.round(prevBalance / 2)))}
+                                  className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-md transition cursor-pointer"
+                                >
+                                  50%
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="relative">
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              step="250"
+                              autoFocus
+                              value={paymentAmount}
+                              onChange={(e) => setPaymentAmount(e.target.value)}
+                              placeholder="مثال: 250000"
+                              className={`w-full bg-slate-50 border border-slate-300 rounded-2xl py-2.5 pr-3 pl-8 text-base font-black font-mono text-slate-900 focus:bg-white focus:outline-none ${
+                                paymentMode === 'disbursement' ? 'focus:border-purple-600' : 'focus:border-emerald-600'
+                              }`}
+                            />
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">د.ع</span>
+                          </div>
+                        </div>
+
+                        {/* Payment Method */}
+                        <div className="space-y-1">
+                          <label className="font-black text-slate-800 block text-xs">
+                            طريقة القبض / الصرف:
+                          </label>
+                          <select
+                            value={paymentMethod}
+                            onChange={(e: any) => setPaymentMethod(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-2xl py-2.5 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
+                          >
+                            <option value="cash">💵 نقداً (كاش / صندوق النقدية حساب 181)</option>
+                            <option value="zaincash">📱 زين كاش (Zain Cash)</option>
+                            <option value="qicard">💳 ماستركارد / كي كارد (Qi Card)</option>
+                            <option value="bank_transfer">🏦 حوالة مصرفية / مكتب صرافة</option>
+                            <option value="other">📝 أخرى</option>
+                          </select>
+                        </div>
+
+                        {/* Notes Input */}
+                        <div className="space-y-1">
+                          <label className="font-black text-slate-800 block text-xs">
+                            البيان / ملاحظات السند:
+                          </label>
+                          <input
+                            type="text"
+                            value={paymentNotes}
+                            onChange={(e) => setPaymentNotes(e.target.value)}
+                            placeholder={
+                              paymentMode === 'disbursement'
+                                ? 'مثال: تسديد دفعة فاتورة التوريد نقداً، رقم الحوالة...'
+                                : 'مثال: استلام دفعة الحساب نقداً، رقم الوصل...'
+                            }
+                            className="w-full bg-slate-50 border border-slate-300 rounded-2xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
+                          />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsPaymentModalOpen(false)}
+                            className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-2xl transition cursor-pointer text-xs"
+                          >
+                            إلغاء
+                          </button>
+
+                          <button
+                            type="submit"
+                            disabled={isSubmittingPayment || !paymentAmount || Number(paymentAmount) <= 0}
+                            className={`w-2/3 text-white font-black py-2.5 rounded-2xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer text-xs active:scale-95 disabled:opacity-50 ${
+                              paymentMode === 'disbursement'
+                                ? 'bg-purple-700 hover:bg-purple-800'
+                                : 'bg-emerald-600 hover:bg-emerald-700'
+                            }`}
+                          >
+                            {isSubmittingPayment ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <span>جاري الحفظ...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>{paymentMode === 'disbursement' ? 'تأكيد وحفظ سند الصرف 💳' : 'تأكيد وحفظ سند القبض 💵'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                      </form>
+
+                    </div>
+                  );
+                })()}
+
               </div>
             )}
-
-            <form onSubmit={handleRecordPayment} className="space-y-3.5">
-              
-              <div className="space-y-1">
-                <label className="font-black text-slate-800 block">
-                  {paymentTarget.category === 'supplier' ? 'المبلغ المدفوع للمجهز (د.ع) *:' : 'المبلغ المقبوض (د.ع) *:'}
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="مثال: 50000"
-                  className={`w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-sm font-black font-mono text-slate-900 focus:bg-white ${paymentTarget.category === 'supplier' ? 'focus:border-purple-600' : 'focus:border-emerald-600'}`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-black text-slate-800 block">
-                  {paymentTarget.category === 'supplier' ? 'طريقة الدفع والتسديد:' : 'طريقة القبض والاستلام:'}
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e: any) => setPaymentMethod(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
-                >
-                  <option value="cash">💵 نقداً (كاش / خزينة المتجر)</option>
-                  <option value="zaincash">📱 زين كاش (Zain Cash)</option>
-                  <option value="qicard">💳 ماستركارد / كي كارد (Qi Card)</option>
-                  <option value="bank_transfer">🏦 حوالة مصرفية / مكتب صرافة</option>
-                  <option value="other">📝 أخرى</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-black text-slate-800 block">ملاحظات أو رقم الإشعار (اختياري):</label>
-                <input
-                  type="text"
-                  value={paymentNotes}
-                  onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder={paymentTarget.category === 'supplier' ? 'مثال: تسديد دفعة فاتورة التوريد نقداً' : 'مثال: تسديد دفعة الفاتورة نقداً مع المندوب'}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPaymentModalOpen(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingPayment}
-                  className={`flex-1 text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer ${
-                    paymentTarget.category === 'supplier'
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
-                >
-                  {isSubmittingPayment ? 'جاري الحفظ...' : (paymentTarget.category === 'supplier' ? 'تأكيد وحفظ سند الصرف ✓' : 'تأكيد وحفظ سند القبض ✓')}
-                </button>
-              </div>
-
-            </form>
 
           </div>
         </div>
