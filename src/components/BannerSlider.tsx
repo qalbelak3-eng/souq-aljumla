@@ -30,7 +30,6 @@ export default function BannerSlider({
   const isHorizontalSwipe = useRef<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let url = `/api/banners?position=${encodeURIComponent(position)}`;
@@ -56,59 +55,14 @@ export default function BannerSlider({
 
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
 
-  // Helper to scroll to specific slide in Hungerstation separated-card carousel
-  const scrollToIndex = (idx: number) => {
-    if (!scrollRef.current) return;
-    const cards = scrollRef.current.querySelectorAll('.banner-slide-card');
-    if (cards[idx]) {
-      (cards[idx] as HTMLElement).scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-      setCurrentIndex(idx);
-    }
-  };
-
-  // Detect active index on scroll for peek carousel
-  const handleScroll = () => {
-    if (!scrollRef.current) return;
-    const container = scrollRef.current;
-    const cards = container.querySelectorAll('.banner-slide-card');
-    if (cards.length === 0) return;
-
-    const containerRect = container.getBoundingClientRect();
-    const containerCenter = containerRect.left + containerRect.width / 2;
-
-    let closestIndex = 0;
-    let minDistance = Infinity;
-
-    cards.forEach((card, idx) => {
-      const rect = (card as HTMLElement).getBoundingClientRect();
-      const cardCenter = rect.left + rect.width / 2;
-      const distance = Math.abs(containerCenter - cardCenter);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = idx;
-      }
-    });
-
-    setCurrentIndex(closestIndex);
-  };
-
   // Auto slide every 4.5 seconds (paused while user is touching/swiping)
   useEffect(() => {
     if (banners.length <= 1 || isSwiping) return;
     const interval = setInterval(() => {
-      const nextIdx = (currentIndex + 1) % banners.length;
-      if (isCompact && scrollRef.current) {
-        scrollToIndex(nextIdx);
-      } else {
-        setCurrentIndex(nextIdx);
-      }
+      setCurrentIndex((prev) => (prev + 1) % banners.length);
     }, 4500);
     return () => clearInterval(interval);
-  }, [banners.length, currentIndex, isSwiping, isCompact]);
+  }, [banners.length, isSwiping]);
 
   // Touch handlers with real-time finger tracking & smart axis lock
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -141,7 +95,7 @@ export default function BannerSlider({
 
   const handleTouchEnd = () => {
     if (banners.length <= 1) return;
-    const minSwipeDistance = 40;
+    const minSwipeDistance = 35;
 
     if (isHorizontalSwipe.current && dragOffset !== 0) {
       if (dragOffset < -minSwipeDistance) {
@@ -178,7 +132,7 @@ export default function BannerSlider({
 
   const handleMouseUp = () => {
     if (!isSwiping || banners.length <= 1) return;
-    const minSwipeDistance = 45;
+    const minSwipeDistance = 40;
 
     if (dragOffset < -minSwipeDistance) {
       setCurrentIndex((prev) => (prev + 1) % banners.length);
@@ -195,8 +149,8 @@ export default function BannerSlider({
 
   if (isLoading) {
     const aspectClass = isCompact
-      ? 'aspect-[24/8] sm:aspect-[24/8]'
-      : 'aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
+      ? 'aspect-[21/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
+      : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
     return (
       <div className={`w-full ${aspectClass} bg-white rounded-3xl animate-pulse border border-slate-100 shadow-sm ${className}`} />
     );
@@ -204,108 +158,30 @@ export default function BannerSlider({
 
   if (banners.length === 0) return null;
 
-  // 1. HUNGERSTATION STYLE SEPARATED CARDS PEEK CAROUSEL (FOR SECONDARY / COMPACT SLIDERS)
-  if (isCompact) {
-    if (banners.length === 1) {
-      const singleBanner = banners[0];
-      return (
-        <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-slate-100 bg-white aspect-[24/8] select-none ${className}`}>
-          <Link
-            href={singleBanner.linkUrl || '/products'}
-            className="block relative w-full h-full overflow-hidden"
-          >
-            <img
-              src={singleBanner.image}
-              alt={singleBanner.title || 'بنر إعلاني'}
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </Link>
-        </div>
-      );
-    }
-
+  // Single Banner Display
+  if (banners.length === 1) {
+    const singleBanner = banners[0];
+    const aspectClass = isCompact
+      ? 'aspect-[21/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
+      : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
     return (
-      <div className={`relative w-full select-none group ${className}`}>
-        {/* Scrollable Track with Peek Effect & Touch Swiping */}
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          onTouchStart={() => setIsSwiping(true)}
-          onTouchEnd={() => setTimeout(() => setIsSwiping(false), 2000)}
-          className="flex items-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none snap-x snap-mandatory py-1 px-1 sm:px-2 scroll-smooth"
-          style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            WebkitOverflowScrolling: 'touch',
-          }}
+      <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 bg-white ${aspectClass} select-none ${className}`}>
+        <Link
+          href={singleBanner.linkUrl || '/products'}
+          className="block relative w-full h-full overflow-hidden"
         >
-          {banners.map((banner) => (
-            <div
-              key={banner.id}
-              className="banner-slide-card w-[87%] sm:w-[92%] shrink-0 snap-center rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_2px_14px_rgba(0,0,0,0.06)] border border-slate-100 aspect-[24/8] bg-white transition-transform active:scale-[0.99]"
-            >
-              <Link
-                href={banner.linkUrl || '/products'}
-                className="block relative w-full h-full overflow-hidden"
-              >
-                <img
-                  src={banner.image}
-                  alt={banner.title || 'بنر إعلاني'}
-                  className="w-full h-full object-cover pointer-events-none"
-                  draggable={false}
-                />
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        {/* Navigation Arrows for Desktop Hover */}
-        <button
-          type="button"
-          onClick={() => {
-            const prevIdx = (currentIndex - 1 + banners.length) % banners.length;
-            scrollToIndex(prevIdx);
-          }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
-          aria-label="السابق"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            const nextIdx = (currentIndex + 1) % banners.length;
-            scrollToIndex(nextIdx);
-          }}
-          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
-          aria-label="التالي"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
-        {/* Pagination Indicator Dots */}
-        <div className="flex items-center justify-center gap-1.5 pt-2">
-          {banners.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => scrollToIndex(idx)}
-              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                currentIndex === idx
-                  ? 'w-6 bg-brand-blue shadow-xs'
-                  : 'w-1.5 bg-slate-300 hover:bg-slate-400'
-              }`}
-              aria-label={`انتقال للبنر ${idx + 1}`}
-            />
-          ))}
-        </div>
+          <img
+            src={singleBanner.image}
+            alt={singleBanner.title || 'بنر إعلاني'}
+            className="w-full h-full object-cover object-center"
+            draggable={false}
+          />
+        </Link>
       </div>
     );
   }
 
-  // 2. STANDARD FULL-WIDTH SLIDER (SMOOTH REAL-TIME FINGER SWIPING & DRAGGING)
+  // Multi-Banner Slider (Used for both Primary & Secondary Banners with Real-time Touch Swipe)
   const trackTransform = dragOffset !== 0
     ? `translateX(calc(-${currentIndex * 100}% + ${dragOffset}px))`
     : `translateX(-${currentIndex * 100}%)`;
@@ -313,6 +189,10 @@ export default function BannerSlider({
   const trackTransition = isSwiping
     ? 'none'
     : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)';
+
+  const aspectClass = isCompact
+    ? 'aspect-[21/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
+    : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
 
   return (
     <div
@@ -324,9 +204,9 @@ export default function BannerSlider({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className={`relative w-full overflow-hidden rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 select-none group bg-white cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
+      className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 select-none group bg-white cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
     >
-      {/* Slides Track container with live real-time finger tracking */}
+      {/* Slides Track with live real-time finger tracking */}
       <div
         className="flex w-full will-change-transform"
         style={{
@@ -345,7 +225,7 @@ export default function BannerSlider({
                   e.preventDefault();
                 }
               }}
-              className="block relative w-full aspect-[16/9] sm:aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px] overflow-hidden pointer-events-auto"
+              className={`block relative w-full ${aspectClass} overflow-hidden pointer-events-auto`}
             >
               <img
                 src={banner.image}
@@ -368,7 +248,7 @@ export default function BannerSlider({
               e.stopPropagation();
               setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+            className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="السابق"
           >
             <ChevronRight className="w-4 h-4" />
@@ -381,7 +261,7 @@ export default function BannerSlider({
               e.stopPropagation();
               setCurrentIndex((prev) => (prev + 1) % banners.length);
             }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+            className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="التالي"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -391,7 +271,7 @@ export default function BannerSlider({
 
       {/* Pagination Indicator Pills / Dots */}
       {banners.length > 1 && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/30 backdrop-blur-xs px-2.5 py-1 rounded-full pointer-events-auto">
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/30 backdrop-blur-xs px-2.5 py-0.5 rounded-full pointer-events-auto">
           {banners.map((_, idx) => (
             <button
               key={idx}
@@ -403,7 +283,7 @@ export default function BannerSlider({
               }}
               className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                 currentIndex === idx
-                  ? 'w-6 bg-white shadow-xs'
+                  ? 'w-5 sm:w-6 bg-white shadow-xs'
                   : 'w-1.5 bg-white/50 hover:bg-white'
               }`}
               aria-label={`انتقال للبنر ${idx + 1}`}
