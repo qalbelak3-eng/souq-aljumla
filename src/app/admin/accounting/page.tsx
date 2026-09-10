@@ -126,6 +126,7 @@ function AdminAccountingContent() {
 
   // Stats
   const [totalDebt, setTotalDebt] = useState(0);
+  const [totalSupplierPayables, setTotalSupplierPayables] = useState(0);
   const [totalInvoiced, setTotalInvoiced] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
 
@@ -145,7 +146,7 @@ function AdminAccountingContent() {
 
   // Payment Receipt Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState<{ phone: string; name: string; balance: number } | null>(null);
+  const [paymentTarget, setPaymentTarget] = useState<{ phone: string; name: string; balance: number; category?: string } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'zaincash' | 'qicard' | 'bank_transfer' | 'other'>('cash');
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -213,6 +214,7 @@ function AdminAccountingContent() {
       if (data.success && data.accounts) {
         setAccounts(data.accounts);
         setTotalDebt(data.totalMarketDebt || 0);
+        setTotalSupplierPayables(data.totalSupplierPayables || 0);
         setTotalInvoiced(data.totalMarketInvoiced || 0);
         setTotalPaid(data.totalMarketPaid || 0);
       }
@@ -427,9 +429,9 @@ function AdminAccountingContent() {
   };
 
   // Open Payment Modal
-  const handleOpenPayment = (phone: string, name: string, balance: number) => {
-    setPaymentTarget({ phone, name, balance });
-    setPaymentAmount(balance > 0 ? String(balance) : '');
+  const handleOpenPayment = (phone: string, name: string, balance: number, category?: string) => {
+    setPaymentTarget({ phone, name, balance, category });
+    setPaymentAmount(Math.abs(balance) > 0 ? String(Math.abs(balance)) : '');
     setPaymentNotes('');
     setPaymentSuccessMessage('');
     setIsPaymentModalOpen(true);
@@ -456,7 +458,12 @@ function AdminAccountingContent() {
 
       const data = await res.json();
       if (data.success) {
-        setPaymentSuccessMessage(`تم تسجيل سند القبض رقم #${data.payment.receiptNumber} بمبلغ ${Number(paymentAmount).toLocaleString()} د.ع بنجاح!`);
+        const isSup = paymentTarget.category === 'supplier';
+        setPaymentSuccessMessage(
+          isSup
+            ? `تم تسجيل سند الصرف والتسديد رقم #${data.payment.receiptNumber} بمبلغ ${Number(paymentAmount).toLocaleString()} د.ع للمجهز بنجاح!`
+            : `تم تسجيل سند القبض رقم #${data.payment.receiptNumber} بمبلغ ${Number(paymentAmount).toLocaleString()} د.ع بنجاح!`
+        );
         fetchAccounts();
         if (selectedStatement && selectedStatement.customer.phone.replace(/\D/g, '') === paymentTarget.phone.replace(/\D/g, '')) {
           handleViewStatement(paymentTarget.phone, statementStartDate, statementEndDate);
@@ -796,13 +803,15 @@ function AdminAccountingContent() {
     } else if (accountCategoryFilter === 'driver') {
       if (acc.category !== 'driver') return false;
     } else if (accountCategoryFilter === 'debtors') {
-      if (acc.remainingBalance <= 0) return false;
+      const isOwedToUs = acc.category === 'supplier' ? acc.remainingBalance < 0 : acc.remainingBalance > 0;
+      if (!isOwedToUs) return false;
     } else if (accountCategoryFilter === 'creditors') {
-      if (acc.remainingBalance >= 0) return false;
+      const isOwedByUs = acc.category === 'supplier' ? acc.remainingBalance > 0 : acc.remainingBalance < 0;
+      if (!isOwedByUs) return false;
     }
 
-    if (filterMode === 'debtors') return acc.remainingBalance > 0;
-    if (filterMode === 'settled') return acc.remainingBalance <= 0;
+    if (filterMode === 'debtors') return acc.category === 'supplier' ? acc.remainingBalance < 0 : acc.remainingBalance > 0;
+    if (filterMode === 'settled') return acc.remainingBalance === 0;
     return true;
   });
 
@@ -886,12 +895,12 @@ function AdminAccountingContent() {
         <div className="space-y-6 animate-in fade-in-50 duration-200">
           
           {/* KPI Financial Overview Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5 no-print print:hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 no-print print:hidden">
             
-            {/* 1. Total Debt in Market */}
+            {/* 1. Total Debt in Market (Customers) */}
             <div className="bg-gradient-to-br from-[#ef533a] to-[#d03b24] text-white p-5 rounded-3xl shadow-sm space-y-1">
               <div className="flex items-center justify-between text-xs font-bold text-white/90">
-                <span>إجمالي الديون المطلوبة بالسوق</span>
+                <span>ديون الزبائن (مطلوبة لنا)</span>
                 <AlertCircle className="w-4 h-4 text-white" />
               </div>
               <div className="text-2xl font-black font-mono">
@@ -902,10 +911,24 @@ function AdminAccountingContent() {
               </p>
             </div>
 
-            {/* 2. Total Invoiced */}
+            {/* 2. Total Supplier Payables (Suppliers) */}
+            <div className="bg-gradient-to-br from-purple-700 to-indigo-900 text-white p-5 rounded-3xl shadow-sm space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold text-white/90">
+                <span>مستحقات المجهزين (دائنين علينا)</span>
+                <Store className="w-4 h-4 text-purple-200" />
+              </div>
+              <div className="text-2xl font-black font-mono text-white">
+                {totalSupplierPayables.toLocaleString()} <span className="text-xs font-bold font-sans text-purple-200">د.ع</span>
+              </div>
+              <p className="text-[10px] text-purple-200 font-bold">
+                مبالغ توريد وبضائع مستحقة للموردين
+              </p>
+            </div>
+
+            {/* 3. Total Invoiced */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-slate-500 font-bold">
-                <span>إجمالي مبيعات السوق المسجلة</span>
+                <span>إجمالي مبيعات السوق</span>
                 <Receipt className="w-4 h-4 text-brand-blue" />
               </div>
               <div className="text-2xl font-black font-mono text-slate-900">
@@ -916,10 +939,10 @@ function AdminAccountingContent() {
               </p>
             </div>
 
-            {/* 3. Total Collected */}
+            {/* 4. Total Collected */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-slate-500 font-bold">
-                <span>إجمالي المبالغ المسددة</span>
+                <span>إجمالي التحصيلات المقبوضة</span>
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="text-2xl font-black font-mono text-emerald-700">
@@ -930,17 +953,17 @@ function AdminAccountingContent() {
               </p>
             </div>
 
-            {/* 4. Total Accounts */}
+            {/* 5. Total Accounts */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-slate-500 font-bold">
-                <span>عدد حسابات العملاء</span>
-                <Store className="w-4 h-4 text-purple-600" />
+                <span>عدد الحسابات الكلي</span>
+                <User className="w-4 h-4 text-slate-600" />
               </div>
-              <div className="text-2xl font-black font-mono text-purple-900">
+              <div className="text-2xl font-black font-mono text-slate-800">
                 {accounts.length} <span className="text-xs font-bold font-sans text-slate-500">حساب</span>
               </div>
               <p className="text-[10px] text-slate-400 font-bold">
-                تجار معتمدين وزبائن مباشرين
+                زبائن، مجهزين، وموظفين مسجلين
               </p>
             </div>
 
@@ -1059,7 +1082,7 @@ function AdminAccountingContent() {
               >
                 <span>⚠️ مطلوبين لنا (مدين)</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
-                  {accounts.filter(a => a.remainingBalance > 0).length}
+                  {accounts.filter(a => a.category !== 'supplier' ? a.remainingBalance > 0 : a.remainingBalance < 0).length}
                 </span>
               </button>
 
@@ -1068,13 +1091,13 @@ function AdminAccountingContent() {
                 onClick={() => setAccountCategoryFilter('creditors')}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
                   accountCategoryFilter === 'creditors'
-                    ? 'bg-emerald-700 text-white shadow-sm'
-                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/50'
+                    ? 'bg-purple-700 text-white shadow-sm'
+                    : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200/50'
                 }`}
               >
-                <span>✅ دائنين علينا</span>
+                <span>✅ دائنين علينا (مستحقات)</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-white/30">
-                  {accounts.filter(a => a.remainingBalance < 0).length}
+                  {accounts.filter(a => a.category === 'supplier' ? a.remainingBalance > 0 : a.remainingBalance < 0).length}
                 </span>
               </button>
             </div>
@@ -1099,7 +1122,7 @@ function AdminAccountingContent() {
                     <th className="py-3 px-4">اسم الحساب / فئة الحساب</th>
                     <th className="py-3 px-4">رقم الهاتف والمدينة</th>
                     <th className="py-3 px-4">فئة التسعير والخصم</th>
-                    <th className="py-3 px-4">إجمالي المسحوبات / الفواتير</th>
+                    <th className="py-3 px-4">إجمالي المسحوبات / التوريد</th>
                     <th className="py-3 px-4">المسدد والمدفوع</th>
                     <th className="py-3 px-4">الرصيد المتبقي</th>
                     <th className="py-3 px-4">حالة الحساب</th>
@@ -1122,10 +1145,12 @@ function AdminAccountingContent() {
                     </tr>
                   ) : (
                     filteredAccounts.map((acc) => {
-                      const isDebtor = acc.remainingBalance > 0;
-                      const isCreditor = acc.remainingBalance < 0;
+                      const isSupplier = acc.category === 'supplier';
+                      const isOwedToUs = isSupplier ? acc.remainingBalance < 0 : acc.remainingBalance > 0;
+                      const isOwedByUs = isSupplier ? acc.remainingBalance > 0 : acc.remainingBalance < 0;
+                      const isSettled = acc.remainingBalance === 0;
 
-                      const categoryBadge = acc.category === 'supplier'
+                      const categoryBadge = isSupplier
                         ? { label: 'مجهز 🏭', bg: 'bg-purple-100 text-purple-800' }
                         : acc.category === 'employee'
                         ? { label: 'موظف 💼', bg: 'bg-amber-100 text-amber-800' }
@@ -1189,9 +1214,11 @@ function AdminAccountingContent() {
 
                           <td className="py-3 px-4 font-mono font-black">
                             <span className={`px-2 py-1 rounded-lg ${
-                              isDebtor 
+                              isOwedToUs 
                                 ? 'bg-red-50 text-[#ef533a] border border-red-200' 
-                                : isCreditor
+                                : isOwedByUs && isSupplier
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : isOwedByUs
                                 ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}>
@@ -1200,35 +1227,51 @@ function AdminAccountingContent() {
                           </td>
 
                           <td className="py-3 px-4">
-                            {isDebtor ? (
+                            {isSettled ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>خالص</span>
+                              </span>
+                            ) : isOwedToUs ? (
                               <span className="inline-flex items-center gap-1 bg-red-100 text-[#ef533a] text-[10px] font-bold px-2 py-0.5 rounded-md">
                                 <AlertCircle className="w-3 h-3" />
                                 <span>مطلوب لنا</span>
                               </span>
-                            ) : isCreditor ? (
+                            ) : isSupplier ? (
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                <ArrowDownLeft className="w-3 h-3" />
+                                <span>دائن علينا (للمجهز)</span>
+                              </span>
+                            ) : (
                               <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
                                 <ArrowDownLeft className="w-3 h-3" />
                                 <span>دائن علينا</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>خالص</span>
                               </span>
                             )}
                           </td>
 
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
-                              {/* Open Payment Receipt Modal Button */}
-                              <button
-                                onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
-                                title="تسجيل سند قبض واستلام دفعة مالية"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>سند قبض 💵</span>
-                              </button>
+                              {/* Open Payment Modal Button */}
+                              {isSupplier ? (
+                                <button
+                                  onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
+                                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                                  title="تسجيل سند صرف وتسديد دفعة مالية للمجهز"
+                                >
+                                  <CreditCard className="w-3.5 h-3.5" />
+                                  <span>سند صرف 💳</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleOpenPayment(acc.phone, acc.businessName || acc.name, acc.remainingBalance, acc.category)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                                  title="تسجيل سند قبض واستلام دفعة مالية من العميل"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>سند قبض 💵</span>
+                                </button>
+                              )}
 
                               {/* View Statement Button */}
                               <button
@@ -1933,15 +1976,24 @@ function AdminAccountingContent() {
         </div>
       )}
 
-      {/* MODAL 1: RECORD PAYMENT RECEIPT VOUCHER */}
+      {/* MODAL 1: RECORD PAYMENT / DISBURSEMENT VOUCHER */}
       {isPaymentModalOpen && paymentTarget && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-xs animate-in zoom-in-95">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Banknote className="w-5 h-5 text-emerald-600" />
-                <span>تسجيل سند قبض / دفعة نقدية 💵</span>
+                {paymentTarget.category === 'supplier' ? (
+                  <>
+                    <CreditCard className="w-5 h-5 text-purple-600" />
+                    <span>تسجيل سند صرف / دفع للمجهز 💳</span>
+                  </>
+                ) : (
+                  <>
+                    <Banknote className="w-5 h-5 text-emerald-600" />
+                    <span>تسجيل سند قبض / دفعة نقدية 💵</span>
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
@@ -1954,16 +2006,22 @@ function AdminAccountingContent() {
             {/* Target Info */}
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1">
               <div className="flex justify-between font-bold">
-                <span className="text-slate-500">اسم العميل:</span>
-                <span className="text-slate-900">{paymentTarget.name}</span>
+                <span className="text-slate-500">
+                  {paymentTarget.category === 'supplier' ? 'اسم المجهز / الشركة:' : 'اسم العميل:'}
+                </span>
+                <span className="text-slate-900 font-black">{paymentTarget.name}</span>
               </div>
               <div className="flex justify-between font-bold">
                 <span className="text-slate-500">رقم الهاتف:</span>
                 <span className="text-slate-900 font-mono" dir="ltr">{paymentTarget.phone}</span>
               </div>
               <div className="flex justify-between font-bold pt-1 border-t border-slate-200">
-                <span className="text-slate-500">الرصيد المدين المتبقي:</span>
-                <span className="text-[#e0452c] font-mono font-black">{paymentTarget.balance.toLocaleString()} د.ع</span>
+                <span className="text-slate-500">
+                  {paymentTarget.category === 'supplier' ? 'المستحق بذمتنا للمجهز:' : 'الرصيد المتبقي (مطلوب لنا):'}
+                </span>
+                <span className={`font-mono font-black ${paymentTarget.category === 'supplier' ? 'text-purple-700' : 'text-[#e0452c]'}`}>
+                  {Math.abs(paymentTarget.balance).toLocaleString()} د.ع
+                </span>
               </div>
             </div>
 
@@ -1977,7 +2035,9 @@ function AdminAccountingContent() {
             <form onSubmit={handleRecordPayment} className="space-y-3.5">
               
               <div className="space-y-1">
-                <label className="font-black text-slate-800 block">المبلغ المقبوض (د.ع) *:</label>
+                <label className="font-black text-slate-800 block">
+                  {paymentTarget.category === 'supplier' ? 'المبلغ المدفوع للمجهز (د.ع) *:' : 'المبلغ المقبوض (د.ع) *:'}
+                </label>
                 <input
                   type="number"
                   required
@@ -1985,18 +2045,20 @@ function AdminAccountingContent() {
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder="مثال: 50000"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-sm font-black font-mono text-slate-900 focus:bg-white focus:border-emerald-600"
+                  className={`w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-sm font-black font-mono text-slate-900 focus:bg-white ${paymentTarget.category === 'supplier' ? 'focus:border-purple-600' : 'focus:border-emerald-600'}`}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-black text-slate-800 block">طريقة القبض والدفع:</label>
+                <label className="font-black text-slate-800 block">
+                  {paymentTarget.category === 'supplier' ? 'طريقة الدفع والتسديد:' : 'طريقة القبض والاستلام:'}
+                </label>
                 <select
                   value={paymentMethod}
                   onChange={(e: any) => setPaymentMethod(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
                 >
-                  <option value="cash">💵 نقداً (كاش للمندوب/المحل)</option>
+                  <option value="cash">💵 نقداً (كاش / خزينة المتجر)</option>
                   <option value="zaincash">📱 زين كاش (Zain Cash)</option>
                   <option value="qicard">💳 ماستركارد / كي كارد (Qi Card)</option>
                   <option value="bank_transfer">🏦 حوالة مصرفية / مكتب صرافة</option>
@@ -2005,13 +2067,13 @@ function AdminAccountingContent() {
               </div>
 
               <div className="space-y-1">
-                <label className="font-black text-slate-800 block">ملاحظات أو رقم الحوالة (اختياري):</label>
+                <label className="font-black text-slate-800 block">ملاحظات أو رقم الإشعار (اختياري):</label>
                 <input
                   type="text"
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
-                  placeholder="مثال: تسديد دفعة الفاتورة نقداً مع المندوب"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-emerald-600"
+                  placeholder={paymentTarget.category === 'supplier' ? 'مثال: تسديد دفعة فاتورة التوريد نقداً' : 'مثال: تسديد دفعة الفاتورة نقداً مع المندوب'}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
                 />
               </div>
 
@@ -2019,16 +2081,20 @@ function AdminAccountingContent() {
                 <button
                   type="button"
                   onClick={() => setIsPaymentModalOpen(false)}
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition"
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingPayment}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+                  className={`flex-1 text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentTarget.category === 'supplier'
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
-                  {isSubmittingPayment ? 'جاري الحفظ...' : 'تأكيد وحفظ السند ✓'}
+                  {isSubmittingPayment ? 'جاري الحفظ...' : (paymentTarget.category === 'supplier' ? 'تأكيد وحفظ سند الصرف ✓' : 'تأكيد وحفظ سند القبض ✓')}
                 </button>
               </div>
 
@@ -2198,58 +2264,77 @@ function AdminAccountingContent() {
                 </div>
 
                 {/* Customer Minimal Info Strip */}
-                <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">اسم العميل:</span>
-                    <span className="font-black text-slate-900">{selectedStatement.customer.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">رقم الهاتف:</span>
-                    <span className="font-bold text-slate-800 font-mono" dir="ltr">{selectedStatement.customer.phone}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">المتجر / الماركت:</span>
-                    <span className="font-bold text-emerald-800">{selectedStatement.customer.businessName || 'عميل تجاري'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">المدينة:</span>
-                    <span className="font-bold text-slate-800">{selectedStatement.customer.city || 'العراق'}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const isSup = selectedStatement.customer.accountType?.includes('مجهز') || selectedStatement.customer.accountType?.includes('مورد');
+                  return (
+                    <>
+                      <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block">{isSup ? 'اسم المجهز / الشركة:' : 'اسم العميل:'}</span>
+                          <span className="font-black text-slate-900">{selectedStatement.customer.name}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block">رقم الهاتف:</span>
+                          <span className="font-bold text-slate-800 font-mono" dir="ltr">{selectedStatement.customer.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block">{isSup ? 'نوع الحساب:' : 'المتجر / الماركت:'}</span>
+                          <span className={`font-bold ${isSup ? 'text-purple-800' : 'text-emerald-800'}`}>
+                            {selectedStatement.customer.businessName || (isSup ? 'مجهز / مورد بضائع' : 'عميل تجاري')}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block">المدينة:</span>
+                          <span className="font-bold text-slate-800">{selectedStatement.customer.city || 'العراق'}</span>
+                        </div>
+                      </div>
 
-                {/* Simplified 3-Box Financial Summary */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-right">
-                    <span className="text-[10px] text-slate-500 font-bold block">
-                      {statementStartDate || statementEndDate ? 'مشتريات الفترة' : 'إجمالي المشتريات (المدين)'}
-                    </span>
-                    <span className="text-sm sm:text-base font-black font-mono text-slate-900">
-                      {selectedStatement.summary.totalInvoiced.toLocaleString()} د.ع
-                    </span>
-                  </div>
+                      {/* Simplified 3-Box Financial Summary */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-right">
+                          <span className="text-[10px] text-slate-500 font-bold block">
+                            {isSup
+                              ? (statementStartDate || statementEndDate ? 'توريدات الفترة' : 'إجمالي التوريدات والمشتريات')
+                              : (statementStartDate || statementEndDate ? 'مشتريات الفترة' : 'إجمالي المشتريات (المدين)')
+                            }
+                          </span>
+                          <span className="text-sm sm:text-base font-black font-mono text-slate-900">
+                            {selectedStatement.summary.totalInvoiced.toLocaleString()} د.ع
+                          </span>
+                        </div>
 
-                  <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 text-right">
-                    <span className="text-[10px] text-emerald-800 font-bold block">
-                      {statementStartDate || statementEndDate ? 'مسدد الفترة' : 'إجمالي المسدد (الدائن)'}
-                    </span>
-                    <span className="text-sm sm:text-base font-black font-mono text-emerald-700">
-                      {selectedStatement.summary.totalPaid.toLocaleString()} د.ع
-                    </span>
-                  </div>
+                        <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 text-right">
+                          <span className="text-[10px] text-emerald-800 font-bold block">
+                            {isSup
+                              ? (statementStartDate || statementEndDate ? 'مسدد للمجهز بالفترة' : 'إجمالي المسدد للمجهز (نقد)')
+                              : (statementStartDate || statementEndDate ? 'مسدد الفترة' : 'إجمالي المسدد (الدائن)')
+                            }
+                          </span>
+                          <span className="text-sm sm:text-base font-black font-mono text-emerald-700">
+                            {selectedStatement.summary.totalPaid.toLocaleString()} د.ع
+                          </span>
+                        </div>
 
-                  <div className={`p-2.5 rounded-xl border text-right ${
-                    selectedStatement.summary.remainingBalance > 0
-                      ? 'bg-red-50/80 border-red-200'
-                      : 'bg-emerald-50 border-emerald-200'
-                  }`}>
-                    <span className="text-[10px] font-bold block text-slate-700">الرصيد المتبقي (المطلوب)</span>
-                    <span className={`text-sm sm:text-base font-black font-mono ${
-                      selectedStatement.summary.remainingBalance > 0 ? 'text-[#e0452c]' : 'text-emerald-700'
-                    }`}>
-                      {selectedStatement.summary.remainingBalance.toLocaleString()} د.ع
-                    </span>
-                  </div>
-                </div>
+                        <div className={`p-2.5 rounded-xl border text-right ${
+                          selectedStatement.summary.remainingBalance > 0
+                            ? (isSup ? 'bg-purple-50/80 border-purple-300' : 'bg-red-50/80 border-red-200')
+                            : 'bg-emerald-50 border-emerald-200'
+                        }`}>
+                          <span className="text-[10px] font-bold block text-slate-700">
+                            {isSup ? 'المستحق بذمتنا للمجهز (دائن علينا)' : 'الرصيد المتبقي (مطلوب لنا)'}
+                          </span>
+                          <span className={`text-sm sm:text-base font-black font-mono ${
+                            selectedStatement.summary.remainingBalance > 0
+                              ? (isSup ? 'text-purple-800' : 'text-[#e0452c]')
+                              : 'text-emerald-700'
+                          }`}>
+                            {selectedStatement.summary.remainingBalance.toLocaleString()} د.ع
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Clean Minimal Statement Table with Fixed Layout & Responsive Scroll */}
                 <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs print:border print:border-slate-300 print:rounded-none print:shadow-none">
@@ -2261,8 +2346,8 @@ function AdminAccountingContent() {
                           <th className="py-2.5 px-3 w-28 text-center print:w-[15%]">التاريخ</th>
                           <th className="py-2.5 px-3 w-32 print:w-[18%]">رقم الحركة</th>
                           <th className="py-2.5 px-3 print:w-[22%]">نوع الحركة</th>
-                          <th className="py-2.5 px-3 w-28 text-left print:w-[13%]">مدين (مشتريات)</th>
-                          <th className="py-2.5 px-3 w-28 text-left print:w-[13%]">دائن (مسدد)</th>
+                          <th className="py-2.5 px-3 w-28 text-left print:w-[13%]">مدين (قيمة التوريد / المشتريات)</th>
+                          <th className="py-2.5 px-3 w-28 text-left print:w-[13%]">دائن (المسدد نقداً)</th>
                           <th className="py-2.5 px-3 w-28 text-left print:w-[13%]">الرصيد</th>
                           <th className="py-2.5 px-3 w-28 text-center no-print print:hidden">إجراءات</th>
                         </tr>

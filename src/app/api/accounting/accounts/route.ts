@@ -7,13 +7,26 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const accounts = getAllCustomerAccounts();
+    const customerAccounts = accounts.filter(a => a.category !== 'supplier');
+    const supplierAccounts = accounts.filter(a => a.category === 'supplier');
+
+    const totalMarketDebt = customerAccounts.reduce((sum, a) => sum + Math.max(0, a.remainingBalance), 0);
+    const totalSupplierPayables = supplierAccounts.reduce((sum, a) => sum + Math.max(0, a.remainingBalance), 0);
+    const totalMarketInvoiced = customerAccounts.reduce((sum, a) => sum + a.totalInvoiced, 0);
+    const totalSupplierPurchases = supplierAccounts.reduce((sum, a) => sum + a.totalInvoiced, 0);
+    const totalMarketPaid = customerAccounts.reduce((sum, a) => sum + a.totalPaid, 0);
+    const totalSupplierPaid = supplierAccounts.reduce((sum, a) => sum + a.totalPaid, 0);
+
     return NextResponse.json({
       success: true,
       accounts,
       totalCount: accounts.length,
-      totalMarketDebt: accounts.reduce((sum, a) => sum + Math.max(0, a.remainingBalance), 0),
-      totalMarketInvoiced: accounts.reduce((sum, a) => sum + a.totalInvoiced, 0),
-      totalMarketPaid: accounts.reduce((sum, a) => sum + a.totalPaid, 0),
+      totalMarketDebt,
+      totalSupplierPayables,
+      totalMarketInvoiced,
+      totalSupplierPurchases,
+      totalMarketPaid,
+      totalSupplierPaid,
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

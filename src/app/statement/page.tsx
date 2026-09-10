@@ -85,12 +85,13 @@ function StatementContent() {
 
   const shareViaWhatsApp = () => {
     if (!statement) return;
+    const isSup = statement.customer.accountType?.includes('مجهز') || statement.customer.accountType?.includes('مورد');
     const text = `*كشف حساب - سوق الجملة 🇮🇶🏬*\n` +
-      `👤 *العميل:* ${statement.customer.name} ${statement.customer.businessName ? `(${statement.customer.businessName})` : ''}\n` +
+      `👤 *${isSup ? 'المجهز / المورد' : 'العميل'}:* ${statement.customer.name} ${statement.customer.businessName ? `(${statement.customer.businessName})` : ''}\n` +
       `📱 *رقم الهاتف:* ${statement.customer.phone}\n` +
-      `📦 *إجمالي المشتريات:* ${statement.summary.totalInvoiced.toLocaleString()} د.ع\n` +
-      `💵 *إجمالي المسدد:* ${statement.summary.totalPaid.toLocaleString()} د.ع\n` +
-      `⚖️ *الرصيد المتبقي:* ${statement.summary.remainingBalance.toLocaleString()} د.ع\n` +
+      `📦 *${isSup ? 'إجمالي التوريدات' : 'إجمالي المشتريات'}:* ${statement.summary.totalInvoiced.toLocaleString()} د.ع\n` +
+      `💵 *${isSup ? 'المسدد للمجهز' : 'إجمالي المسدد'}:* ${statement.summary.totalPaid.toLocaleString()} د.ع\n` +
+      `⚖️ *${isSup ? 'المستحق بذمتنا للمجهز' : 'الرصيد المتبقي'}:* ${statement.summary.remainingBalance.toLocaleString()} د.ع\n` +
       `🗓️ *التاريخ:* ${new Date().toLocaleDateString('ar-IQ')}\n` +
       `🔗 رابط الكشف المباشر: ${window.location.origin}/statement?phone=${encodeURIComponent(statement.customer.phone)}`;
 
@@ -221,22 +222,27 @@ function StatementContent() {
               </div>
 
               {/* Summary boxes */}
-              <div className="grid grid-cols-3 gap-3 mb-4 text-center text-xs">
-                <div className="border border-slate-300 rounded p-2">
-                  <p className="text-slate-500 font-bold mb-0.5">إجمالي المشتريات (مدين)</p>
-                  <p className="font-black text-slate-900 text-sm font-mono">{statement.summary.totalInvoiced.toLocaleString()} د.ع</p>
-                </div>
-                <div className="border border-slate-300 rounded p-2">
-                  <p className="text-slate-500 font-bold mb-0.5">إجمالي المسدد (دائن)</p>
-                  <p className="font-black text-slate-900 text-sm font-mono">{statement.summary.totalPaid.toLocaleString()} د.ع</p>
-                </div>
-                <div className={`border rounded p-2 ${statement.summary.remainingBalance > 0 ? 'border-red-400' : 'border-green-400'}`}>
-                  <p className="text-slate-500 font-bold mb-0.5">الرصيد المتبقي</p>
-                  <p className={`font-black text-sm font-mono ${statement.summary.remainingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                    {statement.summary.remainingBalance.toLocaleString()} د.ع
-                  </p>
-                </div>
-              </div>
+              {(() => {
+                const isSup = statement.customer.accountType?.includes('مجهز') || statement.customer.accountType?.includes('مورد');
+                return (
+                  <div className="grid grid-cols-3 gap-3 mb-4 text-center text-xs">
+                    <div className="border border-slate-300 rounded p-2">
+                      <p className="text-slate-500 font-bold mb-0.5">{isSup ? 'إجمالي التوريدات' : 'إجمالي المشتريات (مدين)'}</p>
+                      <p className="font-black text-slate-900 text-sm font-mono">{statement.summary.totalInvoiced.toLocaleString()} د.ع</p>
+                    </div>
+                    <div className="border border-slate-300 rounded p-2">
+                      <p className="text-slate-500 font-bold mb-0.5">{isSup ? 'المسدد للمجهز نقداً' : 'إجمالي المسدد (دائن)'}</p>
+                      <p className="font-black text-slate-900 text-sm font-mono">{statement.summary.totalPaid.toLocaleString()} د.ع</p>
+                    </div>
+                    <div className={`border rounded p-2 ${statement.summary.remainingBalance > 0 ? (isSup ? 'border-purple-400' : 'border-red-400') : 'border-green-400'}`}>
+                      <p className="text-slate-500 font-bold mb-0.5">{isSup ? 'المستحق بذمتنا للمجهز' : 'الرصيد المتبقي'}</p>
+                      <p className={`font-black text-sm font-mono ${statement.summary.remainingBalance > 0 ? (isSup ? 'text-purple-800' : 'text-red-700') : 'text-green-700'}`}>
+                        {statement.summary.remainingBalance.toLocaleString()} د.ع
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ═══ SCREEN-ONLY: Customer card + actions + KPI ═══ */}
@@ -266,14 +272,14 @@ function StatementContent() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={handlePrint}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Printer className="w-3.5 h-3.5 text-slate-600" />
                     <span>طباعة الكشف</span>
                   </button>
                   <button
                     onClick={shareViaWhatsApp}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
                     <span>مشاركة عبر واتساب</span>
@@ -282,34 +288,45 @@ function StatementContent() {
               </div>
 
               {/* Financial KPI Summary Cards */}
-              <div className="grid grid-cols-3 gap-3 pt-2">
-                <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl space-y-1 text-right">
-                  <span className="text-[10px] text-slate-500 font-bold block">إجمالي المشتريات (المدين)</span>
-                  <div className="text-base sm:text-xl font-black font-mono text-slate-900">
-                    {statement.summary.totalInvoiced.toLocaleString()} <span className="text-[10px] font-bold font-sans text-slate-500">د.ع</span>
-                  </div>
-                </div>
+              {(() => {
+                const isSup = statement.customer.accountType?.includes('مجهز') || statement.customer.accountType?.includes('مورد');
+                return (
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl space-y-1 text-right">
+                      <span className="text-[10px] text-slate-500 font-bold block">
+                        {isSup ? 'إجمالي التوريدات والمشتريات' : 'إجمالي المشتريات (المدين)'}
+                      </span>
+                      <div className="text-base sm:text-xl font-black font-mono text-slate-900">
+                        {statement.summary.totalInvoiced.toLocaleString()} <span className="text-[10px] font-bold font-sans text-slate-500">د.ع</span>
+                      </div>
+                    </div>
 
-                <div className="bg-emerald-50/60 border border-emerald-200 p-3 rounded-2xl space-y-1 text-right">
-                  <span className="text-[10px] text-emerald-800 font-bold block">إجمالي المسدد (الدائن)</span>
-                  <div className="text-base sm:text-xl font-black font-mono text-emerald-700">
-                    {statement.summary.totalPaid.toLocaleString()} <span className="text-[10px] font-bold font-sans text-emerald-600">د.ع</span>
-                  </div>
-                </div>
+                    <div className="bg-emerald-50/60 border border-emerald-200 p-3 rounded-2xl space-y-1 text-right">
+                      <span className="text-[10px] text-emerald-800 font-bold block">
+                        {isSup ? 'المسدد للمجهز (نقداً)' : 'إجمالي المسدد (الدائن)'}
+                      </span>
+                      <div className="text-base sm:text-xl font-black font-mono text-emerald-700">
+                        {statement.summary.totalPaid.toLocaleString()} <span className="text-[10px] font-bold font-sans text-emerald-600">د.ع</span>
+                      </div>
+                    </div>
 
-                <div className={`p-3 rounded-2xl space-y-1 text-right border ${
-                  statement.summary.remainingBalance > 0
-                    ? 'bg-amber-50/80 border-amber-300 text-amber-950'
-                    : 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                }`}>
-                  <span className="text-[10px] font-bold block">الرصيد المتبقي (المطلوب)</span>
-                  <div className={`text-base sm:text-xl font-black font-mono ${
-                    statement.summary.remainingBalance > 0 ? 'text-[#e0452c]' : 'text-emerald-700'
-                  }`}>
-                    {statement.summary.remainingBalance.toLocaleString()} <span className="text-[10px] font-bold font-sans">د.ع</span>
+                    <div className={`p-3 rounded-2xl space-y-1 text-right border ${
+                      statement.summary.remainingBalance > 0
+                        ? (isSup ? 'bg-purple-50/80 border-purple-300 text-purple-950' : 'bg-amber-50/80 border-amber-300 text-amber-950')
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                    }`}>
+                      <span className="text-[10px] font-bold block">
+                        {isSup ? 'المستحق بذمتنا للمجهز (دائن علينا)' : 'الرصيد المتبقي (مطلوب لنا)'}
+                      </span>
+                      <div className={`text-base sm:text-xl font-black font-mono ${
+                        statement.summary.remainingBalance > 0 ? (isSup ? 'text-purple-800' : 'text-[#e0452c]') : 'text-emerald-700'
+                      }`}>
+                        {statement.summary.remainingBalance.toLocaleString()} <span className="text-[10px] font-bold font-sans">د.ع</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
             {/* ═══ TRANSACTIONS TABLE — screen + print ═══ */}
