@@ -122,9 +122,12 @@ export default function CartPage() {
             >
               <div className="flex items-center gap-3.5">
                 <img
-                  src={item.product.images[0]}
+                  src={item.product.images?.[0] || '/images/placeholder.png'}
                   alt={item.product.name}
                   className="w-16 h-16 object-contain rounded-2xl bg-slate-50 p-1.5 shrink-0"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                  }}
                 />
                 <div>
                   <Link href={`/product/${item.product.id}`}>

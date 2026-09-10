@@ -128,9 +128,12 @@ export default function TextProductShelf({ banner, allProducts = [], className =
               <div className="relative aspect-square rounded-xl sm:rounded-2xl bg-slate-50/70 overflow-hidden flex items-center justify-center p-2 mb-1.5">
                 {product.images && product.images[0] ? (
                   <img
-                    src={product.images[0]}
+                    src={product.images[0] || '/images/placeholder.png'}
                     alt={product.name}
                     className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                    }}
                   />
                 ) : (
                   <div className="text-3xl">📦</div>

@@ -168,10 +168,13 @@ export default function SuggestedCartProducts({
               >
                 <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-50 mb-1.5 border border-slate-100">
                   <img
-                    src={prod.images?.[0] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'}
+                    src={prod.images?.[0] || '/images/placeholder.png'}
                     alt={prod.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                     loading="lazy"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                    }}
                   />
                   {prod.originalPrice && prod.originalPrice > prod.price && (
                     <span className="absolute top-1 right-1 bg-rose-600 text-white text-[8px] font-black px-1 py-0.5 rounded-md shadow-xs">
@@ -275,10 +278,13 @@ export default function SuggestedCartProducts({
             >
               <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-white mb-2 border border-slate-100">
                 <img
-                  src={prod.images?.[0] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'}
+                  src={prod.images?.[0] || '/images/placeholder.png'}
                   alt={prod.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                   loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                  }}
                 />
 
                 {prod.originalPrice && prod.originalPrice > prod.price && (

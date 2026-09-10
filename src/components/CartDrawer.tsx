@@ -118,9 +118,12 @@ export default function CartDrawer() {
                   className="bg-white p-3 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-3"
                 >
                   <img
-                    src={item.product.images[0]}
+                    src={item.product.images?.[0] || '/images/placeholder.png'}
                     alt={item.product.name}
                     className="w-14 h-14 object-contain rounded-xl bg-slate-50 p-1 shrink-0"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                    }}
                   />
 
                   <div className="flex-1 min-w-0">

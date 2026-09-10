@@ -132,9 +132,12 @@ export default function ProductBuyModal({
         {/* Centered Large Product Image */}
         <div className="bg-[#f0f7ff] rounded-2xl p-3 sm:p-4 flex items-center justify-center relative aspect-[4/3] max-h-48 sm:max-h-52 overflow-hidden mx-auto w-full">
           <img
-            src={product.images[0]}
+            src={product.images?.[0] || '/images/placeholder.png'}
             alt={product.name}
             className="w-full h-full object-contain drop-shadow-sm transition-transform duration-300 hover:scale-105"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+            }}
           />
         </div>
 

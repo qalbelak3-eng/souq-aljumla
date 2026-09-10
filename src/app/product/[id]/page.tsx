@@ -124,9 +124,12 @@ export default function ProductDetailPage() {
         <div className="lg:col-span-6">
           <div className="aspect-square bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-center relative">
             <img
-              src={selectedImage || product.images[0]}
+              src={selectedImage || product.images?.[0] || '/images/placeholder.png'}
               alt={product.name}
               className="w-full h-full object-contain max-h-[400px]"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+              }}
             />
             {product.origin && (
               <span className="absolute top-4 right-4 bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1 rounded-full border border-slate-200">

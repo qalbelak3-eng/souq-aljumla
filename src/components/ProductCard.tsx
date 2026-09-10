@@ -90,10 +90,13 @@ export default function ProductCard({ product }: { product: Product }) {
           className="block relative aspect-square w-full rounded-2xl overflow-hidden bg-slate-50/80 mb-2 mt-4 p-2 cursor-pointer"
         >
           <img
-            src={product.images[0] || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=500'}
+            src={product.images?.[0] || '/images/placeholder.png'}
             alt={product.name}
             className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+            }}
           />
         </div>
 
