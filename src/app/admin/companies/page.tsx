@@ -65,13 +65,24 @@ export default function AdminCompaniesPage() {
       if (compRes.success) {
         setCompanies(compRes.companies || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+          try {
+            const lightCompanies = (compRes.companies || []).map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              category: c.category,
+              categories: c.categories,
+              icon: c.icon,
+            }));
+            localStorage.setItem('souq_admin_companies_cache', JSON.stringify(lightCompanies));
+          } catch (e) {}
         }
       }
       if (catRes.success) {
         setCategories(catRes.categories || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_categories_cache', JSON.stringify(catRes.categories || []));
+          try {
+            localStorage.setItem('souq_admin_categories_cache', JSON.stringify(catRes.categories || []));
+          } catch (e) {}
         }
       }
     } catch (err) {
@@ -86,18 +97,38 @@ export default function AdminCompaniesPage() {
     fetchData();
   }, []);
 
-  const openAddModal = () => {
+  const openAddModal = async () => {
     setEditingCompany(null);
     setName('');
-    setSelectedCats(categories[0]?.name ? [categories[0].name] : []);
+    let currentCats = categories;
+    if (!currentCats || currentCats.length === 0) {
+      try {
+        const catRes = await fetch('/api/categories', { cache: 'no-store' }).then(r => r.json());
+        if (catRes.success && Array.isArray(catRes.categories)) {
+          currentCats = catRes.categories;
+          setCategories(catRes.categories);
+        }
+      } catch (e) {}
+    }
+    setSelectedCats(currentCats[0]?.name ? [currentCats[0].name] : []);
     setLogo('');
     setIcon('🏢');
     setIsModalOpen(true);
   };
 
-  const openEditModal = (c: Company) => {
+  const openEditModal = async (c: Company) => {
     setEditingCompany(c);
     setName(c.name);
+    let currentCats = categories;
+    if (!currentCats || currentCats.length === 0) {
+      try {
+        const catRes = await fetch('/api/categories', { cache: 'no-store' }).then(r => r.json());
+        if (catRes.success && Array.isArray(catRes.categories)) {
+          currentCats = catRes.categories;
+          setCategories(catRes.categories);
+        }
+      } catch (e) {}
+    }
     const initialCats = (c.categories && c.categories.length > 0) ? c.categories : (c.category ? [c.category] : []);
     setSelectedCats(initialCats);
     setLogo(c.logo || '');
