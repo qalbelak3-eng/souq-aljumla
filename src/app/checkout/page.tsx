@@ -21,7 +21,9 @@ import {
   Gift,
   Edit2,
   Ticket,
-  X
+  X,
+  Navigation,
+  ExternalLink
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
@@ -324,11 +326,12 @@ export default function CheckoutPage() {
   const handleDetectGps = () => {
     if (!navigator.geolocation) {
       setGpsStatus('متصفحك لا يدعم خاصية تحديد الموقع الجغرافي');
+      toast.showToast('متصفحك لا يدعم خاصية تحديد الموقع الجغرافي', 'error');
       return;
     }
 
     setIsDetectingGps(true);
-    setGpsStatus('جاري تحديد موقعك الجغرافي بالأقمار الصناعية GPS...');
+    setGpsStatus('جاري الاتصال بالأقمار الصناعية وتحديد موقعك الجغرافي (GPS)...');
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -337,11 +340,13 @@ export default function CheckoutPage() {
         const url = `https://www.google.com/maps?q=${lat},${lng}`;
         setCoords({ lat, lng, mapsUrl: url });
         setIsDetectingGps(false);
-        setGpsStatus('تم تحديد وإرفاق موقعك الجغرافي بنجاح ✓');
+        setGpsStatus(`تم التقاط وتثبيت إحداثيات موقعك بنجاح (${lat.toFixed(4)}, ${lng.toFixed(4)}) ✓`);
+        toast.showToast('تم التقاط وتثبيت موقعك الجغرافي بنجاح! 📍✓', 'success');
       },
       (err) => {
         setIsDetectingGps(false);
-        setGpsStatus('تعذر الوصول للموقع تلقائياً، يمكنك إدخال العنوان كتابةً');
+        setGpsStatus('تعذر الوصول للموقع تلقائياً، يرجى تفعيل إذن الـ GPS في المتصفح أو إدخال العنوان كتابةً');
+        toast.showToast('يرجى السماح بصلاحية الموقع الجغرافي (GPS) في المتصفح', 'error');
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -658,7 +663,9 @@ export default function CheckoutPage() {
                         onClick={() => {
                           setSelectedLocationId('custom');
                           setLocationTitle('موقع جديد 📍');
+                          setAddress('');
                           setIsEditingAddress(true);
+                          handleDetectGps();
                         }}
                         className="py-1.5 px-3 rounded-xl font-bold text-xs border border-dashed border-slate-300 text-slate-600 hover:bg-white transition flex items-center gap-1 cursor-pointer"
                       >
@@ -737,6 +744,54 @@ export default function CheckoutPage() {
                     </button>
                   </div>
                 )}
+
+                {/* بطاقة تحديد الموقع الجغرافي بالأقمار الصناعية (GPS) في وضع التعديل / موقع جديد */}
+                <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-emerald-950">
+                        <Navigation className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>تحديد الموقع الجغرافي بالأقمار الصناعية (GPS)</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-800 font-medium">
+                        {coords.lat && coords.lng
+                          ? `✓ تم تثبيت الإحداثيات: (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`
+                          : 'اضغط لالتقاط موقعك الحالي بدقة وتضمينه مع الطلبية لسرعة وصول المندوب لبابك'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={handleDetectGps}
+                        disabled={isDetectingGps}
+                        className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs py-2 px-3.5 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      >
+                        <MapPin className={`w-3.5 h-3.5 ${isDetectingGps ? 'animate-bounce' : ''}`} />
+                        <span>{isDetectingGps ? 'جاري الاتصال بالأقمار الصناعية...' : 'تحديد موقعي الآن عبر GPS 🛰️'}</span>
+                      </button>
+
+                      {coords.mapsUrl && (
+                        <a
+                          href={coords.mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-white hover:bg-emerald-100 text-emerald-800 font-bold text-xs py-2 px-2.5 rounded-xl border border-emerald-300 transition flex items-center gap-1 shrink-0"
+                          title="عرض الموقع على خرائط Google"
+                        >
+                          <span>الخريطة 🗺️</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {gpsStatus && (
+                    <div className="text-[10px] sm:text-[11px] font-bold text-emerald-900 bg-white/90 px-2.5 py-1 rounded-lg border border-emerald-200/80 inline-flex items-center gap-1">
+                      <span>{gpsStatus}</span>
+                    </div>
+                  )}
+                </div>
 
                 {/* Multiple Saved Locations Chips */}
                 {savedLocations.length > 0 && (
