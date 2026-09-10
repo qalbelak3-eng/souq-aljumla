@@ -1159,14 +1159,14 @@ function AdminAccountingContent() {
                         : { label: 'زبون', bg: 'bg-blue-100 text-blue-800' };
 
                       const pricingLabel = acc.pricingTier === 'general'
-                        ? 'السعر العام (موردين) 🌐'
+                        ? 'السعر العام (موردين)'
                         : acc.pricingTier === 'wholesale'
-                        ? 'سعر الجملة 👑'
+                        ? 'سعر الجملة'
                         : acc.pricingTier === 'market'
-                        ? 'سعر الماركت 🏪'
+                        ? 'سعر الماركت'
                         : acc.pricingTier === 'special'
-                        ? 'سعر خاص ⭐'
-                        : 'سعر المفرد 🛒';
+                        ? 'سعر خاص'
+                        : 'سعر المفرد';
 
                       return (
                         <tr key={acc.phone} className="hover:bg-slate-50/80 transition text-[11px]">
