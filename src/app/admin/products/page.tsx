@@ -122,14 +122,29 @@ export default function AdminProductsPage() {
         setProducts(prodRes.products || []);
         setCategories(prodRes.categories || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_products_cache', JSON.stringify(prodRes.products || []));
-          localStorage.setItem('souq_admin_categories_cache', JSON.stringify(prodRes.categories || []));
+          try {
+            const lightProds = (prodRes.products || []).slice(0, 100).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              company: p.company,
+              price: p.price,
+              wholesalePrice: p.wholesalePrice,
+              boxPrice: p.boxPrice,
+              costPrice: p.costPrice,
+              stock: p.stock,
+            }));
+            localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
+            localStorage.setItem('souq_admin_categories_cache', JSON.stringify(prodRes.categories || []));
+          } catch (e) {}
         }
       }
       if (compRes.success) {
         setDbCompanies(compRes.companies || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+          try {
+            localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+          } catch (e) {}
         }
       }
     } catch (err) {

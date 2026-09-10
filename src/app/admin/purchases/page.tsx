@@ -146,25 +146,46 @@ export default function AdminPurchasesPage() {
       if (invRes && invRes.success) {
         setInvoices(invRes.invoices || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_purchases_cache', JSON.stringify(invRes.invoices || []));
+          try {
+            localStorage.setItem('souq_admin_purchases_cache', JSON.stringify(invRes.invoices || []));
+          } catch (e) {}
         }
       }
-      if (compRes && compRes.success) {
-        setCompanies(compRes.companies || []);
+      if (compRes && compRes.success && Array.isArray(compRes.companies)) {
+        setCompanies(compRes.companies);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+          try {
+            localStorage.setItem('souq_admin_companies_cache', JSON.stringify(compRes.companies || []));
+          } catch (e) {}
         }
       }
       if (prodRes && prodRes.success && Array.isArray(prodRes.products)) {
         setProducts(prodRes.products);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_products_cache', JSON.stringify(prodRes.products));
+          try {
+            const lightProds = (prodRes.products || []).slice(0, 100).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              company: p.company,
+              price: p.price,
+              wholesalePrice: p.wholesalePrice,
+              boxPrice: p.boxPrice,
+              boxesPerCarton: p.boxesPerCarton,
+              costPrice: p.costPrice,
+              pieceCostPrice: p.pieceCostPrice,
+              boxCostPrice: p.boxCostPrice,
+            }));
+            localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
+          } catch (e) {}
         }
       }
       if (accRes && accRes.success && Array.isArray(accRes.accounts)) {
         setAllAccounts(accRes.accounts);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_accounts_cache', JSON.stringify(accRes.accounts));
+          try {
+            localStorage.setItem('souq_admin_accounts_cache', JSON.stringify(accRes.accounts));
+          } catch (e) {}
         }
         const supAccounts: SupplierAccount[] = accRes.accounts
           .filter((a: CustomerAccountSummary) => a.category === 'supplier')

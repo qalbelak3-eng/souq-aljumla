@@ -160,19 +160,34 @@ export default function AdminOffersPage() {
       if (offersRes?.success) {
         setOffers(offersRes.offers || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_offers_cache', JSON.stringify(offersRes.offers || []));
+          try {
+            localStorage.setItem('souq_admin_offers_cache', JSON.stringify(offersRes.offers || []));
+          } catch (e) {}
         }
       }
       if (productsRes?.success) {
         setProducts(productsRes.products || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_products_cache', JSON.stringify(productsRes.products || []));
+          try {
+            const lightProds = (productsRes.products || []).slice(0, 100).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              company: p.company,
+              price: p.price,
+              wholesalePrice: p.wholesalePrice,
+              boxPrice: p.boxPrice,
+            }));
+            localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
+          } catch (e) {}
         }
       }
       if (couponsRes?.success) {
         setCoupons(couponsRes.coupons || []);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(couponsRes.coupons || []));
+          try {
+            localStorage.setItem('souq_admin_coupons_cache', JSON.stringify(couponsRes.coupons || []));
+          } catch (e) {}
         }
       }
       if (wheelRes?.success && wheelRes.settings) setLuckyWheelSettings(wheelRes.settings);

@@ -171,7 +171,20 @@ export default function AdminOrdersPage() {
       .then((data) => {
         if (data.success && data.products) {
           setProducts(data.products);
-          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_products_cache', JSON.stringify(data.products));
+          if (typeof window !== 'undefined') {
+            try {
+              const lightProds = (data.products || []).slice(0, 100).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                category: p.category,
+                company: p.company,
+                price: p.price,
+                wholesalePrice: p.wholesalePrice,
+                boxPrice: p.boxPrice,
+              }));
+              localStorage.setItem('souq_admin_products_cache', JSON.stringify(lightProds));
+            } catch (e) {}
+          }
         }
       })
       .catch(console.error);
@@ -181,7 +194,11 @@ export default function AdminOrdersPage() {
       .then((data) => {
         if (data.success && data.merchants) {
           setMerchants(data.merchants);
-          if (typeof window !== 'undefined') localStorage.setItem('souq_admin_merchants_cache', JSON.stringify(data.merchants));
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('souq_admin_merchants_cache', JSON.stringify(data.merchants));
+            } catch (e) {}
+          }
         }
       })
       .catch(console.error);
