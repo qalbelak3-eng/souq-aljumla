@@ -399,33 +399,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       
       {/* Top Header */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between shadow-xs print:hidden">
-        {/* Right side: Logo & Admin profile badge */}
+        {/* Right side: Logo */}
         <div className="flex items-center gap-3">
           <EtihadLogo size="sm" />
-          
-          {/* Logged in Admin / Staff Badge */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 px-3 py-1.5 rounded-2xl shadow-2xs">
-            <div className={`w-7 h-7 rounded-xl ${isMasterAdmin ? 'bg-purple-600' : 'bg-blue-600'} text-white flex items-center justify-center text-xs font-black shadow-2xs shrink-0`}>
-              {isMasterAdmin ? '👑' : '👤'}
-            </div>
-            <div className="text-right leading-tight">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-slate-900 text-xs">
-                  {currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}
-                </span>
-                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
-                  isMasterAdmin 
-                    ? 'bg-purple-100 text-purple-800 border border-purple-200' 
-                    : 'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}>
-                  {isMasterAdmin ? 'إدارة عامة' : 'موظف'}
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
-                {currentAdmin?.jobTitle || (isMasterAdmin ? 'كامل الصلاحيات' : 'صلاحيات محددة')}
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Left side: Clean Icon Actions & Controls */}
@@ -496,6 +472,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <LogOut className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+
+      {/* User Account Info Sub-bar (شريط هوية صاحب الحساب والوظيفة) */}
+      <div className="bg-slate-50 border-b border-slate-200/90 px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between text-[11px] text-slate-600 print:hidden">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-bold">صاحب الحساب:</span>
+            <span className="font-black text-slate-900 flex items-center gap-1">
+              <span>{isMasterAdmin ? '👑' : '👤'}</span>
+              <span>{currentAdmin?.name || (isMasterAdmin ? 'المدير العام' : currentAdmin?.username)}</span>
+            </span>
+            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+              isMasterAdmin 
+                ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                : 'bg-blue-100 text-blue-800 border border-blue-200'
+            }`}>
+              {isMasterAdmin ? 'إدارة عامة' : 'موظف'}
+            </span>
+          </div>
+
+          <span className="text-slate-300 hidden sm:inline">|</span>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-bold">الوظيفة والمسؤولية:</span>
+            <span className="font-bold text-slate-800">
+              {currentAdmin?.jobTitle || (isMasterAdmin ? 'كامل الصلاحيات (Admin)' : 'صلاحيات محددة')}
+            </span>
+          </div>
+        </div>
+
+        <div className="hidden md:flex items-center gap-2 text-slate-400 text-[10px] font-bold">
+          <span>سوق الجملة - لوحة التحكم الإدارية 🇮🇶</span>
         </div>
       </div>
 
