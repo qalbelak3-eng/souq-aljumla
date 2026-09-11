@@ -1,5 +1,5 @@
 // Souq Al-Jumla PWA Service Worker - High Reliability Mobile Push Handler
-const SW_VERSION = 'souq-sw-v2.7';
+const SW_VERSION = 'souq-sw-v2.8';
 
 self.addEventListener('install', function (event) {
   self.skipWaiting();
@@ -33,20 +33,38 @@ self.addEventListener('push', function (event) {
     else url = '/products?filter=offers';
   }
 
+  const notificationTag = 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
+
   // Modern non-blocking push options (auto-dismiss after standard duration)
   const options = {
     body: body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     data: { url: url },
-    tag: 'souq-alert-' + Date.now() + '-' + Math.floor(Math.random() * 100000),
+    tag: notificationTag,
     renotify: true,
     requireInteraction: false,
     vibrate: [500, 200, 500, 200, 500],
     silent: false,
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(title, options).then(function () {
+      // إغلاق الإشعار تلقائياً بعد 5 ثوانٍ على شاشة الكمبيوتر
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          self.registration.getNotifications({ tag: notificationTag }).then(function (notifs) {
+            notifs.forEach(function (n) {
+              try { n.close(); } catch (e) {}
+            });
+            resolve();
+          }).catch(function () {
+            resolve();
+          });
+        }, 5000);
+      });
+    })
+  );
 });
 
 self.addEventListener('notificationclick', function (event) {

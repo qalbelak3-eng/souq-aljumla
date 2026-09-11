@@ -150,15 +150,18 @@ export async function sendSystemNotification({
   }
 
   try {
-    // Try Service Worker registration first for better background / mobile support
-    if ('serviceWorker' in navigator) {
+    const notifTag = tag || 'souq-alert-' + Date.now();
+    const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // If mobile and Service Worker is active, use showNotification
+    if (isMobile && 'serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.showNotification) {
         await reg.showNotification(title, {
           body,
           icon,
           badge: icon,
-          tag: tag || 'etihad-alert-' + Date.now(),
+          tag: notifTag,
           data: { url },
           vibrate: [200, 100, 200, 100, 200],
           requireInteraction: false,
@@ -167,12 +170,14 @@ export async function sendSystemNotification({
       }
     }
 
-    // Fallback to standard Notification constructor with auto-close after 6 seconds
+    // On Desktop: Use standard Notification with guaranteed auto-close after 4.5 seconds
     const notif = new Notification(title, {
       body,
       icon,
-      tag: tag || 'etihad-alert-' + Date.now(),
+      badge: icon,
+      tag: notifTag,
       requireInteraction: false,
+      silent: false,
     } as any);
 
     notif.onclick = function () {
@@ -185,12 +190,27 @@ export async function sendSystemNotification({
       } catch {}
     };
 
-    // Auto close after 6 seconds so it doesn't linger on the screen
+    // تختفي تلقائياً وبشكل انسيابي بعد 4.5 ثوانٍ
     setTimeout(() => {
       try {
         notif.close();
       } catch {}
-    }, 6000);
+    }, 4500);
+
+    // ضمان إغلاق أي إشعار مسجل في Service Worker بنفس المعرف إن وجد
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (reg) {
+          setTimeout(() => {
+            reg.getNotifications({ tag: notifTag }).then((notifs) => {
+              notifs.forEach((n) => {
+                try { n.close(); } catch {}
+              });
+            }).catch(() => {});
+          }, 4500);
+        }
+      }).catch(() => {});
+    }
   } catch (err) {
     console.warn('Failed to send notification:', err);
   }
