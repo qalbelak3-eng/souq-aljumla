@@ -11,10 +11,11 @@ export interface ToastItem {
   title?: string;
   message: string;
   duration?: number;
+  url?: string;
 }
 
 interface ToastContextType {
-  showToast: (message: string, type?: ToastType, title?: string, duration?: number) => void;
+  showToast: (message: string, type?: ToastType, title?: string, duration?: number, url?: string) => void;
   success: (message: string, title?: string) => void;
   error: (message: string, title?: string) => void;
   warning: (message: string, title?: string) => void;
@@ -31,9 +32,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    (message: string, type: ToastType = 'info', title?: string, duration: number = 3500) => {
+    (message: string, type: ToastType = 'info', title?: string, duration: number = 3500, url?: string) => {
       const id = Date.now().toString() + Math.random().toString(36).substring(2, 5);
-      const newToast: ToastItem = { id, type, title, message, duration };
+      const newToast: ToastItem = { id, type, title, message, duration, url };
 
       setToasts((prev) => [...prev, newToast]);
 
@@ -45,6 +46,34 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     },
     [removeToast]
   );
+
+  // Global listener for live system alerts (guaranteed in-app visual popups)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleSystemAlert = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        title?: string;
+        body?: string;
+        message?: string;
+        icon?: string;
+        url?: string;
+        soundType?: string;
+      }>;
+      if (customEvent.detail) {
+        const { title, body, message, url, soundType } = customEvent.detail;
+        const msg = body || message || '';
+        const t = title || 'تنبيه النظام 🔔';
+        const type: ToastType = soundType === 'merchant' ? 'warning' : soundType === 'delivered' ? 'success' : 'info';
+        showToast(msg, type, t, 6000, url);
+      }
+    };
+
+    window.addEventListener('souq-live-system-alert', handleSystemAlert);
+    return () => {
+      window.removeEventListener('souq-live-system-alert', handleSystemAlert);
+    };
+  }, [showToast]);
 
   const success = useCallback(
     (message: string, title?: string) => showToast(message, 'success', title),
@@ -67,38 +96,52 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
       {children}
 
-      {/* Modern Floating Toasts Container (clearly visible below navbar tabs) */}
-      <div className="fixed top-24 sm:top-28 left-1/2 -translate-x-1/2 z-[99999] flex flex-col items-center gap-2.5 w-full max-w-md px-4 pointer-events-none">
+      {/* Modern Floating Toasts Container (clearly visible at the top of the screen) */}
+      <div className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-2.5 w-full max-w-md px-4 pointer-events-none">
         {toasts.map((toast) => {
-          let bgClass = 'bg-white/95 text-slate-900 border-slate-200';
+          let bgClass = 'bg-white/95 text-slate-900 border-slate-200 shadow-xl';
           let icon = <Info className="w-5 h-5 text-blue-500 shrink-0" />;
 
           if (toast.type === 'success') {
-            bgClass = 'bg-white/95 text-slate-900 border-emerald-300 shadow-emerald-500/10';
+            bgClass = 'bg-white/95 text-slate-900 border-emerald-300 shadow-xl shadow-emerald-500/10';
             icon = <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />;
           } else if (toast.type === 'error') {
-            bgClass = 'bg-white/95 text-slate-900 border-red-300 shadow-red-500/10';
+            bgClass = 'bg-white/95 text-slate-900 border-red-300 shadow-xl shadow-red-500/10';
             icon = <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />;
           } else if (toast.type === 'warning') {
-            bgClass = 'bg-white/95 text-slate-900 border-amber-300 shadow-amber-500/10';
+            bgClass = 'bg-white/95 text-slate-900 border-amber-300 shadow-xl shadow-amber-500/10';
             icon = <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />;
           }
 
           return (
             <div
               key={toast.id}
-              className={`pointer-events-auto w-full p-3.5 sm:p-4 rounded-2xl border shadow-xl backdrop-blur-md flex items-start gap-3 transition-all transform animate-in slide-in-from-top-4 fade-in duration-200 ${bgClass}`}
+              onClick={() => {
+                if (toast.url && typeof window !== 'undefined') {
+                  window.location.href = toast.url;
+                }
+              }}
+              className={`pointer-events-auto w-full p-3.5 sm:p-4 rounded-2xl border backdrop-blur-md flex items-start gap-3 transition-all transform animate-in slide-in-from-top-4 fade-in duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.99] ${bgClass}`}
             >
               {icon}
 
               <div className="flex-1 text-right text-xs">
-                {toast.title && <div className="font-black mb-0.5 text-[13px]">{toast.title}</div>}
+                {toast.title && <div className="font-black mb-0.5 text-[13px] text-slate-900">{toast.title}</div>}
                 <div className="font-bold text-slate-700 leading-relaxed">{toast.message}</div>
+                {toast.url && (
+                  <span className="text-[10px] text-brand-blue font-bold inline-block mt-1 underline">
+                    انقر للانتقال المباشر ↗
+                  </span>
+                )}
               </div>
 
               <button
-                onClick={() => removeToast(toast.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeToast(toast.id);
+                }}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition shrink-0 cursor-pointer"
+                title="إغلاق"
               >
                 <X className="w-4 h-4" />
               </button>

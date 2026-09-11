@@ -138,11 +138,25 @@ export async function sendSystemNotification({
   tag,
   soundType = 'order',
 }: SendSystemNotificationOptions) {
-  // Always play sound
+  // 1. Play audio chime
   playNotificationSound(soundType);
+
+  // 2. Guaranteed In-App Visual Alert (Pops up 100% reliably inside the website)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('souq-live-system-alert', {
+        detail: { title, body, icon, url, soundType },
+      })
+    );
+  }
 
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return;
+  }
+
+  // If permission is default, ask proactively
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
   }
 
   if (Notification.permission !== 'granted') {
@@ -152,7 +166,7 @@ export async function sendSystemNotification({
   const notifTag = tag || 'souq-alert-' + Date.now();
 
   try {
-    // 1. Service Worker showNotification (الأسلوب المعتمد والأكثر موثوقية في كروم وإيدج على ويندوز والموبايل)
+    // 3. Service Worker showNotification (for OS background / desktop / mobile tray)
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.showNotification) {
@@ -178,7 +192,7 @@ export async function sendSystemNotification({
       }
     }
 
-    // 2. Fallback: Standard Notification constructor
+    // 4. Fallback: Standard Notification constructor
     const notif = new Notification(title, {
       body,
       icon,
