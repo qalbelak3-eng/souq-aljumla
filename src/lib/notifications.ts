@@ -149,12 +149,11 @@ export async function sendSystemNotification({
     return;
   }
 
-  try {
-    const notifTag = tag || 'souq-alert-' + Date.now();
-    const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const notifTag = tag || 'souq-alert-' + Date.now();
 
-    // If mobile and Service Worker is active, use showNotification
-    if (isMobile && 'serviceWorker' in navigator) {
+  try {
+    // 1. Service Worker showNotification (الأسلوب المعتمد والأكثر موثوقية في كروم وإيدج على ويندوز والموبايل)
+    if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.showNotification) {
         await reg.showNotification(title, {
@@ -166,11 +165,20 @@ export async function sendSystemNotification({
           vibrate: [200, 100, 200, 100, 200],
           requireInteraction: false,
         } as any);
+
+        // إغلاق الإشعار تلقائياً بعد 6 ثوانٍ على شاشة الكومبيوتر حتى لا يبقى معلقاً
+        setTimeout(() => {
+          reg.getNotifications({ tag: notifTag }).then((notifs) => {
+            notifs.forEach((n) => {
+              try { n.close(); } catch {}
+            });
+          }).catch(() => {});
+        }, 6000);
         return;
       }
     }
 
-    // On Desktop: Use standard Notification with guaranteed auto-close after 4.5 seconds
+    // 2. Fallback: Standard Notification constructor
     const notif = new Notification(title, {
       body,
       icon,
@@ -190,27 +198,12 @@ export async function sendSystemNotification({
       } catch {}
     };
 
-    // تختفي تلقائياً وبشكل انسيابي بعد 4.5 ثوانٍ
+    // تختفي تلقائياً وبشكل انسيابي بعد 6 ثوانٍ
     setTimeout(() => {
       try {
         notif.close();
       } catch {}
-    }, 4500);
-
-    // ضمان إغلاق أي إشعار مسجل في Service Worker بنفس المعرف إن وجد
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then((reg) => {
-        if (reg) {
-          setTimeout(() => {
-            reg.getNotifications({ tag: notifTag }).then((notifs) => {
-              notifs.forEach((n) => {
-                try { n.close(); } catch {}
-              });
-            }).catch(() => {});
-          }, 4500);
-        }
-      }).catch(() => {});
-    }
+    }, 6000);
   } catch (err) {
     console.warn('Failed to send notification:', err);
   }
