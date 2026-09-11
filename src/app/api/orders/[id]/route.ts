@@ -33,6 +33,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (driverId !== undefined || vehicleId !== undefined) {
       const targetDriverId = driverId !== undefined ? driverId : (prevOrder.driverId || '');
       updated = assignDriverToOrder(params.id, targetDriverId, vehicleId);
+      
+      // إذا تم تعيين سائق وكانت حالة الطلبية قيد الانتظار، يتم تحويلها تلقائياً إلى قيد التجهيز
+      if (updated && targetDriverId && targetDriverId !== 'none' && updated.status === 'pending') {
+        updated = updateOrderStatus(params.id, 'processing') || updated;
+      }
     }
 
     if (status !== undefined) {
@@ -53,9 +58,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     try {
       const effectiveStatus = updated.status;
       const isNewDriverAssigned = driverId !== undefined && driverId !== '' && driverId !== 'none' && driverId !== prevOrder.driverId;
-      const isNewlyProcessing = (status === 'processing' || effectiveStatus === 'processing') && prevOrder.status === 'pending';
+      const isStatusChangedToProcessing = (status === 'processing' || effectiveStatus === 'processing') && prevOrder.status !== 'processing';
 
-      if (isNewDriverAssigned || isNewlyProcessing) {
+      if (isStatusChangedToProcessing || (isNewDriverAssigned && prevOrder.status !== 'processing' && prevOrder.status !== 'shipped' && prevOrder.status !== 'delivered')) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
@@ -71,7 +76,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
           url: `/order-success/${updated.id}`,
         });
-      } else if (effectiveStatus === 'delivered' || status === 'delivered') {
+      } else if (status === 'delivered' || (effectiveStatus === 'delivered' && prevOrder.status !== 'delivered')) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
@@ -79,7 +84,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
           url: `/order-success/${updated.id}`,
         });
-      } else if (effectiveStatus === 'cancelled' || status === 'cancelled') {
+      } else if (status === 'cancelled' || (effectiveStatus === 'cancelled' && prevOrder.status !== 'cancelled')) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
@@ -88,7 +93,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           url: `/order-success/${updated.id}`,
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error sending order status push alert:', e);
+    }
 
     return NextResponse.json({ success: true, order: updated });
   } catch (error: any) {
@@ -101,6 +108,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const { items, deliveryFee, discount, notes, status, customer, paymentMethod } = body;
 
+    const prevOrder = getOrderById(params.id);
+    if (!prevOrder) {
+      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
     const updated = updateOrder(params.id, {
       items,
       deliveryFee: deliveryFee !== undefined ? Number(deliveryFee) : undefined,
@@ -110,6 +122,43 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       customer,
       paymentMethod,
     }, true);
+
+    if (!updated) {
+      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
+    // إرسال تنبيه فوري للزبون إذا تم تغيير الحالة أثناء تعديل الفاتورة
+    if (status && status !== prevOrder.status) {
+      try {
+        if (status === 'processing') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '📦 طلبيتك قيد التجهيز والتعليب الآن!',
+            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} قيد التجهيز والتعليب في المستودع تمهيداً لإرسالها مع المندوب.`,
+            url: `/order-success/${updated.id}`,
+          });
+        } else if (status === 'shipped') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '🚚 طلبيتك في الطريق إليك الآن!',
+            body: `مرحباً ${updated.customer.name}، طلبيتك #${updated.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
+            url: `/order-success/${updated.id}`,
+          });
+        } else if (status === 'delivered') {
+          await sendDirectCustomerAlert({
+            userId: updated.customer.userId,
+            phone: updated.customer.phone,
+            title: '🎉 تم تسليم طلبيتك بنجاح!',
+            body: `مرحباً ${updated.customer.name}، تم تسليم طلبيتك #${updated.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+            url: `/order-success/${updated.id}`,
+          });
+        }
+      } catch (e) {
+        console.error('Error sending order status alert in PUT:', e);
+      }
+    }
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
