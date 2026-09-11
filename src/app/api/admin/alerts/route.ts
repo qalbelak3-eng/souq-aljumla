@@ -9,7 +9,8 @@ export async function GET() {
   try {
     const db = ensureDbExists();
 
-    const orders: Order[] = Array.isArray(db.orders) ? db.orders : [];
+    const rawOrders: Order[] = Array.isArray(db.orders) ? db.orders : [];
+    const orders: Order[] = rawOrders.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const users: User[] = Array.isArray(db.users) ? db.users : [];
     const products: Product[] = Array.isArray(db.products) ? db.products : [];
     const drivers: Driver[] = Array.isArray(db.drivers) ? db.drivers : [];
@@ -34,8 +35,8 @@ export async function GET() {
       0
     );
 
-    // Recent orders for notification detection (last 30)
-    const recentOrders = orders.slice(0, 30).map((o: Order) => ({
+    // Recent orders for notification detection (newest 50 orders)
+    const recentOrders = orders.slice(0, 50).map((o: Order) => ({
       id: o.id,
       orderNumber: o.orderNumber,
       status: o.status,
@@ -43,6 +44,7 @@ export async function GET() {
       driverName: o.driverName || 'المندوب',
       customerTitle: o.customer?.businessName || o.customer?.name || 'زبون',
       collectionStatus: o.collectionStatus,
+      driverArrivedAt: o.driverArrivedAt || null,
     }));
 
     // 2. Merchants stats

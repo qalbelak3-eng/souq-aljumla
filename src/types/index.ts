@@ -18,6 +18,7 @@ export interface Banner {
   campaignProductIds?: string[]; // قائمة معرفات المنتجات المعروضة في الحملة
   isTextShelf?: boolean; // هل هو قسم/شريط منتجات كتابي فاصل بدون بنر؟ (مثل "الآيس كريم والحلويات")
   isSpriteSlider?: boolean; // هل هو بنر سلايدر مدمج بقياس سبرايت (هنقرستيشن)؟
+  bannerBgColor?: string; // لون خلفية الإعلان الممتدة في الهيدر (مثل ألوان هنقرستيشن: #fff4d9, #e8f8f0, إلخ)
 }
 
 export interface Company {

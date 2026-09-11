@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
+import EtihadLogo from '@/components/EtihadLogo';
 import SuggestedCartProducts from '@/components/SuggestedCartProducts';
 
 export default function CartPage() {
@@ -69,7 +70,12 @@ export default function CartPage() {
 
   if (cart.length === 0) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-20 text-center space-y-4">
+      <div className="max-w-3xl mx-auto px-4 py-12 text-center space-y-6">
+        <div className="flex justify-center mb-4">
+          <Link href="/" className="inline-block">
+            <EtihadLogo size="sm" />
+          </Link>
+        </div>
         <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-slate-400 mx-auto shadow-sm border border-slate-100">
           <ShoppingBag className="w-10 h-10 text-brand-coral" />
         </div>
@@ -88,8 +94,24 @@ export default function CartPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 text-xs">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6 text-xs">
       
+      {/* Cart Clean Distraction-Free Top Bar */}
+      <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-2xl border border-slate-200/80 shadow-xs">
+        <Link href="/" className="flex items-center gap-2">
+          <EtihadLogo size="sm" />
+        </Link>
+        
+        <div className="flex items-center gap-3">
+          <Link
+            href="/products"
+            className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>← متابعة التسوق</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Title */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-4">
         <div>

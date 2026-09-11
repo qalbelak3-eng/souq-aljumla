@@ -12,7 +12,7 @@ import AbandonedCartNotifier from '@/components/AbandonedCartNotifier';
 import CustomerGreetingsNotifier from '@/components/CustomerGreetingsNotifier';
 
 export const viewport: Viewport = {
-  themeColor: '#1b8738',
+  themeColor: '#ffd700',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -44,7 +44,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className="min-h-screen flex flex-col bg-[#f3f8fc] text-slate-900 selection:bg-brand-blue selection:text-white">
+      <body className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-brand-blue selection:text-white">
         <ServiceWorkerCleaner />
         <PWAInstallPrompt />
         <ToastProvider>

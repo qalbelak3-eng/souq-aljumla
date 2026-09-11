@@ -69,6 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [unsettledDebtsCount, setUnsettledDebtsCount] = useState<number>(0);
   const [pendingComplaintsCount, setPendingComplaintsCount] = useState<number>(0);
 
+
   // Notification Permission State
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
@@ -78,6 +79,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const knownOrderStatusesRef = useRef<Map<string, string>>(new Map());
   const knownPendingMerchantIdsRef = useRef<Set<string>>(new Set());
   const knownDriverCashMapRef = useRef<Map<string, number>>(new Map());
+  const knownDriverArrivedRef = useRef<Map<string, string>>(new Map()); // orderId → driverArrivedAt
 
   const isLoginPage = pathname === '/admin/login';
 
@@ -129,6 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         if (!isFirstAlertsLoadRef.current && Array.isArray(data.recentOrders)) {
           data.recentOrders.forEach((order: any) => {
             const prevStatus = knownOrderStatusesRef.current.get(order.id);
+            const prevArrivedAt = knownDriverArrivedRef.current.get(order.id);
 
             // 1. BRAND NEW PENDING ORDER ARRIVED
             if (!prevStatus && order.status === 'pending') {
@@ -141,20 +144,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               });
             }
 
-            // 2. DRIVER DELIVERED ORDER (Cash in custody collected)
-            if (prevStatus && prevStatus !== 'delivered' && order.status === 'delivered') {
-              const driver = order.driverName || 'المندوب';
-              const customerTitle = order.customerTitle || 'العميل';
-              const isCash = order.collectionStatus === 'collected_cash' || !order.collectionStatus;
-              
+            // 2. ORDER STATUS → cancelled (ملغية للوحة التحكم فقط للتنبيه)
+            if (prevStatus && prevStatus !== 'cancelled' && order.status === 'cancelled') {
               sendSystemNotification({
-                title: isCash ? '💵 تم استلام كاش في عهدة السائق!' : '✅ تم تسليم الطلبية',
-                body: isCash
-                  ? 'السائق ' + driver + ' استلم ' + Number(order.total || 0).toLocaleString() + ' د.ع كاش من ' + customerTitle + ' (بانتظار التصفية)'
-                  : 'المندوب ' + driver + ' سلّم الطلبية بنجاح إلى ' + customerTitle,
-                url: '/admin/drivers',
-                soundType: 'delivered',
-                tag: 'delivered-order-' + order.id,
+                title: '❌ طلبية ملغية (#' + order.orderNumber + ')',
+                body: 'تم إلغاء طلبية ' + (order.customerTitle || 'العميل') + ' | المبلغ: ' + Number(order.total || 0).toLocaleString() + ' د.ع',
+                url: '/admin/orders',
+                soundType: 'order',
+                tag: 'cancelled-order-' + order.id,
               });
             }
           });
@@ -162,8 +159,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         if (Array.isArray(data.recentOrders)) {
           const newStatusesMap = new Map<string, string>();
-          data.recentOrders.forEach((o: any) => newStatusesMap.set(o.id, o.status));
+          const newArrivedMap = new Map<string, string>();
+          data.recentOrders.forEach((o: any) => {
+            newStatusesMap.set(o.id, o.status);
+            if (o.driverArrivedAt) newArrivedMap.set(o.id, o.driverArrivedAt);
+          });
           knownOrderStatusesRef.current = newStatusesMap;
+          knownDriverArrivedRef.current = newArrivedMap;
         }
 
         // 3. Check for new pending merchants
@@ -271,7 +273,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       const interval = setInterval(() => {
         fetchLiveAlerts();
-      }, 20000);
+      }, 3000);
 
       const handleFocus = () => fetchLiveAlerts();
       window.addEventListener('focus', handleFocus);

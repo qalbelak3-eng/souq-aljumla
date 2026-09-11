@@ -26,7 +26,7 @@ export default function FloatingBottomCartBar() {
   }
 
   return (
-    <div className="fixed bottom-3 sm:bottom-5 inset-x-3 sm:inset-x-6 max-w-lg mx-auto z-30 select-none print:hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+    <div className="fixed bottom-18 sm:bottom-20 inset-x-3 sm:inset-x-6 max-w-lg mx-auto z-30 select-none print:hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-2 sm:p-2.5 shadow-[0_14px_45px_rgba(0,0,0,0.18)] border border-slate-200/90 space-y-1.5">
         
         {/* Top Message: Hungerstation Style */}

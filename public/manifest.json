@@ -4,8 +4,8 @@
   "description": "سوق الجملة - للتسوق بالجملة والمفرد في العراق 🇮🇶",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f8fc",
-  "theme_color": "#1b8738",
+  "background_color": "#fffbe8",
+  "theme_color": "#ffd700",
   "orientation": "portrait",
   "icons": [
     {

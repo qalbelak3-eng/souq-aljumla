@@ -46,7 +46,7 @@ export default function LuckyWheelWidget() {
   return (
     <>
       {/* Floating Circular Widget Button */}
-      <div className="fixed bottom-6 right-5 sm:bottom-7 sm:right-7 z-50 flex items-center gap-2 print:hidden select-none">
+      <div className="fixed bottom-20 right-5 sm:bottom-22 sm:right-7 z-50 flex items-center gap-2 print:hidden select-none">
         <button
           onClick={() => setIsOpen(true)}
           className="group relative flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-500 to-amber-400 text-slate-950 shadow-[0_8px_25px_rgba(245,158,11,0.45)] hover:shadow-[0_12px_30px_rgba(245,158,11,0.6)] transform hover:scale-105 active:scale-95 transition-all duration-300 border-2 border-white/60 cursor-pointer animate-pulse"

@@ -13,6 +13,7 @@ export default function PWAInstallPrompt() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [showDesktopTip, setShowDesktopTip] = useState(false);
 
   useEffect(() => {
     // تحقق إذا كان التطبيق مثبتاً مسبقاً
@@ -20,36 +21,50 @@ export default function PWAInstallPrompt() {
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true;
 
-    if (isStandalone) {
+    if (isStandalone || localStorage.getItem('pwa_installed') === 'true') {
       setIsInstalled(true);
       return;
     }
 
-    // تحقق إذا كان المستخدم ثبّت التطبيق مسبقاً فقط
-    const installed = localStorage.getItem('pwa_installed');
-    if (installed) return;
-
-    // كشف iOS
+    // كشف دقيق: هل هو جهاز كمبيوتر / متصفح كروم / بيئة فحص؟
     const ua = window.navigator.userAgent;
-    const iosDevice = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    const isWindowsOrPC =
+      /windows|win32|win64|linux/i.test(ua) ||
+      /Win32|Win64|MacIntel|Linux/i.test(navigator.platform || '') ||
+      Boolean((window as any).chrome);
 
-    if (iosDevice && isSafari) {
+    // كشف iOS: فقط لأجهزة آبل الحقيقية وليس كمبيوتر يشغل وضع الجوال في DevTools
+    const isRealIOS =
+      !isWindowsOrPC &&
+      /iPad|iPhone|iPod/.test(ua) &&
+      !(window as any).MSStream &&
+      !('userAgentData' in navigator) &&
+      /^((?!chrome|android).)*safari/i.test(ua);
+
+    if (isRealIOS) {
       setIsIOS(true);
-      // أظهر النافذة بعد 4 ثوانٍ على iOS
+      // أظهر النافذة بعد 4 ثوانٍ على أجهزة iOS الحقيقية
       const timer = setTimeout(() => setShowPrompt(true), 4000);
       return () => clearTimeout(timer);
     }
 
-    // Android / Chrome - انتظر حدث beforeinstallprompt
+    // Android / Chrome / Desktop - انتظر حدث beforeinstallprompt
+    let hasCapturedPrompt = false;
     const handler = (e: Event) => {
       e.preventDefault();
+      hasCapturedPrompt = true;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      // أظهر النافذة بعد 3 ثوانٍ
-      setTimeout(() => setShowPrompt(true), 3000);
+      setTimeout(() => setShowPrompt(true), 2500);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
+
+    // في حال عدم إطلاق الحدث تلقائياً (مثل أجهزة الكمبيوتر والتصفح العادي)، نظهر نافذة التثبيت أيضاً
+    const fallbackTimer = setTimeout(() => {
+      if (!hasCapturedPrompt) {
+        setShowPrompt(true);
+      }
+    }, 3500);
 
     // كشف بعد التثبيت
     window.addEventListener('appinstalled', () => {
@@ -57,20 +72,30 @@ export default function PWAInstallPrompt() {
       setShowPrompt(false);
     });
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      localStorage.setItem('pwa_installed', 'true');
+    if (deferredPrompt) {
+      try {
+        await deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          localStorage.setItem('pwa_installed', 'true');
+        } else {
+          localStorage.setItem('pwa_install_dismissed', 'true');
+        }
+        setShowPrompt(false);
+        setDeferredPrompt(null);
+      } catch (err) {
+        setShowDesktopTip(true);
+      }
     } else {
-      localStorage.setItem('pwa_install_dismissed', 'true');
+      setShowDesktopTip(true);
     }
-    setShowPrompt(false);
-    setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
@@ -265,6 +290,17 @@ export default function PWAInstallPrompt() {
 
           {/* أزرار الإجراءات */}
           <div className="space-y-2 pt-1">
+            {showDesktopTip && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3 text-xs space-y-1.5 animate-fadeIn">
+                <div className="font-black flex items-center gap-1.5">
+                  <span>💻 طريقة التثبيت على الكمبيوتر:</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-800">
+                  اضغط على أيقونة التثبيت (🖥️ أو ⬇️) الموجودة في <strong>شريط عنوان المتصفح بالأعلى</strong>، أو من قائمة خيارات المتصفح (⋮) ثم اختر <strong>&quot;تثبيت سوق الجملة&quot;</strong>.
+                </p>
+              </div>
+            )}
+
             <button
               onClick={handleInstall}
               className="w-full bg-gradient-to-r from-brand-blue via-emerald-600 to-teal-600 hover:opacity-95 text-white font-black text-xs py-3.5 px-4 rounded-2xl shadow-lg shadow-emerald-700/20 transition flex items-center justify-center gap-2 cursor-pointer transform active:scale-98"

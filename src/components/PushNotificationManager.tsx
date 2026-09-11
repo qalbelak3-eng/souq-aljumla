@@ -32,8 +32,14 @@ export default function PushNotificationManager() {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && permission === 'default') {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+
       const dismissed = localStorage.getItem('etihad_push_prompt_dismissed');
-      if (!dismissed) {
+
+      // Always show prompt if installed as app (standalone), or after 2s for regular visitors
+      if (isStandalone || !dismissed) {
         const timer = setTimeout(() => {
           setShowWelcomePrompt(true);
         }, 1500);

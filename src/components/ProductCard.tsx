@@ -54,9 +54,17 @@ export default function ProductCard({ product }: { product: Product }) {
               {discountPercent > 0 && <span className="bg-white/20 px-1 py-0.2 rounded-md font-mono">-%{discountPercent}</span>}
             </span>
           ) : isApprovedMerchant ? (
-            <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg shadow-xs flex items-center gap-0.5 ${
-              tier === 'gold' ? 'bg-amber-400 text-amber-950 font-black' : tier === 'silver' ? 'bg-slate-700 text-white' : 'bg-amber-800 text-white'
-            }`}>
+            <span
+              className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg shadow-xs flex items-center justify-center ${
+                tier === 'market'
+                  ? 'bg-[#1daed9] text-white'
+                  : tier === 'gold'
+                  ? 'bg-amber-400 text-amber-950'
+                  : tier === 'silver'
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-amber-800 text-white'
+              }`}
+            >
               <span>{tierLabel}</span>
             </span>
           ) : product.isNew ? (

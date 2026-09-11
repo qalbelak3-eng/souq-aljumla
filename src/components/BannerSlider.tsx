@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronRight, ChevronLeft, Search, Mic } from 'lucide-react';
 import { Banner } from '@/types';
 
 interface BannerSliderProps {
@@ -10,17 +11,24 @@ interface BannerSliderProps {
   category?: string;
   className?: string;
   aspectRatio?: 'standard' | 'compact' | 'wide';
+  initialData?: Banner[];
 }
 
 export default function BannerSlider({ 
   position = 'top', 
   category = '', 
   className = '',
-  aspectRatio
+  aspectRatio,
+  initialData
 }: BannerSliderProps) {
-  const [banners, setBanners] = useState<Banner[]>([]);
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [banners, setBanners] = useState<Banner[]>(() => {
+    if (initialData && initialData.length > 0) return initialData;
+    return [];
+  });
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !initialData || initialData.length === 0);
 
   // High performance touch and mouse drag physics
   const [isSwiping, setIsSwiping] = useState(false);
@@ -30,6 +38,13 @@ export default function BannerSlider({
   const isHorizontalSwipe = useRef<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (initialData && initialData.length > 0) {
+      setBanners(initialData);
+      setIsLoading(false);
+    }
+  }, [initialData]);
 
   useEffect(() => {
     let url = `/api/banners?position=${encodeURIComponent(position)}`;
@@ -146,7 +161,19 @@ export default function BannerSlider({
     isHorizontalSwipe.current = null;
   };
 
-  if (isLoading) {
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/products?query=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  if (isLoading && banners.length === 0) {
+    if (position === 'top') {
+      return (
+        <div className={`w-full min-h-[310px] sm:min-h-[360px] pt-[52px] sm:pt-[58px] pb-1 bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+      );
+    }
     const aspectClass = isCompact
       ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
       : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
@@ -160,11 +187,65 @@ export default function BannerSlider({
   // Single Banner Display
   if (banners.length === 1) {
     const singleBanner = banners[0];
+    if (position === 'top') {
+      return (
+        <div
+          className={`relative w-full overflow-hidden select-none rounded-none pt-[52px] sm:pt-[58px] pb-1 ${className}`}
+          style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
+        >
+          {/* Static Search Bar on Hero Background (scrolls naturally with page) */}
+          <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-1 pb-2 relative z-10">
+            <form onSubmit={handleSearch} className="relative w-full">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث عن المنتج الذي ترغب به"
+                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+              />
+              <button
+                type="submit"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
+                title="بحث"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {}}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                title="بحث صوتي"
+              >
+                <Mic className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+
+          <Link
+            href={singleBanner.linkUrl || '/products'}
+            className="block relative w-full pointer-events-auto"
+          >
+            <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 h-[230px] sm:h-[280px] md:h-[320px] lg:h-[350px] flex items-end justify-center">
+              <img
+                src={singleBanner.image}
+                alt={singleBanner.title || 'بنر إعلاني'}
+                className="w-full h-full max-h-full object-contain object-bottom pointer-events-none drop-shadow-xs"
+                draggable={false}
+              />
+            </div>
+          </Link>
+        </div>
+      );
+    }
+
     const aspectClass = isCompact
       ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
-      : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px]';
+      : 'aspect-[16/9] max-h-[360px] sm:max-h-[420px]';
     return (
-      <div className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 bg-white ${aspectClass} select-none ${className}`}>
+      <div
+        className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 select-none ${aspectClass} ${className}`}
+        style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
+      >
         <Link
           href={singleBanner.linkUrl || '/products'}
           className="block relative w-full h-full overflow-hidden"
@@ -172,7 +253,7 @@ export default function BannerSlider({
           <img
             src={singleBanner.image}
             alt={singleBanner.title || 'بنر إعلاني'}
-            className="w-full h-full object-cover object-center"
+            className="w-full h-full object-contain object-center pointer-events-none"
             draggable={false}
           />
         </Link>
@@ -317,8 +398,43 @@ export default function BannerSlider({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className={`relative w-full overflow-hidden rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-slate-100 select-none group bg-white cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
+      style={{ backgroundColor: banners[currentIndex]?.bannerBgColor || '#f8fafc' }}
+      className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
+        position === 'top'
+          ? 'rounded-none pt-[52px] sm:pt-[58px] pb-1.5'
+          : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
+      } ${className}`}
     >
+      {/* 0. Static Search Bar on Hero Background (Above slides, scrolls naturally with page) */}
+      {position === 'top' && (
+        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-1 pb-2 relative z-10">
+          <form onSubmit={handleSearch} className="relative w-full">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ابحث عن المنتج الذي ترغب به"
+              className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
+              title="بحث"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {}}
+              className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+              title="بحث صوتي"
+            >
+              <Mic className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* Slides Track with live real-time finger tracking */}
       <div
         className="flex w-full will-change-transform"
@@ -329,7 +445,11 @@ export default function BannerSlider({
         }}
       >
         {banners.map((banner) => (
-          <div key={banner.id} className="w-full flex-shrink-0 relative">
+          <div
+            key={banner.id}
+            className="w-full flex-shrink-0 relative overflow-hidden h-full"
+            style={{ backgroundColor: banner.bannerBgColor || '#f8fafc' }}
+          >
             <Link
               href={banner.linkUrl || '/products'}
               onClick={(e) => {
@@ -337,14 +457,25 @@ export default function BannerSlider({
                   e.preventDefault();
                 }
               }}
-              className="block relative w-full aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px] lg:min-h-[480px] overflow-hidden pointer-events-auto"
+              className="block relative w-full pointer-events-auto"
             >
-              <img
-                src={banner.image}
-                alt={banner.title || 'بنر إعلاني'}
-                className="w-full h-full object-cover object-center pointer-events-none"
-                draggable={false}
-              />
+              {position === 'top' ? (
+                <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 h-[230px] sm:h-[280px] md:h-[320px] lg:h-[350px] flex items-end justify-center">
+                  <img
+                    src={banner.image}
+                    alt={banner.title || 'بنر إعلاني'}
+                    className="w-full h-full max-h-full object-contain object-bottom pointer-events-none drop-shadow-xs"
+                    draggable={false}
+                  />
+                </div>
+              ) : (
+                <img
+                  src={banner.image}
+                  alt={banner.title || 'بنر إعلاني'}
+                  className="w-full h-full object-contain object-center pointer-events-none"
+                  draggable={false}
+                />
+              )}
             </Link>
           </div>
         ))}
@@ -381,9 +512,15 @@ export default function BannerSlider({
         </>
       )}
 
-      {/* Pagination Indicator Pills / Dots */}
+      {/* Pagination Indicator Pills / Dots (Hungerstation Style) */}
       {banners.length > 1 && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/30 backdrop-blur-xs px-2.5 py-1 rounded-full pointer-events-auto">
+        <div
+          className={`absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 pointer-events-auto ${
+            position === 'top'
+              ? 'px-2 py-0.5'
+              : 'bg-black/30 backdrop-blur-xs px-2.5 py-1 rounded-full'
+          }`}
+        >
           {banners.map((_, idx) => (
             <button
               key={idx}
@@ -393,8 +530,12 @@ export default function BannerSlider({
                 e.stopPropagation();
                 setCurrentIndex(idx);
               }}
-              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                currentIndex === idx
+              className={`rounded-full transition-all duration-300 cursor-pointer ${
+                position === 'top'
+                  ? currentIndex === idx
+                    ? 'w-5 h-1.5 bg-slate-900/80 shadow-xs'
+                    : 'w-1.5 h-1.5 bg-slate-400/50 hover:bg-slate-700'
+                  : currentIndex === idx
                   ? 'w-6 bg-white shadow-xs'
                   : 'w-1.5 bg-white/50 hover:bg-white'
               }`}

@@ -101,7 +101,8 @@ export async function POST(request: Request) {
       return {
         ...item,
         productId: prod?.id || item.productId || item.id,
-        name: prod?.name || item.name,
+        name: prod?.name || item.name || item.title || 'صنف',
+        title: prod?.name || item.title || item.name || 'صنف',
         price: officialPrice,
         quantity: qty,
         saleType,

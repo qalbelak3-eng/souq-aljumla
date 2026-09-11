@@ -11,9 +11,22 @@ function getAudioContext(): AudioContext | null {
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
   return audioCtx;
+}
+
+// Automatically unlock AudioContext on any first click or tap in browser
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  };
+  window.addEventListener('click', unlockAudio, { passive: true });
+  window.addEventListener('touchstart', unlockAudio, { passive: true });
+  window.addEventListener('keydown', unlockAudio, { passive: true });
 }
 
 export function playNotificationSound(type: 'order' | 'delivered' | 'merchant' | 'test' = 'order') {
@@ -141,85 +154,59 @@ export async function sendSystemNotification({
   // 1. Play audio chime
   playNotificationSound(soundType);
 
-  // 2. Guaranteed In-App Visual Alert (Pops up 100% reliably inside the website)
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(
-      new CustomEvent('souq-live-system-alert', {
-        detail: { title, body, icon, url, soundType },
-      })
-    );
-  }
+  // 2. OS-level Windows notification via Service Worker (shows even outside browser)
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
 
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return;
-  }
-
-  // If permission is default, ask proactively
   if (Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
+    await Notification.requestPermission().catch(() => {});
   }
-
-  if (Notification.permission !== 'granted') {
-    return;
-  }
-
-  const notifTag = tag || 'souq-alert-' + Date.now();
+  if (Notification.permission !== 'granted') return;
 
   try {
-    // 3. Service Worker showNotification (for OS background / desktop / mobile tray)
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (reg && reg.showNotification) {
-        await reg.showNotification(title, {
+    // 1. Direct Native Notification API
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const notif = new Notification(title, {
           body,
           icon,
           badge: icon,
-          tag: notifTag,
-          data: { url },
-          vibrate: [200, 100, 200, 100, 200],
+          tag: tag || undefined,
           requireInteraction: false,
+          silent: false,
         } as any);
 
-        // إغلاق الإشعار تلقائياً بعد 6 ثوانٍ على شاشة الكومبيوتر حتى لا يبقى معلقاً
-        setTimeout(() => {
-          reg.getNotifications({ tag: notifTag }).then((notifs) => {
-            notifs.forEach((n) => {
-              try { n.close(); } catch {}
-            });
-          }).catch(() => {});
-        }, 6000);
+        notif.onclick = () => {
+          window.focus();
+          if (url) window.location.href = url;
+        };
+
         return;
+      } catch (err) {
+        // Some browsers or environments throw on new Notification(), fallback to SW
       }
     }
 
-    // 4. Fallback: Standard Notification constructor
-    const notif = new Notification(title, {
-      body,
-      icon,
-      badge: icon,
-      tag: notifTag,
-      requireInteraction: false,
-      silent: false,
-    } as any);
-
-    notif.onclick = function () {
-      window.focus();
-      if (url) {
-        window.location.href = url;
+    // 2. Fallback to Service Worker showNotification if direct constructor failed
+    if ('serviceWorker' in navigator) {
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]);
+      if (reg && (reg as ServiceWorkerRegistration).showNotification) {
+        const swReg = reg as ServiceWorkerRegistration;
+        await swReg.showNotification(title, {
+          body,
+          icon,
+          badge: icon,
+          tag: tag || undefined,
+          data: { url },
+          vibrate: [200, 100, 200],
+          requireInteraction: false,
+        } as any);
       }
-      try {
-        notif.close();
-      } catch {}
-    };
-
-    // تختفي تلقائياً وبشكل انسيابي بعد 6 ثوانٍ
-    setTimeout(() => {
-      try {
-        notif.close();
-      } catch {}
-    }, 6000);
+    }
   } catch (err) {
-    console.warn('Failed to send notification:', err);
+    console.warn('Notification error:', err);
   }
 }
 

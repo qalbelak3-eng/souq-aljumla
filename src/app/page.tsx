@@ -57,6 +57,11 @@ export default function HomePage() {
         const parsed = JSON.parse(cachedSet);
         if (parsed) setSettings(parsed);
       }
+      const cachedBanners = localStorage.getItem('souq_store_banners_cache');
+      if (cachedBanners) {
+        const parsed = JSON.parse(cachedBanners);
+        if (Array.isArray(parsed) && parsed.length > 0) setBanners(parsed);
+      }
     } catch (e) {}
 
     try {
@@ -85,6 +90,9 @@ export default function HomePage() {
         }
         if (bannerData?.success && Array.isArray(bannerData.banners)) {
           setBanners(bannerData.banners);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('souq_store_banners_cache', JSON.stringify(bannerData.banners));
+          }
         }
         if (compData.success && Array.isArray(compData.companies)) {
           if (typeof window !== 'undefined') {
@@ -217,9 +225,9 @@ export default function HomePage() {
   return (
     <div className="space-y-5 sm:space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
       
-      {/* 1. AUTO-SLIDING BANNERS (TOP) */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6">
-        <BannerSlider position="top" />
+      {/* 1. AUTO-SLIDING BANNERS (TOP) - Hungerstation Full Bleed Hero */}
+      <section className="w-full">
+        <BannerSlider position="top" initialData={banners.filter(b => !b.isCampaignShowcase && (b.position === 'top' || (!b.position && b.isActive)))} />
       </section>
 
       {/* 2.5. TOP THEMED CAMPAIGN SHOWCASES (e.g. منتجاتنا الطازجة) */}
@@ -254,7 +262,7 @@ export default function HomePage() {
                     router.prefetch(`/products?category=${encodeURIComponent(cat.name)}`);
                   } catch (e) {}
                 }}
-                className="bg-[#f7fbff] hover:bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-sky-100/90 shadow-[0_2px_12px_rgba(0,100,255,0.04)] hover:shadow-md hover:border-sky-300 transition-all text-center flex flex-col items-center justify-center space-y-2.5 group transform active:scale-95"
+                className="bg-[#fafafa] hover:bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-slate-200/80 shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-slate-300 transition-all text-center flex flex-col items-center justify-center space-y-2.5 group transform active:scale-95"
               >
                 {/* Animated Swaying Vector Icon */}
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition">

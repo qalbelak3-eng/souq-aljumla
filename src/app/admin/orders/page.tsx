@@ -38,67 +38,16 @@ import { getProductPriceForUser } from '@/lib/pricing';
 export default function AdminOrdersPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
-  const [orders, setOrders] = useState<Order[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_orders_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-  const [products, setProducts] = useState<Product[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_products_cache');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return [];
-  });
-  const [merchants, setMerchants] = useState<UserType[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_merchants_cache');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return [];
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [merchants, setMerchants] = useState<UserType[]>([]);
   const [customerAccounts, setCustomerAccounts] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<Driver[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_drivers_cache');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return [];
-  });
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_vehicles_cache');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return [];
-  });
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('souq_admin_orders_cache');
-        if (cached && JSON.parse(cached).length > 0) return false;
-      } catch (e) {}
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -908,9 +857,9 @@ export default function AdminOrdersPage() {
                         </div>
                         <p
                           className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed mt-0.5"
-                          title={order.items.map((i) => `${i.name} (${i.quantity} ${i.unitLabel})`).join('، ')}
+                          title={order.items.map((i) => `${i.name || (i as any).title || 'صنف'} (${i.quantity} ${i.unitLabel || 'مفرد'})`).join('، ')}
                         >
-                          {order.items.map((i) => `${i.name} (${i.quantity} ${i.unitLabel})`).join('، ')}
+                          {order.items.map((i) => `${i.name || (i as any).title || 'صنف'} (${i.quantity} ${i.unitLabel || 'مفرد'})`).join('، ')}
                         </p>
                       </td>
 

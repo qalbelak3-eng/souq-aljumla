@@ -27,7 +27,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['Cairo', 'system-ui', 'sans-serif'],
+        sans: ['"IBM Plex Sans Arabic"', 'Cairo', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.02)',

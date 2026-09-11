@@ -18,7 +18,7 @@ export default function WhatsAppFloatingButton() {
     /* Floating Coral Cart Button matching Jumlaty app (Screenshot media_1787336778773.jpg) */
     <button
       onClick={() => setIsCartDrawerOpen(true)}
-      className="fixed bottom-6 left-5 sm:bottom-7 sm:left-7 z-50 w-14 h-14 sm:w-16 sm:h-16 bg-[#ef533a] hover:bg-[#e0452c] active:scale-95 text-white rounded-full shadow-[0_8px_25px_rgba(239,83,58,0.45)] flex items-center justify-center transition-all duration-300 transform hover:scale-105 border-2 border-white/20 print:hidden"
+      className="fixed bottom-20 left-5 sm:bottom-22 sm:left-7 z-50 w-14 h-14 sm:w-16 sm:h-16 bg-[#ef533a] hover:bg-[#e0452c] active:scale-95 text-white rounded-full shadow-[0_8px_25px_rgba(239,83,58,0.45)] flex items-center justify-center transition-all duration-300 transform hover:scale-105 border-2 border-white/20 print:hidden"
       aria-label="سلة التسوق"
       title="سلة التسوق"
     >

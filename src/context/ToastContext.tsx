@@ -47,33 +47,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [removeToast]
   );
 
-  // Global listener for live system alerts (guaranteed in-app visual popups)
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleSystemAlert = (e: Event) => {
-      const customEvent = e as CustomEvent<{
-        title?: string;
-        body?: string;
-        message?: string;
-        icon?: string;
-        url?: string;
-        soundType?: string;
-      }>;
-      if (customEvent.detail) {
-        const { title, body, message, url, soundType } = customEvent.detail;
-        const msg = body || message || '';
-        const t = title || 'تنبيه النظام 🔔';
-        const type: ToastType = soundType === 'merchant' ? 'warning' : soundType === 'delivered' ? 'success' : 'info';
-        showToast(msg, type, t, 6000, url);
-      }
-    };
-
-    window.addEventListener('souq-live-system-alert', handleSystemAlert);
-    return () => {
-      window.removeEventListener('souq-live-system-alert', handleSystemAlert);
-    };
-  }, [showToast]);
+  // NOTE: souq-live-system-alert is now handled directly in admin/layout.tsx
+  // to avoid double-toasting. ToastContext is used by store pages only.
 
   const success = useCallback(
     (message: string, title?: string) => showToast(message, 'success', title),

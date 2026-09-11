@@ -11,6 +11,7 @@ import PopupAdvertisement from '@/components/PopupAdvertisement';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import LuckyWheelWidget from '@/components/LuckyWheelWidget';
 import FloatingBottomCartBar from '@/components/FloatingBottomCartBar';
+import BottomNavigationBar from '@/components/BottomNavigationBar';
 
 export default function StoreLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,8 +20,10 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   const isAuthRoute = pathname === '/register' || pathname === '/login';
   const isStatementRoute = pathname === '/statement';
   const isProfileRoute = pathname.startsWith('/profile');
+  const isOrdersRoute = pathname === '/orders' || pathname.startsWith('/orders');
   const isCheckoutRoute = pathname === '/checkout';
   const isOrderSuccessRoute = pathname.startsWith('/order-success');
+  const isCartRoute = pathname === '/cart';
   const isCampaignRoute = pathname.startsWith('/campaigns');
   
   // Hide main home header on dedicated sub-pages like /products catalog where category header takes over
@@ -30,7 +33,7 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
     // Completely Clean Isolated Showcase View: No store header, no footer, no announcement bar, just products and floating checkout bar when shopping
     return (
       <>
-        <main className="flex-1 min-h-screen bg-[#f3f8fc]">
+        <main className="flex-1 min-h-screen bg-white">
           {children}
         </main>
         <CartDrawer />
@@ -39,10 +42,22 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
     );
   }
 
-  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isProfileRoute || isCheckoutRoute || isOrderSuccessRoute) {
+  if (isProfileRoute || isOrdersRoute) {
+    // Dedicated Profile / Orders View with Hungerstation Bottom Navigation
+    return (
+      <>
+        <main className="flex-1 min-h-screen flex flex-col justify-start bg-white">
+          {children}
+        </main>
+        <BottomNavigationBar />
+      </>
+    );
+  }
+
+  if (isAdminRoute || isAuthRoute || isDriverRoute || isStatementRoute || isCheckoutRoute || isOrderSuccessRoute || isCartRoute) {
     // Isolated Dedicated View: No customer header, no announcement bar, no floating widgets, no footer
     return (
-      <main className="flex-1 min-h-screen flex flex-col justify-start bg-[#f3f8fc]">
+      <main className="flex-1 min-h-screen flex flex-col justify-start bg-white">
         {children}
       </main>
     );
@@ -58,7 +73,8 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
       <main className="flex-1">
         {children}
       </main>
-      <Footer />
+      {!isProductsCatalog && <Footer />}
+      <BottomNavigationBar />
       <CartDrawer />
       <WhatsAppFloatingButton />
       <FloatingBottomCartBar />
