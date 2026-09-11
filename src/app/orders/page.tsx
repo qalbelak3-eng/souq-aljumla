@@ -22,7 +22,7 @@ import MerchantStatsCard from '@/components/MerchantStatsCard';
 
 export default function OrdersPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const { addItem, setIsCartDrawerOpen } = useCart();
+  const { addToCart, setIsCartDrawerOpen } = useCart();
   const router = useRouter();
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -83,7 +83,7 @@ export default function OrdersPage() {
   // Re-order items
   const handleReorder = (order: Order) => {
     order.items.forEach((item) => {
-      addItem(
+      addToCart(
         {
           id: item.productId,
           name: item.name,
