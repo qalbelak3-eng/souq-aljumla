@@ -314,6 +314,17 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
   }, []);
 
+  // Sync user profile (phone & ID) to push subscription upon login/state change
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window) {
+      if (Notification.permission === 'granted' && (user?.id || user?.phone)) {
+        navigator.serviceWorker.ready.then((reg) => {
+          subscribeUserToPush(reg, false).catch(() => {});
+        }).catch(() => {});
+      }
+    }
+  }, [user?.id, user?.phone, user?.accountType]);
+
   return (
     <NotificationsContext.Provider
       value={{

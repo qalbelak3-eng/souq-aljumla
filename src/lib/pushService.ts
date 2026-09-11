@@ -157,14 +157,15 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
 function normalizePhone(phone?: string): string {
   if (!phone) return '';
   let digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('964')) digits = digits.slice(3);
+  if (digits.startsWith('00964')) digits = digits.slice(5);
+  else if (digits.startsWith('964')) digits = digits.slice(3);
   if (digits.startsWith('0')) digits = digits.slice(1);
   return digits;
 }
 
 /**
- * إرسال تنبيه فوري مباشر لزبون معين (مثل: وصول المندوب لموقع التوصيل أو خروج الطلبية)
- * هذا الإشعار يظهر كـ Push Alert عاجل على هاتف الزبون
+ * إرسال تنبيه فوري مباشر لزبون معين فقط (مثل: استلام الطلبية، خروج المندوب، وصول المندوب، التسليم)
+ * هذا الإشعار يرسل حصراً لهاتف الزبون صاحب الطلبية ولا يُرسل أبداً لبقية المشتركين.
  */
 export async function sendDirectCustomerAlert(params: {
   userId?: string;
@@ -177,10 +178,16 @@ export async function sendDirectCustomerAlert(params: {
   if (!db || db.length === 0) return { success: true, delivered: false };
 
   const targetCorePhone = normalizePhone(params.phone);
+  const targetUserId = params.userId?.trim();
 
-  // البحث عن اشتراكات الزبون بدقة (حسب رقم الهاتف، معرف الزبون، أو أحدث الأجهزة المسجلة)
-  let targets = db.filter((sub) => {
-    if (params.userId && sub.userId === params.userId) return true;
+  // إذا لم يتوفر أي معرف للزبون (لا رقم ولا معرف حساب)، لا يتم إرسال أي إشعار منعاً للإزعاج
+  if (!targetCorePhone && !targetUserId) {
+    return { success: true, delivered: false };
+  }
+
+  // البحث عن اشتراكات هاتف الزبون المعني حصراً (بالمعرف أو برقم الهاتف المطابق)
+  const targets = db.filter((sub) => {
+    if (targetUserId && sub.userId && sub.userId === targetUserId) return true;
     if (targetCorePhone && sub.userPhone) {
       const subCorePhone = normalizePhone(sub.userPhone);
       if (subCorePhone === targetCorePhone || subCorePhone.endsWith(targetCorePhone) || targetCorePhone.endsWith(subCorePhone)) {
@@ -190,12 +197,10 @@ export async function sendDirectCustomerAlert(params: {
     return false;
   });
 
-  // إذا لم نجد تطابقاً محدداً بالرقم، نرسل لجميع الأجهزة النشطة لضمان تسليم الإشعار للموبايل
+  // حماية صارمة: إذا لم يكن هاتف الزبون مفعلاً للإشعارات، لا نرسل لأي جهاز آخر
   if (targets.length === 0) {
-    targets = db;
+    return { success: true, delivered: false };
   }
-
-  if (targets.length === 0) return { success: true, delivered: false };
 
   const safeUrl = sanitizeCustomerUrl(params.url);
 
@@ -231,7 +236,7 @@ export async function sendDirectCustomerAlert(params: {
       );
       delivered = true;
     } catch (err: any) {
-      console.warn('Push delivery to endpoint failed:', err?.statusCode, err?.message);
+      console.warn('Push delivery to customer endpoint failed:', err?.statusCode, err?.message);
       if (err.statusCode === 410 || err.statusCode === 404) {
         deletePushSubscription(sub.endpoint);
       }

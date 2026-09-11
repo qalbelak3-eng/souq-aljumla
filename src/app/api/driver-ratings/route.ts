@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     const driver = getDriverById(driverId);
     const driverName = driver?.name || 'مندوب التوصيل';
 
-    // إذا كان هناك تعليق مكتوب أو تقييم منخفض (3 نجوم أو أقل): سجل في الشكاوى وأرسل إشعاراً فورياً للإدارة
-    if (comment && comment.trim().length > 0 || Number(rating) <= 3) {
+    // إذا كان هناك تعليق مكتوب أو تقييم منخفض (3 نجوم أو أقل): سجل في الشكاوى لتظهر في لوحة الإدارة
+    if ((comment && comment.trim().length > 0) || Number(rating) <= 3) {
       try {
         addComplaint({
           customerName: customerName || 'زبون المتجر',
@@ -52,17 +52,6 @@ export async function POST(request: NextRequest) {
         });
       } catch (err) {
         console.error('Error auto-creating complaint from rating:', err);
-      }
-
-      try {
-        await sendWebPushNotification({
-          targetAudience: 'all',
-          title: `⭐ ملاحظة / تقييم جديد: ${customerName || 'زبون'}`,
-          body: `السائق: ${driverName} (${rating}⭐) • ${comment ? `"${comment}"` : tag || 'تقييم جديد'}`,
-          url: '/admin/drivers',
-        });
-      } catch (err) {
-        console.error('Error sending rating push notification:', err);
       }
     }
 
