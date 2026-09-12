@@ -121,6 +121,8 @@ export interface Category {
   color?: string;
   count: number;
   description?: string;
+  hideFromHome?: boolean;
+  order?: number;
 }
 
 export interface CartItem {

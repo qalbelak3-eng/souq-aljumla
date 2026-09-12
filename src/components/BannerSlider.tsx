@@ -270,7 +270,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[310px] md:h-[360px] lg:h-[400px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -289,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[310px] md:h-[360px] lg:h-[400px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] md:top-[54px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -326,7 +326,7 @@ export default function BannerSlider({
             href={singleBanner.linkUrl || '/products'}
             className="block relative w-full h-full pointer-events-auto"
           >
-            <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
+            <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
@@ -502,13 +502,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[310px] md:h-[360px] lg:h-[400px]'
+          ? 'rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] md:top-[54px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -564,7 +564,7 @@ export default function BannerSlider({
               className="block relative w-full h-full pointer-events-auto"
             >
               {position === 'top' ? (
-                <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
+                <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
@@ -618,7 +618,7 @@ export default function BannerSlider({
 
       {/* Pagination Indicator Pills / Dots (Hungerstation Style Capsule) */}
       {banners.length > 1 && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+        <div className="absolute bottom-2 sm:bottom-3 md:bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
           <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200/80">
             {banners.map((_, idx) => (
               <button
