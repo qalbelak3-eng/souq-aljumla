@@ -27,16 +27,21 @@ export default function PWAInstallPrompt() {
       return;
     }
 
-    // كشف دقيق: هل هو جهاز كمبيوتر / متصفح كروم / بيئة فحص؟
+    if (sessionStorage.getItem('pwa_dismissed_session') === 'true') {
+      return;
+    }
+
+    // كشف نوع الجهاز
     const ua = window.navigator.userAgent;
-    setIsAndroid(/android/i.test(ua));
+    const isAndroidDevice = /android/i.test(ua);
+    setIsAndroid(isAndroidDevice);
 
     const isWindowsOrPC =
       /windows|win32|win64|linux/i.test(ua) ||
       /Win32|Win64|MacIntel|Linux/i.test(navigator.platform || '') ||
       Boolean((window as any).chrome);
 
-    // كشف iOS: فقط لأجهزة آبل الحقيقية وليس كمبيوتر يشغل وضع الجوال في DevTools
+    // كشف iOS: فقط لأجهزة آبل الحقيقية
     const isRealIOS =
       !isWindowsOrPC &&
       /iPad|iPhone|iPod/.test(ua) &&
@@ -46,54 +51,73 @@ export default function PWAInstallPrompt() {
 
     if (isRealIOS) {
       setIsIOS(true);
-      // أظهر النافذة بعد 4 ثوانٍ على أجهزة iOS الحقيقية
-      const timer = setTimeout(() => setShowPrompt(true), 4000);
+      // أظهر النافذة الإرشادية لـ iOS بعد 3.5 ثوانٍ
+      const timer = setTimeout(() => setShowPrompt(true), 3500);
       return () => clearTimeout(timer);
     }
 
-    // Android / Chrome / Desktop - انتظر حدث beforeinstallprompt
-    let hasCapturedPrompt = false;
-    const handler = (e: Event) => {
+    // Android / Chrome / Edge / PC Desktop:
+    // 1. تحقق أولاً إذا تم التقاط الحدث مسبقاً في head script
+    const existingPrompt = (window as any).deferredPWAInstallPrompt;
+    if (existingPrompt) {
+      setDeferredPrompt(existingPrompt);
+      const timer = setTimeout(() => setShowPrompt(true), 2000);
+      return () => clearTimeout(timer);
+    }
+
+    // 2. الاستماع لحدث beforeinstallprompt
+    const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
-      hasCapturedPrompt = true;
+      (window as any).deferredPWAInstallPrompt = e;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setTimeout(() => setShowPrompt(true), 2500);
+      setTimeout(() => setShowPrompt(true), 2000);
     };
 
-    window.addEventListener('beforeinstallprompt', handler);
-
-    // في حال عدم إطلاق الحدث تلقائياً (مثل أجهزة الكمبيوتر والتصفح العادي)، نظهر نافذة التثبيت أيضاً
-    const fallbackTimer = setTimeout(() => {
-      if (!hasCapturedPrompt) {
-        setShowPrompt(true);
+    // 3. الاستماع للحدث المخصص عند التقاطه عبر head
+    const handlePromptReady = () => {
+      if ((window as any).deferredPWAInstallPrompt) {
+        setDeferredPrompt((window as any).deferredPWAInstallPrompt);
+        setTimeout(() => setShowPrompt(true), 2000);
       }
-    }, 3500);
+    };
 
-    // كشف بعد التثبيت
-    window.addEventListener('appinstalled', () => {
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('pwa-prompt-ready', handlePromptReady);
+
+    // مراقبة بعد إتمام التثبيت بنجاح
+    const handleAppInstalled = () => {
       localStorage.setItem('pwa_installed', 'true');
       setShowPrompt(false);
-    });
+      setDeferredPrompt(null);
+      (window as any).deferredPWAInstallPrompt = null;
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-      clearTimeout(fallbackTimer);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('pwa-prompt-ready', handlePromptReady);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
   const handleInstall = async () => {
-    if (deferredPrompt) {
+    const promptEvent = deferredPrompt || (window as any).deferredPWAInstallPrompt;
+    if (promptEvent) {
       try {
-        await deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
+        await promptEvent.prompt();
+        const choiceResult = await promptEvent.userChoice;
+        if (choiceResult && choiceResult.outcome === 'accepted') {
           localStorage.setItem('pwa_installed', 'true');
+          setShowPrompt(false);
         } else {
-          localStorage.setItem('pwa_install_dismissed', 'true');
+          sessionStorage.setItem('pwa_dismissed_session', 'true');
+          setShowPrompt(false);
         }
-        setShowPrompt(false);
         setDeferredPrompt(null);
+        (window as any).deferredPWAInstallPrompt = null;
       } catch (err) {
+        console.warn('Install prompt error:', err);
         setShowDesktopTip(true);
       }
     } else {
@@ -102,6 +126,7 @@ export default function PWAInstallPrompt() {
   };
 
   const handleDismiss = () => {
+    sessionStorage.setItem('pwa_dismissed_session', 'true');
     setShowPrompt(false);
   };
 

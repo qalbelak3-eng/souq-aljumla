@@ -21,6 +21,9 @@ export default function ServiceWorkerCleaner() {
             });
           }
         });
+
+        // Ensure official service worker is registered
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
       }
 
       // 2. Clear any stale CacheStorage entries from previous localhost projects

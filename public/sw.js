@@ -1,5 +1,5 @@
 // Souq Al-Jumla PWA Service Worker - High Reliability Mobile Push Handler
-const SW_VERSION = 'souq-sw-v2.9';
+const SW_VERSION = 'souq-sw-v3.0';
 
 self.addEventListener('install', function (event) {
   self.skipWaiting();
@@ -7,6 +7,18 @@ self.addEventListener('install', function (event) {
 
 self.addEventListener('activate', function (event) {
   event.waitUntil(self.clients.claim());
+});
+
+// Pass-through fetch handler satisfying Chromium PWA installability criteria
+self.addEventListener('fetch', function (event) {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(
+    fetch(event.request).catch(function (error) {
+      return caches.match(event.request).then(function (cachedResponse) {
+        return cachedResponse || Promise.reject(error);
+      });
+    })
+  );
 });
 
 self.addEventListener('push', function (event) {

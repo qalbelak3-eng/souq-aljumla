@@ -45,6 +45,30 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  window.addEventListener('beforeinstallprompt', function(e) {
+                    e.preventDefault();
+                    window.deferredPWAInstallPrompt = e;
+                    window.dispatchEvent(new Event('pwa-prompt-ready'));
+                  });
+                  if ('serviceWorker' in navigator) {
+                    window.addEventListener('load', function() {
+                      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(err) {
+                        console.warn('SW registration:', err);
+                      });
+                    });
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-screen flex flex-col bg-white text-slate-900 selection:bg-brand-blue selection:text-white">
         <ServiceWorkerCleaner />
         <PWAInstallPrompt />
