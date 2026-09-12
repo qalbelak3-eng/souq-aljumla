@@ -80,13 +80,13 @@ function LoginForm() {
   };
 
   return (
-    <div className="relative min-h-[85vh] flex flex-col justify-center max-w-md mx-auto px-4 py-8 select-none" dir="rtl">
+    <div className="relative min-h-[85vh] flex flex-col justify-center max-w-md mx-auto px-4 pb-8 pt-[calc(env(safe-area-inset-top,0px)+2rem)] select-none" dir="rtl">
       
       {/* Top Floating Support Headphones Icon */}
       <button
         type="button"
         onClick={() => setIsSupportModalOpen(true)}
-        className="fixed top-5 left-5 z-40 w-11 h-11 rounded-full bg-[#4c489d] hover:bg-[#3f3c8a] text-white flex items-center justify-center shadow-lg shadow-[#4c489d]/30 transition transform hover:scale-105 active:scale-95 cursor-pointer"
+        className="fixed top-[calc(env(safe-area-inset-top,0px)+1.25rem)] left-5 z-40 w-11 h-11 rounded-full bg-[#4c489d] hover:bg-[#3f3c8a] text-white flex items-center justify-center shadow-lg shadow-[#4c489d]/30 transition transform hover:scale-105 active:scale-95 cursor-pointer"
         title="خدمة العملاء والمساعدة"
       >
         <Headphones className="w-5 h-5" />

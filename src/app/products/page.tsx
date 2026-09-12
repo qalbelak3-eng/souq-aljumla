@@ -401,7 +401,7 @@ function ProductsCatalog() {
       {isShowingCompanies ? (
         <div className="space-y-3">
           {/* Top Sticky Bar: Back Arrow + Category Title */}
-          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-1 pb-2 space-y-2.5">
+          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5">
             <div className="flex items-center justify-between">
               <button
                 onClick={handleBackToHome}
@@ -483,7 +483,7 @@ function ProductsCatalog() {
       ) : (
         <div className="space-y-3">
           {/* Top Sticky Bar: Back Arrow + Category — Company */}
-          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-1 pb-2 space-y-2.5">
+          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5">
             <div className="flex items-center justify-between">
               <button
                 onClick={selectedCompany ? handleBackToCompanies : handleBackToHome}

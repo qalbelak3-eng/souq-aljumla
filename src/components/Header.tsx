@@ -162,14 +162,24 @@ export default function Header() {
                 {activeCustomerName || (authLoading ? '...' : 'سوق الجملة (تسجيل الدخول)')}
               </span>
               {user?.accountType === 'market' && (
-                <span className="hidden sm:inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                <span className="inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
                   ماركت
                 </span>
               )}
               {(user?.accountType === 'wholesale' || user?.accountType === 'merchant') && (
-                <span className="hidden sm:inline-flex items-center gap-0.5 bg-amber-50 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 shrink-0">
-                  VIP
-                </span>
+                user?.merchantTier === 'gold' ? (
+                  <span className="inline-flex items-center gap-0.5 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-300 shrink-0 shadow-2xs">
+                    👑 VIP ذهبي
+                  </span>
+                ) : user?.merchantTier === 'silver' ? (
+                  <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-800 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-slate-300 shrink-0">
+                    🥈 فضي
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 bg-amber-50 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 shrink-0">
+                    🥉 برونزي
+                  </span>
+                )
               )}
             </div>
           </Link>

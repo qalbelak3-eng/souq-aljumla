@@ -109,7 +109,7 @@ export default function OrdersPage() {
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 select-none">
       
       {/* Top Header Bar */}
-      <div className="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-2xs">
+      <div className="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-2xs pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <EtihadLogo size="md" />

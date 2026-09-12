@@ -43,7 +43,7 @@ export default function CartDrawer() {
         <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col border-r border-slate-100">
           
           {/* Header */}
-          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+          <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-[calc(env(safe-area-inset-top,0px)+1rem)] border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-brand-coral/10 text-brand-coral flex items-center justify-center">
                 <ShoppingBag className="w-4 h-4" />

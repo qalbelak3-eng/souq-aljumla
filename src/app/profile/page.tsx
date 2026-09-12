@@ -457,7 +457,7 @@ function ProfileContent() {
   return (
     <div className="min-h-screen bg-[#f3f8fc] text-slate-900 pb-20">
       {/* Top Clean Minimal Header Bar */}
-      <div className="bg-white border-b border-slate-100 shadow-xs py-3.5 px-4 sm:px-6 sticky top-0 z-30">
+      <div className="bg-white border-b border-slate-100 shadow-xs pb-3.5 px-4 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.875rem)] sticky top-0 z-30">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <EtihadLogo size="md" />

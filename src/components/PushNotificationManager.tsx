@@ -127,7 +127,7 @@ export default function PushNotificationManager() {
           <div className="fixed inset-y-0 left-0 max-w-md w-full bg-white shadow-2xl flex flex-col justify-between z-50 animate-in slide-in-from-left duration-300">
             
             {/* Top Header */}
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 flex items-center justify-between border-b border-slate-700">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-5 pb-5 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] flex items-center justify-between border-b border-slate-700">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-amber-400/20 text-amber-400 flex items-center justify-center">
                   <Bell className="w-5 h-5" />

@@ -158,7 +158,7 @@ function RegisterForm() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 sm:py-12 space-y-6 text-xs w-full">
+    <div className="max-w-md mx-auto px-4 pb-8 sm:pb-12 pt-[calc(env(safe-area-inset-top,0px)+2rem)] space-y-6 text-xs w-full">
       
       {/* Top Logo */}
       <div className="text-center space-y-2 flex flex-col items-center">

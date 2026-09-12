@@ -532,7 +532,7 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6 text-xs">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6 sm:pb-10 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] space-y-6 text-xs">
       
       {/* Checkout Clean Distraction-Free Header */}
       <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-2xl border border-slate-200/80 shadow-xs">
