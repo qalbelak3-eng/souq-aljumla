@@ -301,7 +301,7 @@ export default function BannerSlider({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث عن المنتج الذي ترغب به"
-                  className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+                  className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-xl py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_2px_10px_rgba(0,0,0,0.05)] placeholder:text-slate-500"
                 />
                 <button
                   type="submit"
@@ -508,7 +508,7 @@ export default function BannerSlider({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="ابحث عن المنتج الذي ترغب به"
-                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-xl py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_2px_10px_rgba(0,0,0,0.05)] placeholder:text-slate-500"
               />
               <button
                 type="submit"

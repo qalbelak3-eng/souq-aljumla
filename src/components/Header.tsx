@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Search,
-  Mic,
   MapPin,
   Bell
 } from 'lucide-react';
@@ -148,44 +147,44 @@ export default function Header() {
           {/* Right: Customer Name / Location */}
           <Link
             href={user ? "/profile" : "/login"}
-            className="flex items-center gap-1.5 min-w-0 hover:opacity-90 transition group"
+            className="flex flex-col text-right min-w-0 hover:opacity-90 transition group"
             title={user ? "إدارة الحساب والعناوين" : "تسجيل الدخول"}
           >
-            <MapPin className="w-4 h-4 text-amber-600 shrink-0 group-hover:scale-110 transition" />
-            <div className="flex flex-col text-right min-w-0">
+            <div className="flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
               <span className="text-[10px] text-slate-600 font-bold leading-none">التوصيل إلى</span>
-              <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                <span 
-                  suppressHydrationWarning
-                  className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-brand-blue transition truncate max-w-[200px] sm:max-w-[320px]"
-                >
-                  {activeCustomerName || (authLoading ? '...' : 'سوق الجملة (تسجيل الدخول)')}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 min-w-0">
+              <span 
+                suppressHydrationWarning
+                className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-brand-blue transition truncate max-w-[200px] sm:max-w-[320px]"
+              >
+                {activeCustomerName || (authLoading ? '...' : 'سوق الجملة (تسجيل الدخول)')}
+              </span>
+              {user?.accountType === 'market' && (
+                <span className="hidden sm:inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                  ماركت
                 </span>
-                {user?.accountType === 'market' && (
-                  <span className="hidden sm:inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                    ماركت
-                  </span>
-                )}
-                {(user?.accountType === 'wholesale' || user?.accountType === 'merchant') && (
-                  <span className="hidden sm:inline-flex items-center gap-0.5 bg-amber-50 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 shrink-0">
-                    VIP
-                  </span>
-                )}
-              </div>
+              )}
+              {(user?.accountType === 'wholesale' || user?.accountType === 'merchant') && (
+                <span className="hidden sm:inline-flex items-center gap-0.5 bg-amber-50 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 shrink-0">
+                  VIP
+                </span>
+              )}
             </div>
           </Link>
 
-          {/* Left: Notification Bell Only */}
+          {/* Left: Notification Bell Only (Standalone Hungerstation Style) */}
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={openNotificationsDrawer}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-800 flex items-center justify-center transition shadow-2xs cursor-pointer relative shrink-0 active:scale-95"
+              className="p-1.5 text-slate-800 hover:text-slate-950 transition cursor-pointer relative shrink-0 active:scale-90"
               title="مركز الإشعارات والتنبيهات 🔔"
             >
-              <Bell className="w-4.5 h-4.5 text-slate-800" />
+              <Bell className="w-5 h-5 text-slate-800" />
               {unreadNotificationsCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-4.5 bg-red-600 text-white text-[9px] font-black rounded-full px-1 flex items-center justify-center border-2 border-white animate-pulse">
+                <span className="absolute 0 top-0.5 right-0.5 min-w-[16px] h-4 bg-red-600 text-white text-[8px] font-black rounded-full px-1 flex items-center justify-center border border-white animate-pulse">
                   {unreadNotificationsCount}
                 </span>
               )}
@@ -201,7 +200,7 @@ export default function Header() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="ابحث عن المنتج الذي ترغب به"
-              className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+              className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-xl py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_2px_10px_rgba(0,0,0,0.05)] placeholder:text-slate-500"
             />
             {/* Search Icon on Right */}
             <button
@@ -210,15 +209,6 @@ export default function Header() {
               title="بحث"
             >
               <Search className="w-4 h-4" />
-            </button>
-            {/* Blue Circle Voice / Mic Icon on Left */}
-            <button
-              type="button"
-              onClick={() => {}}
-              className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition"
-              title="بحث صوتي"
-            >
-              <Mic className="w-3.5 h-3.5" />
             </button>
           </form>
         )}
