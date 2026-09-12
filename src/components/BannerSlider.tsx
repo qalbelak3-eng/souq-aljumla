@@ -289,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(255px+env(safe-area-inset-top,0px))] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[calc(46px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -502,13 +502,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[calc(255px+env(safe-area-inset-top,0px))] sm:h-[290px] md:h-[350px] lg:h-[400px]'
+          ? 'rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(46px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input

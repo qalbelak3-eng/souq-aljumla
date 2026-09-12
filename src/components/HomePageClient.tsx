@@ -235,7 +235,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
                   className="group flex flex-col items-center justify-center p-3 rounded-2xl bg-white border border-slate-100/90 hover:border-brand-blue/30 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition duration-200 active:scale-95 text-center min-h-[95px] sm:min-h-[110px]"
                 >
                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center mb-1.5 transition duration-300 group-hover:scale-110">
-                    <CategoryIcon categoryName={cat.name} iconUrl={cat.icon} />
+                    <CategoryIcon name={cat.name} icon={cat.icon} />
                   </div>
                   <span className="text-[11px] sm:text-xs font-bold text-slate-700 group-hover:text-brand-blue transition line-clamp-1">
                     {cat.name}
