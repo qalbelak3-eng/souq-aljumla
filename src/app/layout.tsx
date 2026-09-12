@@ -17,6 +17,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'سوق الجملة',
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
   },
   icons: {
     icon: '/app-icon.png',

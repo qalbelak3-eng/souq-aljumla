@@ -270,7 +270,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[calc(295px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[390px] lg:h-[440px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -289,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(295px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[390px] lg:h-[440px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(48px+env(safe-area-inset-top,0px))] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -326,7 +326,7 @@ export default function BannerSlider({
             href={singleBanner.linkUrl || '/products'}
             className="block relative w-full h-full pointer-events-auto"
           >
-            <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
+            <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center pt-[calc(48px+env(safe-area-inset-top,0px))] sm:pt-[54px]">
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
@@ -502,13 +502,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px]'
+          ? 'rounded-none h-[calc(295px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[390px] lg:h-[440px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(48px+env(safe-area-inset-top,0px))] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -564,7 +564,7 @@ export default function BannerSlider({
               className="block relative w-full h-full pointer-events-auto"
             >
               {position === 'top' ? (
-                <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
+                <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center pt-[calc(48px+env(safe-area-inset-top,0px))] sm:pt-[54px]">
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}

@@ -117,7 +117,7 @@ export default function Header() {
 
   return (
     <header
-      className={`z-40 transition-all duration-300 w-full print:hidden ${
+      className={`z-40 transition-all duration-300 w-full print:hidden pt-[env(safe-area-inset-top,0px)] ${
         isHomePage
           ? isScrolled
             ? 'fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs'
