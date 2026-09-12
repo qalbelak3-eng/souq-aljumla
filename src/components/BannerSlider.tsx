@@ -289,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none transition-colors duration-500 ease-out h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(52px+env(safe-area-inset-top,0px))] sm:top-[56px] md:top-[60px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -492,7 +492,7 @@ export default function BannerSlider({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
-      className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
+      className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-500 ease-out ${
         position === 'top'
           ? 'rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
@@ -500,7 +500,7 @@ export default function BannerSlider({
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(52px+env(safe-area-inset-top,0px))] sm:top-[56px] md:top-[60px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
