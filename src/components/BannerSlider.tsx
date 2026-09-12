@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, ChevronLeft, Search, Mic } from 'lucide-react';
@@ -28,6 +28,8 @@ export default function BannerSlider({
     return [];
   });
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [displayIndex, setDisplayIndex] = useState(1);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoading, setIsLoading] = useState(() => !initialData || initialData.length === 0);
 
   // High performance touch and mouse drag physics
@@ -70,18 +72,68 @@ export default function BannerSlider({
 
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
 
-  // Auto slide every 4.5 seconds (paused while user is touching/swiping)
+  // Infinite loop cloned list: [last, ...banners, first]
+  const extendedBanners = useMemo(() => {
+    if (banners.length <= 1) return banners;
+    const first = banners[0];
+    const last = banners[banners.length - 1];
+    return [last, ...banners, first];
+  }, [banners]);
+
+  // Active indicator dot index (0 to banners.length - 1)
+  const activeDotIndex = useMemo(() => {
+    if (banners.length <= 1) return 0;
+    if (displayIndex <= 0) return banners.length - 1;
+    if (displayIndex >= extendedBanners.length - 1) return 0;
+    return displayIndex - 1;
+  }, [displayIndex, banners.length, extendedBanners.length]);
+
+  // Infinite Loop Navigation Handlers
+  const slideNext = useCallback(() => {
+    if (banners.length <= 1) return;
+    setIsTransitioning(true);
+    setDisplayIndex((prev) => prev + 1);
+  }, [banners.length]);
+
+  const slidePrev = useCallback(() => {
+    if (banners.length <= 1) return;
+    setIsTransitioning(true);
+    setDisplayIndex((prev) => prev - 1);
+  }, [banners.length]);
+
+  const goToSlide = useCallback((index: number) => {
+    if (banners.length <= 1) return;
+    setIsTransitioning(true);
+    setDisplayIndex(index + 1);
+  }, [banners.length]);
+
+  // Handle instant jump at the clone edges for seamless continuous loop
+  const handleTransitionEnd = () => {
+    setIsTransitioning(false);
+    if (displayIndex >= extendedBanners.length - 1) {
+      setDisplayIndex(1);
+    } else if (displayIndex <= 0) {
+      setDisplayIndex(banners.length);
+    }
+  };
+
+  // Auto slide every 4.5 seconds in a continuous infinite forward motion
   useEffect(() => {
     if (banners.length <= 1 || isSwiping) return;
     const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % banners.length);
+      if (isCompact) {
+        setCurrentIndex((prev) => (prev + 1) % banners.length);
+      } else {
+        slideNext();
+      }
     }, 4500);
     return () => clearInterval(interval);
-  }, [banners.length, isSwiping]);
+  }, [banners.length, isSwiping, isCompact, slideNext]);
 
   // Touch handlers with real-time finger tracking & smart axis lock
   const handleTouchStart = (e: React.TouchEvent) => {
     if (banners.length <= 1) return;
+    setIsTransitioning(false);
     setIsSwiping(true);
     setTouchStartX(e.targetTouches[0].clientX);
     setTouchStartY(e.targetTouches[0].clientY);
@@ -112,12 +164,22 @@ export default function BannerSlider({
     const minSwipeDistance = 30;
 
     if (isHorizontalSwipe.current && dragOffset !== 0) {
-      if (dragOffset < -minSwipeDistance) {
-        // Swiped Left -> Go Next
-        setCurrentIndex((prev) => (prev + 1) % banners.length);
-      } else if (dragOffset > minSwipeDistance) {
-        // Swiped Right -> Go Prev
-        setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
+      if (isCompact) {
+        if (dragOffset < -minSwipeDistance) {
+          setCurrentIndex((prev) => (prev + 1) % banners.length);
+        } else if (dragOffset > minSwipeDistance) {
+          setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
+        }
+      } else {
+        if (dragOffset < -minSwipeDistance) {
+          // Swiped Left -> Move to next slide seamlessly
+          slideNext();
+        } else if (dragOffset > minSwipeDistance) {
+          // Swiped Right -> Move to previous slide seamlessly
+          slidePrev();
+        } else {
+          setIsTransitioning(true);
+        }
       }
     }
 
@@ -131,6 +193,7 @@ export default function BannerSlider({
   // Mouse Drag handlers for Desktop
   const handleMouseDown = (e: React.MouseEvent) => {
     if (banners.length <= 1) return;
+    setIsTransitioning(false);
     setIsSwiping(true);
     setTouchStartX(e.clientX);
     setTouchStartY(e.clientY);
@@ -148,10 +211,20 @@ export default function BannerSlider({
     if (!isSwiping || banners.length <= 1) return;
     const minSwipeDistance = 35;
 
-    if (dragOffset < -minSwipeDistance) {
-      setCurrentIndex((prev) => (prev + 1) % banners.length);
-    } else if (dragOffset > minSwipeDistance) {
-      setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
+    if (isCompact) {
+      if (dragOffset < -minSwipeDistance) {
+        setCurrentIndex((prev) => (prev + 1) % banners.length);
+      } else if (dragOffset > minSwipeDistance) {
+        setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
+      }
+    } else {
+      if (dragOffset < -minSwipeDistance) {
+        slideNext();
+      } else if (dragOffset > minSwipeDistance) {
+        slidePrev();
+      } else {
+        setIsTransitioning(true);
+      }
     }
 
     setIsSwiping(false);
@@ -380,15 +453,15 @@ export default function BannerSlider({
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 2. STANDARD FULL-WIDTH SLIDER (ORIGINAL MAIN TOP BANNERS)
+  // 2. STANDARD FULL-WIDTH SLIDER (ORIGINAL MAIN TOP BANNERS - INFINITE LOOP)
   // ═══════════════════════════════════════════════════════════════════
   const trackTransform = dragOffset !== 0
-    ? `translateX(calc(-${currentIndex * 100}% + ${dragOffset}px))`
-    : `translateX(-${currentIndex * 100}%)`;
+    ? `translateX(calc(-${displayIndex * 100}% + ${dragOffset}px))`
+    : `translateX(-${displayIndex * 100}%)`;
 
-  const trackTransition = isSwiping
-    ? 'none'
-    : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)';
+  const trackTransition = isTransitioning && !isSwiping
+    ? 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)'
+    : 'none';
 
   return (
     <div
@@ -400,7 +473,7 @@ export default function BannerSlider({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      style={{ backgroundColor: banners[currentIndex]?.bannerBgColor || '#f8fafc' }}
+      style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
           ? 'rounded-none h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px]'
@@ -439,18 +512,19 @@ export default function BannerSlider({
         </div>
       )}
 
-      {/* Slides Track with live real-time finger tracking */}
+      {/* Slides Track with infinite continuous loop */}
       <div
         className="flex flex-row flex-nowrap w-full h-full will-change-transform"
+        onTransitionEnd={handleTransitionEnd}
         style={{
           transform: trackTransform,
           transition: trackTransition,
           direction: 'ltr',
         }}
       >
-        {banners.map((banner) => (
+        {extendedBanners.map((banner, idx) => (
           <div
-            key={banner.id}
+            key={`${banner.id}-${idx}`}
             className="w-full flex-shrink-0 relative overflow-hidden h-full"
             style={{ backgroundColor: banner.bannerBgColor || '#f8fafc' }}
           >
@@ -493,7 +567,7 @@ export default function BannerSlider({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
+              slidePrev();
             }}
             className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="السابق"
@@ -506,7 +580,7 @@ export default function BannerSlider({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setCurrentIndex((prev) => (prev + 1) % banners.length);
+              slideNext();
             }}
             className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="التالي"
@@ -516,36 +590,28 @@ export default function BannerSlider({
         </>
       )}
 
-      {/* Pagination Indicator Pills / Dots (Hungerstation Style) */}
+      {/* Pagination Indicator Pills / Dots (Hungerstation Style Capsule) */}
       {banners.length > 1 && (
-        <div
-          className={`absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 pointer-events-auto ${
-            position === 'top'
-              ? 'px-2 py-0.5'
-              : 'bg-black/30 backdrop-blur-xs px-2.5 py-1 rounded-full'
-          }`}
-        >
-          {banners.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setCurrentIndex(idx);
-              }}
-              className={`rounded-full transition-all duration-300 cursor-pointer ${
-                position === 'top'
-                  ? currentIndex === idx
-                    ? 'w-5 h-1.5 bg-slate-900/80 shadow-xs'
-                    : 'w-1.5 h-1.5 bg-slate-400/50 hover:bg-slate-700'
-                  : currentIndex === idx
-                  ? 'w-6 bg-white shadow-xs'
-                  : 'w-1.5 bg-white/50 hover:bg-white'
-              }`}
-              aria-label={`انتقال للبنر ${idx + 1}`}
-            />
-          ))}
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200/80">
+            {banners.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  goToSlide(idx);
+                }}
+                className={`rounded-full transition-all duration-300 cursor-pointer ${
+                  activeDotIndex === idx
+                    ? 'w-2 h-2 bg-slate-900 scale-110 shadow-2xs'
+                    : 'w-1.5 h-1.5 bg-slate-300/90 hover:bg-slate-400'
+                }`}
+                aria-label={`انتقال للبنر ${idx + 1}`}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
