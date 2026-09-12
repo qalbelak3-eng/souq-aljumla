@@ -441,7 +441,7 @@ export default function BannerSlider({
 
       {/* Slides Track with live real-time finger tracking */}
       <div
-        className="flex w-full h-full will-change-transform"
+        className="flex flex-row flex-nowrap w-full h-full will-change-transform"
         style={{
           transform: trackTransform,
           transition: trackTransition,
