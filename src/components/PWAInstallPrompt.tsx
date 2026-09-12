@@ -12,6 +12,7 @@ export default function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [showDesktopTip, setShowDesktopTip] = useState(false);
 
@@ -28,6 +29,8 @@ export default function PWAInstallPrompt() {
 
     // كشف دقيق: هل هو جهاز كمبيوتر / متصفح كروم / بيئة فحص؟
     const ua = window.navigator.userAgent;
+    setIsAndroid(/android/i.test(ua));
+
     const isWindowsOrPC =
       /windows|win32|win64|linux/i.test(ua) ||
       /Win32|Win64|MacIntel|Linux/i.test(navigator.platform || '') ||
@@ -293,11 +296,17 @@ export default function PWAInstallPrompt() {
             {showDesktopTip && (
               <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3 text-xs space-y-1.5 animate-fadeIn">
                 <div className="font-black flex items-center gap-1.5">
-                  <span>💻 طريقة التثبيت على الكمبيوتر:</span>
+                  <span>{isAndroid ? '📲 طريقة التثبيت على أجهزة أندرويد:' : '💻 طريقة التثبيت على الكمبيوتر:'}</span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-amber-800">
-                  اضغط على أيقونة التثبيت (🖥️ أو ⬇️) الموجودة في <strong>شريط عنوان المتصفح بالأعلى</strong>، أو من قائمة خيارات المتصفح (⋮) ثم اختر <strong>&quot;تثبيت سوق الجملة&quot;</strong>.
-                </p>
+                {isAndroid ? (
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    اضغط على قائمة خيارات المتصفح (<strong>⋮ الثلاث نقاط</strong>) في زاوية الشاشة، ثم اختر <strong>&quot;تثبيت التطبيق&quot;</strong> أو <strong>&quot;إضافة إلى الشاشة الرئيسية&quot;</strong> (Add to Home Screen).
+                  </p>
+                ) : (
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    اضغط على أيقونة التثبيت (🖥️ أو ⬇️) الموجودة في <strong>شريط عنوان المتصفح بالأعلى</strong>، أو من قائمة خيارات المتصفح (⋮) ثم اختر <strong>&quot;تثبيت سوق الجملة&quot;</strong>.
+                  </p>
+                )}
               </div>
             )}
 
