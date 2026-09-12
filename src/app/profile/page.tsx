@@ -158,7 +158,13 @@ function ProfileContent() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login?redirect=/profile');
+      router.replace('/login?redirect=/profile');
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined' && !user && window.location.pathname.startsWith('/profile')) {
+          window.location.href = '/login?redirect=/profile';
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     } else if (user) {
       setEditName(user.name || '');
       setEditBusinessName(user.businessName || '');
@@ -429,11 +435,28 @@ function ProfileContent() {
     setIsAvatarModalOpen(true);
   };
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center">
         <div className="w-10 h-10 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-3" />
         <p className="text-xs text-slate-500 font-bold">جاري تحميل الحساب...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 text-brand-blue flex items-center justify-center mx-auto text-xl font-bold">
+          👤
+        </div>
+        <p className="text-sm text-slate-800 font-black">يرجى تسجيل الدخول للوصول إلى حسابك</p>
+        <Link
+          href="/login?redirect=/profile"
+          className="inline-block bg-brand-blue text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm hover:bg-brand-blueDark transition"
+        >
+          تسجيل الدخول الآن ⬅️
+        </Link>
       </div>
     );
   }

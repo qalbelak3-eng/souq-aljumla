@@ -90,11 +90,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fetch(`/api/auth?identifier=${encodeURIComponent(iden)}`)
             .then((res) => res.json())
             .then((data) => {
-              if (data.success && data.user) {
+              if (data && data.success && data.user) {
                 saveUserToStorage(data.user);
-              } else {
-                // If user was deleted or reset from database, log out immediately!
-                saveUserToStorage(null);
               }
             })
             .catch(() => {});
