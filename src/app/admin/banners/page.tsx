@@ -1313,7 +1313,9 @@ export default function AdminBannersPage() {
                     ) : (
                       <div className="w-full h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-1">
                         <span>اضغط على الزر أعلاه لاختيار صورة الإعلان المصممة</span>
-                        <span className="text-[10px] text-slate-400">يفضل قياس 1920 × 1080 أو أي صورة إعلانية مستطيلة</span>
+                        <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                          📐 القياس الموصى به (ستايل هنقرستيشن): 1080 × 900 بكسل (أول 260px بالأعلى مخصصة لشريط البحث والموقع)
+                        </span>
                       </div>
                     )}
                   </div>

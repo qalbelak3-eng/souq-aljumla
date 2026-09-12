@@ -171,7 +171,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full min-h-[310px] sm:min-h-[360px] pt-[52px] sm:pt-[58px] pb-1 bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -190,46 +190,48 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none pt-[52px] sm:pt-[58px] pb-1 ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
-          {/* Static Search Bar on Hero Background (scrolls naturally with page) */}
-          <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-1 pb-2 relative z-10">
-            <form onSubmit={handleSearch} className="relative w-full">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث عن المنتج الذي ترغب به"
-                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
-              />
-              <button
-                type="submit"
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
-                title="بحث"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {}}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-                title="بحث صوتي"
-              >
-                <Mic className="w-3.5 h-3.5" />
-              </button>
-            </form>
+          {/* Floating Search Bar on Hero Background */}
+          <div className="absolute top-[48px] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
+            <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
+              <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ابحث عن المنتج الذي ترغب به"
+                  className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
+                  title="بحث"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {}}
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                  title="بحث صوتي"
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </div>
           </div>
 
           <Link
             href={singleBanner.linkUrl || '/products'}
-            className="block relative w-full pointer-events-auto"
+            className="block relative w-full h-full pointer-events-auto"
           >
-            <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 h-[230px] sm:h-[280px] md:h-[320px] lg:h-[350px] flex items-end justify-center">
+            <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
-                className="w-full h-full max-h-full object-contain object-bottom pointer-events-none drop-shadow-xs"
+                className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
                 draggable={false}
               />
             </div>
@@ -401,43 +403,45 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[currentIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none pt-[52px] sm:pt-[58px] pb-1.5'
+          ? 'rounded-none h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
-      {/* 0. Static Search Bar on Hero Background (Above slides, scrolls naturally with page) */}
+      {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-1 pb-2 relative z-10">
-          <form onSubmit={handleSearch} className="relative w-full">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث عن المنتج الذي ترغب به"
-              className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
-            />
-            <button
-              type="submit"
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
-              title="بحث"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {}}
-              className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-              title="بحث صوتي"
-            >
-              <Mic className="w-3.5 h-3.5" />
-            </button>
-          </form>
+        <div className="absolute top-[48px] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
+          <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
+            <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث عن المنتج الذي ترغب به"
+                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+              />
+              <button
+                type="submit"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-brand-blue transition cursor-pointer"
+                title="بحث"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {}}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                title="بحث صوتي"
+              >
+                <Mic className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
       {/* Slides Track with live real-time finger tracking */}
       <div
-        className="flex w-full will-change-transform"
+        className="flex w-full h-full will-change-transform"
         style={{
           transform: trackTransform,
           transition: trackTransition,
@@ -457,14 +461,14 @@ export default function BannerSlider({
                   e.preventDefault();
                 }
               }}
-              className="block relative w-full pointer-events-auto"
+              className="block relative w-full h-full pointer-events-auto"
             >
               {position === 'top' ? (
-                <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 h-[230px] sm:h-[280px] md:h-[320px] lg:h-[350px] flex items-end justify-center">
+                <div className="w-full max-w-5xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
-                    className="w-full h-full max-h-full object-contain object-bottom pointer-events-none drop-shadow-xs"
+                    className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
                     draggable={false}
                   />
                 </div>
