@@ -270,7 +270,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -289,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] md:top-[54px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[48px] md:top-[52px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -330,7 +330,7 @@ export default function BannerSlider({
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
-                className="w-full h-full object-contain md:object-cover md:[object-position:center_75%] pointer-events-none drop-shadow-xs"
+                className="w-full h-full object-contain pointer-events-none drop-shadow-xs"
                 draggable={false}
               />
             </div>
@@ -502,13 +502,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px]'
+          ? 'rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[50px] md:top-[54px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[48px] md:top-[52px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -568,7 +568,7 @@ export default function BannerSlider({
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
-                    className="w-full h-full object-contain md:object-cover md:[object-position:center_75%] pointer-events-none drop-shadow-xs"
+                    className="w-full h-full object-contain pointer-events-none drop-shadow-xs"
                     draggable={false}
                   />
                 </div>
