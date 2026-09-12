@@ -4,7 +4,7 @@ export const initialBanners: Banner[] = [
   {
     "title": "89746554",
     "subtitle": "",
-    "image": "/uploads/banner_banner-1789153208899_1789223634181_edqlwm.png",
+    "image": "/uploads/banner_banner-1789153208899_1789224440385_ily39m.png",
     "linkUrl": "/products",
     "badge": "توصيل سريع 🚚",
     "position": "top",
@@ -23,7 +23,7 @@ export const initialBanners: Banner[] = [
   {
     "title": "897465",
     "subtitle": "",
-    "image": "/uploads/banner_banner-1789153146053_1789153146058_bluyoz.png",
+    "image": "/uploads/banner_banner-1789153146053_1789224455058_dhhmzk.png",
     "linkUrl": "/products",
     "badge": "توصيل سريع 🚚",
     "position": "top",

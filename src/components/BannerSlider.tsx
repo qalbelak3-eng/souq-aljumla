@@ -244,7 +244,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -263,11 +263,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[48px] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -476,13 +476,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[330px] sm:h-[370px] md:h-[410px] lg:h-[450px]'
+          ? 'rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[48px] sm:top-[54px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -592,7 +592,7 @@ export default function BannerSlider({
 
       {/* Pagination Indicator Pills / Dots (Hungerstation Style Capsule) */}
       {banners.length > 1 && (
-        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
           <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-200/80">
             {banners.map((_, idx) => (
               <button
