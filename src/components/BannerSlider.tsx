@@ -270,7 +270,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -289,7 +289,7 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
@@ -330,7 +330,7 @@ export default function BannerSlider({
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
-                className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
+                className="w-full h-full object-contain md:object-cover md:[object-position:center_75%] pointer-events-none drop-shadow-xs"
                 draggable={false}
               />
             </div>
@@ -502,7 +502,7 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[calc(270px+env(safe-area-inset-top,0px))] sm:h-[340px] md:h-[410px] lg:h-[460px] xl:h-[480px]'
+          ? 'rounded-none h-[calc(330px+env(safe-area-inset-top,0px))] sm:h-[350px] md:h-[400px] lg:h-[440px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
@@ -568,7 +568,7 @@ export default function BannerSlider({
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
-                    className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
+                    className="w-full h-full object-contain md:object-cover md:[object-position:center_75%] pointer-events-none drop-shadow-xs"
                     draggable={false}
                   />
                 </div>
