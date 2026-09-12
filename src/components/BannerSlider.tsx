@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Search, Mic } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Search } from 'lucide-react';
 import { Banner } from '@/types';
 
 interface BannerSliderProps {
@@ -293,7 +293,7 @@ export default function BannerSlider({
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[48px] md:top-[52px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -301,7 +301,7 @@ export default function BannerSlider({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث عن المنتج الذي ترغب به"
-                  className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+                  className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
                 />
                 <button
                   type="submit"
@@ -309,14 +309,6 @@ export default function BannerSlider({
                   title="بحث"
                 >
                   <Search className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {}}
-                  className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-                  title="بحث صوتي"
-                >
-                  <Mic className="w-3.5 h-3.5" />
                 </button>
               </form>
             </div>
@@ -508,7 +500,7 @@ export default function BannerSlider({
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(44px+env(safe-area-inset-top,0px))] sm:top-[48px] md:top-[52px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -516,7 +508,7 @@ export default function BannerSlider({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="ابحث عن المنتج الذي ترغب به"
-                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-11 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
+                className="w-full bg-white text-slate-800 text-xs sm:text-sm rounded-full py-2.5 pr-10 pl-4 border border-slate-200/80 focus:border-brand-blue focus:outline-none transition shadow-[0_3px_12px_rgba(0,0,0,0.06)] placeholder:text-slate-500"
               />
               <button
                 type="submit"
@@ -524,14 +516,6 @@ export default function BannerSlider({
                 title="بحث"
               >
                 <Search className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {}}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-                title="بحث صوتي"
-              >
-                <Mic className="w-3.5 h-3.5" />
               </button>
             </form>
           </div>

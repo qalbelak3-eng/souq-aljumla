@@ -14,8 +14,23 @@ import { useNotifications } from '@/context/NotificationsContext';
 import { sendSystemNotification, playNotificationSound } from '@/lib/notifications';
 
 export default function Header() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { openDrawer: openNotificationsDrawer, unreadCount: unreadNotificationsCount } = useNotifications();
+  const [cachedName, setCachedName] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('etihad_user_iq');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.businessName || parsed?.name) {
+          setCachedName(parsed.businessName || parsed.name);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const activeCustomerName = user?.businessName || user?.name || cachedName;
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadRepliesCount, setUnreadRepliesCount] = useState<number>(0);
   const [liveReplyToast, setLiveReplyToast] = useState<{ id: string; text: string } | null>(null);
@@ -133,17 +148,18 @@ export default function Header() {
           {/* Right: Customer Name / Location */}
           <Link
             href={user ? "/profile" : "/login"}
-            className="flex items-center gap-2.5 min-w-0 hover:opacity-90 transition group"
+            className="flex items-center gap-1.5 min-w-0 hover:opacity-90 transition group"
             title={user ? "إدارة الحساب والعناوين" : "تسجيل الدخول"}
           >
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-amber-100/90 flex items-center justify-center text-amber-700 shadow-2xs group-hover:scale-105 transition shrink-0 border border-amber-200/60">
-              <MapPin className="w-4 h-4 text-amber-600" />
-            </div>
+            <MapPin className="w-4 h-4 text-amber-600 shrink-0 group-hover:scale-110 transition" />
             <div className="flex flex-col text-right min-w-0">
               <span className="text-[10px] text-slate-600 font-bold leading-none">التوصيل إلى</span>
               <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                <span className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-brand-blue transition truncate max-w-[200px] sm:max-w-[320px]">
-                  {user ? (user.businessName || user.name) : 'سوق الجملة (تسجيل الدخول)'}
+                <span 
+                  suppressHydrationWarning
+                  className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-brand-blue transition truncate max-w-[200px] sm:max-w-[320px]"
+                >
+                  {activeCustomerName || (authLoading ? '...' : 'سوق الجملة (تسجيل الدخول)')}
                 </span>
                 {user?.accountType === 'market' && (
                   <span className="hidden sm:inline-flex items-center gap-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
