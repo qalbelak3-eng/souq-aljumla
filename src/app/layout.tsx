@@ -12,11 +12,12 @@ import AbandonedCartNotifier from '@/components/AbandonedCartNotifier';
 import CustomerGreetingsNotifier from '@/components/CustomerGreetingsNotifier';
 
 export const viewport: Viewport = {
-  themeColor: '#ffd700',
+  themeColor: '#fff8c1',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: 'cover',
 };
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'سوق الجملة',
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
   },
   icons: {
     icon: '/app-icon.png',

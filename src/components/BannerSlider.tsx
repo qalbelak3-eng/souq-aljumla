@@ -130,6 +130,32 @@ export default function BannerSlider({
     return () => clearInterval(interval);
   }, [banners.length, isSwiping, isCompact, slideNext]);
 
+  // Dynamic theme-color sync (matches Hungerstation mobile status bar color behind clock and battery)
+  useEffect(() => {
+    if (position !== 'top') return;
+
+    const updateThemeColor = () => {
+      let metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (!metaTheme) {
+        metaTheme = document.createElement('meta');
+        metaTheme.setAttribute('name', 'theme-color');
+        document.head.appendChild(metaTheme);
+      }
+      if (window.scrollY > 40) {
+        metaTheme.setAttribute('content', '#ffffff');
+      } else {
+        const activeColor = banners[activeDotIndex]?.bannerBgColor || '#fff8c1';
+        metaTheme.setAttribute('content', activeColor);
+      }
+    };
+
+    updateThemeColor();
+    window.addEventListener('scroll', updateThemeColor, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', updateThemeColor);
+    };
+  }, [position, activeDotIndex, banners]);
+
   // Touch handlers with real-time finger tracking & smart axis lock
   const handleTouchStart = (e: React.TouchEvent) => {
     if (banners.length <= 1) return;
@@ -263,11 +289,11 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(255px+env(safe-area-inset-top,0px))] sm:h-[290px] md:h-[350px] lg:h-[400px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
-          <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+          <div className="absolute top-[calc(46px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
             <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
               <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
                 <input
@@ -476,13 +502,13 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
         position === 'top'
-          ? 'rounded-none h-[255px] sm:h-[290px] md:h-[350px] lg:h-[400px]'
+          ? 'rounded-none h-[calc(255px+env(safe-area-inset-top,0px))] sm:h-[290px] md:h-[350px] lg:h-[400px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[46px] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(46px+env(safe-area-inset-top,0px))] sm:top-[50px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
