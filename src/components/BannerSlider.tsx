@@ -304,7 +304,7 @@ export default function BannerSlider({
               <img
                 src={singleBanner.image}
                 alt={singleBanner.title || 'بنر إعلاني'}
-                className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
+                className="w-full h-full object-contain object-top pointer-events-none drop-shadow-xs"
                 draggable={false}
               />
             </div>
@@ -542,7 +542,7 @@ export default function BannerSlider({
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
-                    className="w-full h-full object-cover sm:object-contain object-top pointer-events-none drop-shadow-xs"
+                    className="w-full h-full object-contain object-top pointer-events-none drop-shadow-xs"
                     draggable={false}
                   />
                 </div>

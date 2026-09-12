@@ -4,7 +4,7 @@ export const initialBanners: Banner[] = [
   {
     "title": "89746554",
     "subtitle": "",
-    "image": "/uploads/banner_banner-1789153208899_1789154718445_k36a0n.png",
+    "image": "/uploads/banner_banner-1789153208899_1789223634181_edqlwm.png",
     "linkUrl": "/products",
     "badge": "توصيل سريع 🚚",
     "position": "top",
