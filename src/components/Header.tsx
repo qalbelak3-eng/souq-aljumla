@@ -139,6 +139,16 @@ export default function Header() {
           : 'sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs'
       }`}
     >
+      {/* Dedicated Status Bar / Safe-Area Background Layer for Homepage */}
+      {isHomePage && (
+        <div
+          className={`absolute top-0 left-0 right-0 h-[env(safe-area-inset-top,0px)] pointer-events-none transition-colors duration-[400ms] ease-out ${
+            isScrolled ? 'bg-white/95' : 'bg-[var(--active-banner-bg,#fff8c1)]'
+          }`}
+          aria-hidden="true"
+        />
+      )}
+
       <div className={`max-w-5xl mx-auto px-4 sm:px-6 ${isHomePage ? 'py-2' : 'py-2.5 space-y-2.5'}`}>
         
         {/* ROW 1: Customer Name on Right, Notification Bell on Left (Hungerstation Style) */}

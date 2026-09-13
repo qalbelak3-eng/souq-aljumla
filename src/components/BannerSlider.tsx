@@ -146,6 +146,9 @@ export default function BannerSlider({
       } else {
         const activeColor = banners[activeDotIndex]?.bannerBgColor || '#fff8c1';
         metaTheme.setAttribute('content', activeColor);
+        if (typeof document !== 'undefined') {
+          document.documentElement.style.setProperty('--active-banner-bg', activeColor);
+        }
       }
     };
 
@@ -492,9 +495,9 @@ export default function BannerSlider({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
-      className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${
+      className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-[400ms] ease-out ${
         position === 'top'
-          ? 'rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px]'
+          ? 'rounded-none h-[75vw] sm:h-[320px] md:h-[380px] lg:h-[420px]'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
