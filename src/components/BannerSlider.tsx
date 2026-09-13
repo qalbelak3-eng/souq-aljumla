@@ -541,7 +541,7 @@ export default function BannerSlider({
 
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[80px] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
