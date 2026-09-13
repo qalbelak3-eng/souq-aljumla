@@ -40,6 +40,17 @@ export default function BannerSlider({
   const isHorizontalSwipe = useRef<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    if (position !== 'top') return;
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 40);
+    };
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [position]);
 
   useEffect(() => {
     if (initialData && initialData.length > 0) {
@@ -501,9 +512,36 @@ export default function BannerSlider({
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
+      {/* Hungerstation-style Synchronized Status-Bar Sliding Track */}
+      {position === 'top' && (
+        <div
+          className={`fixed top-0 left-0 right-0 h-[env(safe-area-inset-top,0px)] overflow-hidden pointer-events-none z-30 transition-opacity duration-300 ${
+            isScrolled ? 'opacity-0' : 'opacity-100'
+          }`}
+          aria-hidden="true"
+        >
+          <div
+            className="flex flex-row flex-nowrap w-full h-full will-change-transform"
+            style={{
+              transform: trackTransform,
+              transition: trackTransition,
+              direction: 'ltr',
+            }}
+          >
+            {extendedBanners.map((banner, idx) => (
+              <div
+                key={`statusbar-${banner.id}-${idx}`}
+                className="w-full h-full shrink-0"
+                style={{ backgroundColor: banner.bannerBgColor || '#fff8c1' }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(72px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input

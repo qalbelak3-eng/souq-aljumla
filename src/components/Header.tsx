@@ -139,11 +139,11 @@ export default function Header() {
           : 'sticky top-0 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs'
       }`}
     >
-      {/* Dedicated Status Bar / Safe-Area Background Layer for Homepage */}
+      {/* Dedicated Status Bar / Safe-Area Background Layer for Scrolled Header */}
       {isHomePage && (
         <div
-          className={`absolute top-0 left-0 right-0 h-[env(safe-area-inset-top,0px)] pointer-events-none transition-colors duration-[400ms] ease-out ${
-            isScrolled ? 'bg-white/95' : 'bg-[var(--active-banner-bg,#fff8c1)]'
+          className={`absolute top-0 left-0 right-0 h-[env(safe-area-inset-top,0px)] pointer-events-none transition-opacity duration-300 ${
+            isScrolled ? 'bg-white/95 opacity-100' : 'opacity-0'
           }`}
           aria-hidden="true"
         />
