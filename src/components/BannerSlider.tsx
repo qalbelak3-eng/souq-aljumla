@@ -508,7 +508,7 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-[400ms] ease-out ${
         position === 'top'
-          ? 'rounded-none h-[75vw] sm:h-[320px] md:h-[380px] lg:h-[420px]'
+          ? 'rounded-none aspect-[3/2] w-full'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
@@ -541,7 +541,7 @@ export default function BannerSlider({
 
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(72px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(56px+env(safe-area-inset-top,0px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
@@ -589,11 +589,11 @@ export default function BannerSlider({
               className="block relative w-full h-full pointer-events-auto"
             >
               {position === 'top' ? (
-                <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-0 sm:px-6 h-full flex items-center justify-center">
+                <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-0 h-full flex items-center justify-center">
                   <img
                     src={banner.image}
                     alt={banner.title || 'بنر إعلاني'}
-                    className="w-full h-full object-contain pointer-events-none drop-shadow-xs"
+                    className="w-full h-full object-cover pointer-events-none"
                     draggable={false}
                   />
                 </div>
