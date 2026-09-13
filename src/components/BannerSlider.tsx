@@ -610,7 +610,7 @@ export default function BannerSlider({
         ))}
       </div>
 
-      {/* Navigation Arrows (Desktop Hover) */}
+      {/* Navigation Arrows (Desktop Hover Only - Hidden on Mobile/Touch) */}
       {banners.length > 1 && (
         <>
           <button
@@ -620,7 +620,7 @@ export default function BannerSlider({
               e.stopPropagation();
               slidePrev();
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+            className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="السابق"
           >
             <ChevronRight className="w-4 h-4" />
@@ -633,7 +633,7 @@ export default function BannerSlider({
               e.stopPropagation();
               slideNext();
             }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
+            className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
             aria-label="التالي"
           >
             <ChevronLeft className="w-4 h-4" />
