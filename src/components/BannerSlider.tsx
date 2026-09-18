@@ -508,7 +508,7 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-[400ms] ease-out ${
         position === 'top'
-          ? 'rounded-none aspect-[24/17] w-full'
+          ? 'rounded-none aspect-[4/3] w-full'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
@@ -541,7 +541,7 @@ export default function BannerSlider({
 
       {/* 0. Floating Search Bar over Hero Track (scrolls naturally with page) */}
       {position === 'top' && (
-        <div className="absolute top-[calc(80px+clamp(0px,calc(env(safe-area-inset-top,0px)-24px),28px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
+        <div className="absolute top-[calc(80px+clamp(0px,calc(env(safe-area-inset-top,0px)-20px),42px))] sm:top-[60px] md:top-[64px] left-0 right-0 z-20 pointer-events-none">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6">
             <form onSubmit={handleSearch} className="relative w-full pointer-events-auto">
               <input
