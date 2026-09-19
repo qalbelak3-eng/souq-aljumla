@@ -85,7 +85,7 @@ body {
 
 .animate-icon-sway {
   display: inline-block;
-  animation: icon-sway 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  /* animation disabled to keep category icons stable and still */
   transform-origin: center;
 }
 

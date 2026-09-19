@@ -204,9 +204,9 @@ export default function AdminCategoriesPage() {
                 key={cat.id}
                 className="bg-[#f7fbff] rounded-3xl border border-sky-100/90 shadow-xs hover:shadow-md hover:border-sky-300 transition-all p-4 flex flex-col items-center justify-between text-center group"
               >
-                {/* Animated Icon Card */}
-                <div className="w-16 h-16 rounded-2xl bg-white border border-sky-100 flex items-center justify-center shadow-xs transition group-hover:scale-105 my-2">
-                  <CategoryIcon name={cat.name} icon={cat.icon} size="lg" animate={true} />
+                {/* Icon or Image Card */}
+                <div className="w-16 h-16 rounded-2xl bg-white border border-sky-100 flex items-center justify-center shadow-xs transition group-hover:scale-105 my-2 overflow-hidden p-1">
+                  <CategoryIcon name={cat.name} icon={cat.icon} image={cat.image} size="lg" animate={false} />
                 </div>
 
                 <div className="w-full space-y-1">
@@ -246,11 +246,11 @@ export default function AdminCategoriesPage() {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center">
-                  <CategoryIcon name={name || 'قسم'} icon={selectedIcon} size="sm" animate={true} />
+                <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center overflow-hidden">
+                  <CategoryIcon name={name || 'قسم'} icon={selectedIcon} image={image} size="sm" animate={false} />
                 </div>
                 <h3 className="font-black text-base text-slate-900">
-                  {editingCategory ? 'تعديل القسم والأيقونة' : 'إضافة قسم مواد غذائية جديد'}
+                  {editingCategory ? 'تعديل بيانات القسم' : 'إضافة قسم مواد غذائية جديد'}
                 </h3>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 p-1">
@@ -273,16 +273,80 @@ export default function AdminCategoriesPage() {
                 />
               </div>
 
-              {/* Visual Animated Icon Selector */}
-              <div className="space-y-2 bg-[#f4f9ff] p-4 rounded-2xl border border-sky-100">
+              {/* Option 1: Upload Custom Category Image */}
+              <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="font-black text-slate-800 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-brand-blue" />
+                    <span>صورة مخصصة للقسم (اختياري):</span>
+                  </label>
+                  {image && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImage('');
+                        toast.info('تمت إزالة صورة القسم، سيتم استخدام الأيقونة');
+                      }}
+                      className="text-red-500 hover:text-red-700 text-[11px] font-bold py-1 px-2.5 rounded-xl bg-red-50 border border-red-200 transition"
+                    >
+                      ✕ حذف الصورة
+                    </button>
+                  )}
+                </div>
+
+                {image ? (
+                  <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200">
+                    <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                      <img src={image} alt="معاينة" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="text-xs space-y-0.5">
+                      <span className="font-black text-emerald-600 block">✓ تم تحديد صورة مخصصة</span>
+                      <span className="text-[10.5px] text-slate-500 block">تظهر هذه الصورة في المتجر بدلاً من الأيقونة</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="flex flex-col items-center justify-center w-full p-3.5 border-2 border-dashed border-slate-300 hover:border-brand-blue/60 rounded-xl cursor-pointer bg-white hover:bg-sky-50/40 transition group">
+                      <div className="flex flex-col items-center justify-center space-y-1 text-center">
+                        <div className="w-9 h-9 rounded-full bg-slate-100 group-hover:bg-brand-blue/10 flex items-center justify-center transition">
+                          <ImageIcon className="w-4 h-4 text-slate-500 group-hover:text-brand-blue transition" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-700">
+                          اضغط لرفع صورة من جهازك للقسم
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          PNG, JPG, WebP (تظهر كأيقونة رئيسية للقسم)
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const compressed = await compressImageFile(file, 400, 400, 0.9);
+                              setImage(compressed);
+                              toast.success('تم تحميل صورة القسم بنجاح ✨');
+                            } catch (err) {
+                              toast.error('تعذر معالجة الصورة، يرجى اختيار ملف صالح');
+                            }
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Option 2: Visual Icon Selector (Fallback if no image is uploaded) */}
+              <div className="space-y-2 bg-[#f8faff] p-3.5 rounded-2xl border border-sky-100">
                 <div className="flex items-center justify-between">
                   <label className="font-black text-slate-800 flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-amber-500" />
-                    <span>اختر الأيقونة المتحركة للقسم:</span>
+                    <span>أو اختر أيقونة ملونة للقسم {image && '(بديلة في حال حذف الصورة)'}:</span>
                   </label>
-                  <span className="text-[10px] text-sky-700 font-bold bg-sky-100/70 px-2 py-0.5 rounded-lg">
-                    تهتز بحركة بطيئة جذابة ✦
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 pt-1">
@@ -303,7 +367,7 @@ export default function AdminCategoriesPage() {
                         }`}
                       >
                         <div className="w-8 h-8 flex items-center justify-center">
-                          <CategoryIcon name="" icon={preset.iconName} size="sm" animate={isSelected} />
+                          <CategoryIcon name="" icon={preset.iconName} size="sm" animate={false} />
                         </div>
                         <span className={`text-[10px] font-black line-clamp-1 ${isSelected ? 'text-brand-blue' : 'text-slate-600'}`}>
                           {preset.name}

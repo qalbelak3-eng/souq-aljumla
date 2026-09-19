@@ -396,6 +396,8 @@ function ProductsCatalog() {
       (b.position === 'category' || b.position === 'all' || (b.category && normalizeCat(b.category) === normalizeCat(selectedCategory)))
   );
 
+  const currentCategoryObj = categories.find((c) => c.name === selectedCategory);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3 select-none">
       {isShowingCompanies ? (
@@ -408,7 +410,13 @@ function ProductsCatalog() {
                 className="flex items-center gap-2.5 text-slate-900 hover:text-brand-blue font-black text-xl sm:text-2xl transition group cursor-pointer"
               >
                 <ArrowRight className="w-5 h-5 text-slate-900 group-hover:-translate-x-1 transition-transform" />
-                <CategoryIcon name={selectedCategory} size="sm" animate={true} />
+                <CategoryIcon
+                  name={selectedCategory}
+                  icon={currentCategoryObj?.icon}
+                  image={currentCategoryObj?.image}
+                  size="sm"
+                  animate={false}
+                />
                 <span>{selectedCategory}</span>
               </button>
             </div>

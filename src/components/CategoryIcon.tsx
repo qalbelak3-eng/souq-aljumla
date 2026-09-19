@@ -217,6 +217,7 @@ export function getCategoryPreset(catName: string, iconKey?: string): CategoryIc
 interface CategoryIconProps {
   name: string;
   icon?: string;
+  image?: string;
   size?: 'sm' | 'md' | 'lg';
   animate?: boolean;
   className?: string;
@@ -225,16 +226,28 @@ interface CategoryIconProps {
 export default function CategoryIcon({
   name,
   icon,
+  image,
   size = 'md',
-  animate = true,
+  animate = false,
   className = '',
 }: CategoryIconProps) {
-  const preset = getCategoryPreset(name, icon);
-
   let iconSize = 'w-7 h-7 sm:w-8 sm:h-8';
   if (size === 'sm') iconSize = 'w-5 h-5';
   if (size === 'lg') iconSize = 'w-9 h-9 sm:w-11 sm:h-11';
 
+  if (image) {
+    return (
+      <div className={`flex items-center justify-center ${className}`}>
+        <img
+          src={image}
+          alt={name || 'أيقونة القسم'}
+          className={`${iconSize} object-contain pointer-events-none rounded-lg`}
+        />
+      </div>
+    );
+  }
+
+  const preset = getCategoryPreset(name, icon);
   const animationClass = animate ? 'animate-icon-sway' : '';
 
   const renderVector = () => {
