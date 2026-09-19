@@ -34,7 +34,9 @@ import {
   ExternalLink,
   Image as ImageIcon,
   ArrowRight,
-  Headphones
+  Headphones,
+  BadgeCheck,
+  Megaphone
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Order, SavedAddress, UserComplaint, Product } from '@/types';
@@ -45,14 +47,14 @@ import WalletStatsCard from '@/components/WalletStatsCard';
 import { calculateUserCashbackFromOrders } from '@/lib/pricing';
 
 const PRESET_AVATARS = [
-  { id: 'merchant_1', name: 'تاجر أعمال أنيق 👔', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300' },
-  { id: 'merchant_2', name: 'رجل أعمال وتجارة 💼', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300' },
-  { id: 'merchant_3', name: 'سوبرماركت ومحل تجاري 🏪', url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=300' },
-  { id: 'merchant_4', name: 'تاج ذهبي VIP 👑', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=300' },
-  { id: 'merchant_5', name: 'أسطول التوريد والتوزيع 🚚', url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=300' },
-  { id: 'merchant_6', name: 'مركز تجاري وتسوق 🏬', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=300' },
-  { id: 'merchant_7', name: 'تاجر شاب معاصر 📱', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=300' },
-  { id: 'merchant_8', name: 'سيدة أعمال ومتجر 🏬', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=300' },
+  { id: 'merchant_1', name: 'تاجر أعمال أنيق', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300' },
+  { id: 'merchant_2', name: 'رجل أعمال وتجارة', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300' },
+  { id: 'merchant_3', name: 'سوبرماركت ومحل تجاري', url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?q=80&w=300' },
+  { id: 'merchant_4', name: 'رمز VIP المعتمد', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=300' },
+  { id: 'merchant_5', name: 'أسطول التوريد والتوزيع', url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=300' },
+  { id: 'merchant_6', name: 'مركز تجاري وتسوق', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=300' },
+  { id: 'merchant_7', name: 'تاجر معاصر', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=300' },
+  { id: 'merchant_8', name: 'سيدة أعمال ومتجر', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=300' },
 ];
 
 function ProfileContent() {
@@ -167,7 +169,7 @@ function ProfileContent() {
       setSavedAddresses(user.savedAddresses || [
         {
           id: 'loc_default_1',
-          title: user.accountType === 'market' || user.accountType === 'wholesale' ? 'الماركت / المتجر 🏪' : 'موقع البيت 🏠',
+          title: user.accountType === 'market' || user.accountType === 'wholesale' ? 'موقع المتجر' : 'موقع التوصيل الأساسي',
           city: user.city || 'كربلاء المقدسة',
           address: user.address || 'حي الحر - كربلاء',
           isDefault: true,
@@ -531,44 +533,56 @@ function ProfileContent() {
 
           <div>
             <div className="flex items-center gap-2 justify-center sm:justify-start flex-wrap">
-              <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
-                <span>🏪</span>
-                <span>{user.businessName || user.name}</span>
+              <h1 className="text-lg sm:text-xl font-black text-slate-900">
+                {user.businessName || user.name}
               </h1>
-              {(user.accountType === 'wholesale' || user.accountType === 'merchant') && isApprovedMerchant && (
-                <MerchantTierBadge tier={user.merchantTier || 'bronze'} size="sm" />
+              {user.accountType === 'market' ? (
+                <span className="bg-emerald-50 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                  ماركت
+                </span>
+              ) : user.accountType === 'wholesale' || user.accountType === 'merchant' ? (
+                <span className="bg-amber-50 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200">
+                  جملة
+                </span>
+              ) : (
+                <span className="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-blue-200">
+                  زبون
+                </span>
               )}
             </div>
             
             <p className="text-xs text-slate-600 font-bold mt-1 flex items-center gap-2 justify-center sm:justify-start flex-wrap">
               <span className="text-slate-400">صاحب الحساب:</span>
-              <span className="font-black text-slate-900">👤 {user.name}</span>
+              <span className="font-black text-slate-900">{user.name}</span>
               <span>•</span>
               <span className="font-mono text-slate-500" dir="ltr">{user.phone}</span>
             </p>
             
             <div className="mt-1.5 flex items-center gap-2 justify-center sm:justify-start flex-wrap">
               {user.accountType === 'market' && (
-                <span className="bg-emerald-50 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-200">
-                  🏪 ماركت معتمد
+                <span className="bg-emerald-50 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-200 flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>ماركت معتمد</span>
                 </span>
               )}
               {(user.accountType === 'wholesale' || user.accountType === 'merchant') && (
-                <span className="bg-amber-50 text-amber-900 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-amber-200">
-                  👑 تاجر جملة معتمد
+                <span className="bg-amber-50 text-amber-900 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-1.5">
+                  <BadgeCheck className="w-3.5 h-3.5 text-amber-700" />
+                  <span>تاجر جملة معتمد</span>
                 </span>
               )}
               {(!user.accountType || user.accountType === 'individual') && (
-                <span className="bg-sky-50 text-sky-800 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-sky-200">
-                  👤 زبون عادي (مفرد)
+                <span className="bg-sky-50 text-sky-800 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-sky-200 flex items-center gap-1.5">
+                  <UserIcon className="w-3.5 h-3.5 text-sky-700" />
+                  <span>زبون عادي</span>
                 </span>
               )}
               <button
                 onClick={openAvatarModal}
                 className="text-[10px] text-brand-blue hover:underline font-black flex items-center gap-1 bg-blue-50/70 px-2 py-0.5 rounded-md cursor-pointer"
               >
-                <Camera className="w-3 h-3" />
-                <span>تغيير صورتي 📸</span>
+                <Camera className="w-3 h-3 text-brand-blue" />
+                <span>تغيير صورتي</span>
               </button>
             </div>
           </div>
@@ -586,7 +600,7 @@ function ProfileContent() {
             title="خدمة العملاء والدعم الفني عبر واتساب"
           >
             <Headphones className="w-3.5 h-3.5 text-slate-900 animate-headphone-shake" />
-            <span>خدمة العملاء والدعم 💬</span>
+            <span>خدمة العملاء والدعم</span>
           </a>
 
           <Link
@@ -594,7 +608,7 @@ function ProfileContent() {
             className="bg-blue-50 hover:bg-blue-100 text-brand-blue font-bold text-xs py-2 px-3 rounded-xl transition flex items-center gap-1.5 border border-blue-200 shadow-2xs"
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>كشف حسابي والديون 📄</span>
+            <span>كشف حسابي والديون</span>
           </Link>
 
           <button
@@ -683,8 +697,9 @@ function ProfileContent() {
                 <Wallet className="w-4 h-4" />
                 <span>رصيد أرباحك الحالي</span>
               </span>
-              <span className="text-[11px] font-bold bg-white/20 px-3 py-1 rounded-full backdrop-blur-xs">
-                اربح على كل قطعة تطلبها 🎁
+              <span className="text-[11px] font-bold bg-white/20 px-3 py-1 rounded-full backdrop-blur-xs flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5" />
+                <span>اربح على كل قطعة تطلبها</span>
               </span>
             </div>
 
@@ -703,8 +718,8 @@ function ProfileContent() {
 
           {/* Reward Status & Start Shopping Card */}
           <div className="bg-white rounded-3xl p-8 text-center border border-slate-200/90 shadow-xs space-y-4">
-            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto text-3xl shadow-2xs">
-              🎁
+            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xs">
+              <Gift className="w-8 h-8 text-amber-600" />
             </div>
             
             <div className="space-y-1">
@@ -722,7 +737,7 @@ function ProfileContent() {
                 className="inline-flex items-center gap-2 bg-slate-900 hover:bg-black text-white font-black text-xs py-3 px-8 rounded-2xl shadow-md transition active:scale-98"
               >
                 <ShoppingBag className="w-4 h-4 text-amber-400" />
-                <span>ابدأ التسوق الآن 🛍️</span>
+                <span>ابدأ التسوق الآن</span>
               </Link>
             </div>
           </div>
@@ -730,7 +745,7 @@ function ProfileContent() {
           {/* Withdrawals History */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs space-y-3">
             <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-              <span>تاريخ السحوبات والمكافآت 📈</span>
+              <span>تاريخ السحوبات والمكافآت</span>
             </h3>
             <div className="p-6 text-center text-slate-400 text-xs font-bold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               لا توجد سحوبات سابقة
@@ -748,8 +763,9 @@ function ProfileContent() {
               <AlertCircle className="w-5 h-5" />
               <h2 className="font-black text-sm sm:text-base">الشكاوى والملاحظات</h2>
             </div>
-            <span className="text-[10px] bg-white/20 px-2.5 py-1 rounded-full font-bold">
-              صوتك يصل للإدارة مباشرة 📣
+            <span className="text-[10px] bg-white/20 px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5">
+              <Megaphone className="w-3.5 h-3.5" />
+              <span>صوتك يصل للإدارة مباشرة</span>
             </span>
           </div>
 
@@ -901,8 +917,8 @@ function ProfileContent() {
 
           {savedAddresses.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/90 shadow-xs space-y-4">
-              <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-                📍
+              <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
+                <MapPin className="w-8 h-8 text-sky-600" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-black text-slate-900">ما عندك مواقع محفوظة</h3>
@@ -958,7 +974,7 @@ function ProfileContent() {
                       className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-blue hover:underline pt-1"
                     >
                       <Navigation className="w-3.5 h-3.5" />
-                      <span>عرض على الخريطة 🗺️</span>
+                      <span>عرض على الخريطة</span>
                     </a>
                   )}
                 </div>
@@ -980,12 +996,12 @@ function ProfileContent() {
                   {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant' ? (
                     <>
                       <Store className="w-4 h-4 text-emerald-600" />
-                      <span>صورة واجهة المحل / الماركت 🏪</span>
+                      <span>صورة واجهة المحل / الماركت</span>
                     </>
                   ) : (
                     <>
                       <Home className="w-4 h-4 text-sky-600" />
-                      <span>صورة واجهة البيت أو البناية 🏠 (اختياري)</span>
+                      <span>صورة واجهة البيت أو البناية (اختياري)</span>
                     </>
                   )}
                 </h3>
@@ -1011,8 +1027,8 @@ function ProfileContent() {
                   {isUpdatingStorefront
                     ? 'جاري رفع الصورة...'
                     : user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant'
-                    ? 'تغيير صورة واجهة المحل 📸'
-                    : 'تغيير صورة واجهة البيت 📸 (اختياري)'}
+                    ? 'تغيير صورة واجهة المحل'
+                    : 'تغيير صورة واجهة البيت (اختياري)'}
                 </span>
               </button>
               <input
@@ -1037,8 +1053,8 @@ function ProfileContent() {
                     <div>
                       <span className="font-black text-sm block">
                         {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant'
-                          ? `🏪 ${user.businessName || 'واجهة متجرك'}`
-                          : `🏠 ${user.name || 'واجهة البيت'}`}
+                          ? (user.businessName || 'واجهة متجرك')
+                          : (user.name || 'واجهة البيت')}
                       </span>
                       <span className="text-[10px] text-slate-200">{user.address || user.city || 'كربلاء المقدسة'}</span>
                     </div>
@@ -1058,8 +1074,12 @@ function ProfileContent() {
                     user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant'
                       ? 'bg-emerald-50 text-emerald-600'
                       : 'bg-sky-50 text-sky-600'
-                  } flex items-center justify-center mx-auto text-2xl`}>
-                    {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant' ? '🏪' : '🏠'}
+                  } flex items-center justify-center mx-auto shadow-2xs`}>
+                    {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant' ? (
+                      <Store className="w-7 h-7 text-emerald-600" />
+                    ) : (
+                      <Home className="w-7 h-7 text-sky-600" />
+                    )}
                   </div>
                   <h4 className="font-bold text-slate-800 text-xs">
                     {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant'
@@ -1117,7 +1137,7 @@ function ProfileContent() {
 
               {user.accountType === 'market' || user.accountType === 'wholesale' || user.accountType === 'merchant' ? (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700 block">اسم المحل / الماركت / المتجر 🏪 *</label>
+                  <label className="text-[11px] font-bold text-slate-700 block">اسم المحل / الماركت / المتجر *</label>
                   <input
                     type="text"
                     value={editBusinessName}
@@ -1128,7 +1148,7 @@ function ProfileContent() {
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700 block">لقب البيت / العائلة (اختياري) 🏠</label>
+                  <label className="text-[11px] font-bold text-slate-700 block">لقب البيت / العائلة (اختياري)</label>
                   <input
                     type="text"
                     value={editBusinessName}
@@ -1201,7 +1221,7 @@ function ProfileContent() {
                   <Camera className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-900 text-sm">اختيار وتغيير صورتك الشخصية 📸</h3>
+                  <h3 className="font-black text-slate-900 text-sm">اختيار وتغيير صورتك الشخصية</h3>
                   <p className="text-[10px] text-slate-500 font-bold">ارفع صورة من جهازك أو اختر من الصور الجاهزة أدناه</p>
                 </div>
               </div>
@@ -1222,7 +1242,7 @@ function ProfileContent() {
                     <img src={selectedAvatarUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
                   ) : (
                     <div className="w-full h-full bg-slate-200 rounded-xl flex items-center justify-center text-slate-400 font-bold text-xl">
-                      👤
+                      <UserIcon className="w-8 h-8 text-slate-400" />
                     </div>
                   )}
                 </div>

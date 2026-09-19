@@ -1192,7 +1192,7 @@ export function createUser(userData: {
     mapsUrl: userData.mapsUrl,
     savedAddresses: userData.savedAddresses || (userData.address ? [{
       id: 'addr-1',
-      title: accType === 'market' ? 'موقع الماركت 🏪' : 'موقع التوصيل الأساسي 📍',
+      title: accType === 'market' ? 'موقع المتجر' : 'موقع التوصيل الأساسي',
       city: userData.city?.trim() || 'كربلاء المقدسة',
       address: userData.address.trim(),
       lat: userData.lat,

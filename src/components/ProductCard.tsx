@@ -74,14 +74,6 @@ export default function ProductCard({ product }: { product: Product }) {
           ) : null}
         </div>
 
-        {/* In Cart Indicator Badge on Top Left */}
-        {inCartQty > 0 && (
-          <div className="absolute top-2.5 left-2.5 z-10">
-            <span className="bg-[#FFDF00] text-slate-950 font-black text-[10px] sm:text-[11px] px-2 py-0.5 rounded-lg shadow-sm border border-amber-400 font-mono flex items-center gap-1">
-              <span>{inCartQty} بالسلة</span>
-            </span>
-          </div>
-        )}
 
         {/* Out of Stock Banner */}
         {isOutOfStock && (

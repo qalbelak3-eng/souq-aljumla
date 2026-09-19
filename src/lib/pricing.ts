@@ -12,7 +12,7 @@ export function getProductPriceForUser(
   // 1. Normal Consumer (زبون عادي غير مسجل كتاجر أو ماركت)
   if (!user || user.accountType === 'individual' || !user.accountType) {
     const consumerCartonPrice = Number(product.boxPrice) > 0 ? Number(product.boxPrice) : Number(product.wholesalePrice);
-    return { price: consumerCartonPrice, tierLabel: 'سعر الكرتون للمستهلك 📦', tier: 'retail' };
+    return { price: consumerCartonPrice, tierLabel: 'سعر الكرتون للمستهلك', tier: 'retail' };
   }
 
   // 2. Market Customer (ماركت معتمد)
@@ -21,21 +21,21 @@ export function getProductPriceForUser(
     return { price, tierLabel: 'سعر جملة الماركت', tier: 'market' };
   }
 
-  // 3. Wholesale Merchant (تاجر جملة معتمد VIP 👑)
+  // 3. Wholesale Merchant (تاجر جملة معتمد)
   if (user.accountType === 'wholesale' || user.accountType === 'merchant' || user.role === 'merchant') {
     const tier: MerchantTier = user.merchantTier || 'bronze';
 
     if (tier === 'gold') {
       const price = Number(product.vipPrice) > 0 ? Number(product.vipPrice) : (Number(product.specialPrice) || Number(product.wholesalePrice));
-      return { price, tierLabel: 'سعر VIP ذهبي 👑', tier: 'gold' };
+      return { price, tierLabel: 'سعر جملة ذهبي', tier: 'gold' };
     }
 
     if (tier === 'silver') {
       const price = Number(product.specialPrice) > 0 ? Number(product.specialPrice) : Number(product.wholesalePrice);
-      return { price, tierLabel: 'سعر خاص فضي ⭐', tier: 'silver' };
+      return { price, tierLabel: 'سعر جملة فضي', tier: 'silver' };
     }
 
-    return { price: Number(product.wholesalePrice), tierLabel: 'سعر جملة برونزي 🥉', tier: 'bronze' };
+    return { price: Number(product.wholesalePrice), tierLabel: 'سعر جملة برونزي', tier: 'bronze' };
   }
 
   const fallbackPrice = Number(product.boxPrice) > 0 ? Number(product.boxPrice) : Number(product.wholesalePrice);
