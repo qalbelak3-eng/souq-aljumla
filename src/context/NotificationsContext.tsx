@@ -56,74 +56,124 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const refreshNotifications = useCallback(async () => {
     try {
-      // 1. Fetch fresh logs directly from server (Source of Truth)
+      if (typeof window === 'undefined') return;
+
+      const nowTime = Date.now();
+      const userType = user?.accountType || 'visitor';
+
+      // 1. إدارة وقت أول دخول للمتصفح/الزائر:
+      // الزائر أو العميل الجديد لا يجب أن يرى إشعارات قديمة تم إرسالها قبل دخوله للمرة الأولى
+      let visitorFirstVisit = Number(localStorage.getItem('souq_visitor_first_visit') || '0');
+      if (!visitorFirstVisit) {
+        visitorFirstVisit = nowTime;
+        localStorage.setItem('souq_visitor_first_visit', visitorFirstVisit.toString());
+        // تعيين وقت المسح المبدئي لوقت أول دخول بحيث لا تظهر أي إشعارات قديمة سابقة لأول دخول
+        const currentCleared = Number(localStorage.getItem('souq_client_cleared_at') || '0');
+        if (!currentCleared || currentCleared < visitorFirstVisit) {
+          localStorage.setItem('souq_client_cleared_at', visitorFirstVisit.toString());
+        }
+      }
+
+      // 2. التحقق من الترحيب بالمستخدم الجديد المسجل حديثاً وإضافته إلى سجل إشعاراته
+      let localCustomNotifs: PushNotificationLog[] = [];
+      try {
+        const customSaved = localStorage.getItem('souq_local_custom_notifications');
+        if (customSaved) {
+          const parsed = JSON.parse(customSaved);
+          if (Array.isArray(parsed)) localCustomNotifs = parsed;
+        }
+      } catch {}
+
+      if (user?.id) {
+        const welcomeKey = `souq_welcome_notif_added_${user.id}`;
+        if (!localStorage.getItem(welcomeKey)) {
+          localStorage.setItem(welcomeKey, 'true');
+          const firstName = user.name ? `يا ${user.name.split(' ')[0]}` : 'يا غالي';
+          const welcomeNotif: PushNotificationLog = {
+            id: `welcome-${user.id}-${nowTime}`,
+            title: `🎁 أهلاً وسهلاً بك ${firstName} في سوق الجملة!`,
+            body: 'نورت متجرك يا غالي! حسابك جاهز لتسوّق أفضل المواد الغذائية والسناكات بأسعار الجملة والمفرد مع توصيل فوري لكربلاء 🚚✨',
+            url: '/products?filter=offers',
+            targetAudience: 'all',
+            targetAudienceLabel: 'الترحيب بالزبائن الجدد',
+            sentCount: 1,
+            successCount: 1,
+            failureCount: 0,
+            createdAt: new Date().toISOString(),
+          };
+
+          localCustomNotifs = [welcomeNotif, ...localCustomNotifs.filter(n => n.id !== welcomeNotif.id)];
+          localStorage.setItem('souq_local_custom_notifications', JSON.stringify(localCustomNotifs));
+        }
+      }
+
+      // 3. جلب سجلات الإشعارات الرسمية من الخادم
       const res = await fetch('/api/notifications/send', { cache: 'no-store' });
       const data = await res.json();
+      
+      let allLogs: PushNotificationLog[] = [];
       if (data.success && Array.isArray(data.logs)) {
-        const userType = user?.accountType || 'retail';
-        const nowTime = Date.now();
-        const clientClearedAt = typeof window !== 'undefined' ? Number(localStorage.getItem('souq_client_cleared_at') || '0') : 0;
-
-        // تطهير الروابط واستبعاد المنتهي الصلاحية والتنبيهات الممسوحة مسبقاً والفلترة حسب فئة الزبون
-        const freshLogs = data.logs
-          .filter((log: PushNotificationLog) => {
-            // استبعاد المنتهي الصلاحية
-            if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
-              return false;
-            }
-            // استبعاد ما تم مسحه مسبقاً من قبل هذا العميل
-            if (clientClearedAt > 0 && new Date(log.createdAt).getTime() <= clientClearedAt) {
-              return false;
-            }
-            if (!log.targetAudience || log.targetAudience === 'all') return true;
-            if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
-            if (log.targetAudience === 'market') return userType === 'market';
-            if (log.targetAudience === 'retail') return userType === 'individual' || userType === 'retail' || !user;
-            return true;
-          })
-          .map((log: PushNotificationLog) => {
-            // حماية صارمة: استبدال أي مسار يبدأ بـ /admin برابط العروض العامة
-            let safeUrl = log.url || '/products?filter=offers';
-            if (safeUrl.startsWith('/admin') || safeUrl.includes('/admin/')) {
-              if (safeUrl.includes('offer')) safeUrl = '/products?filter=offers';
-              else if (safeUrl.includes('product')) safeUrl = '/products';
-              else safeUrl = '/products?filter=offers';
-            }
-            return {
-              ...log,
-              url: safeUrl,
-            };
-          });
-
-        setNotifications(freshLogs);
-
-        if (typeof window !== 'undefined') {
-          if (freshLogs.length === 0) {
-            localStorage.removeItem('souq_saved_notifications');
-            setUnreadCount(0);
-          } else {
-            localStorage.setItem('souq_saved_notifications', JSON.stringify(freshLogs));
-            const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
-            const unread = freshLogs.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
-            setUnreadCount(unread);
-          }
-        }
+        allLogs = [...localCustomNotifs, ...data.logs];
       } else {
-        // إذا فشل الاتصال، نقرأ الكاش المؤقت فقط
-        if (typeof window !== 'undefined') {
-          const cached = localStorage.getItem('souq_saved_notifications');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed)) {
-              setNotifications(parsed);
-            }
+        allLogs = [...localCustomNotifs];
+      }
+
+      const clientClearedAt = Number(localStorage.getItem('souq_client_cleared_at') || '0');
+
+      // تطهير الروابط واستبعاد المنتهي الصلاحية والقديمة والفلترة بحسب شريحة الزبون
+      const freshLogs = allLogs
+        .filter((log: PushNotificationLog) => {
+          const logCreatedAt = new Date(log.createdAt).getTime();
+
+          // استبعاد المنتهي الصلاحية
+          if (log.expiresAt && new Date(log.expiresAt).getTime() <= nowTime) {
+            return false;
           }
-        }
+
+          // استبعاد التنبيهات الممسوحة مسبقاً أو التنبيهات التي تم إرسالها قبل أول دخول للمتصفح إذا كان زائر
+          if (clientClearedAt > 0 && logCreatedAt < clientClearedAt && !log.id.startsWith('welcome-')) {
+            return false;
+          }
+
+          // إذا كان زائر (غير مسجل الدخول) لا تظهر له الإشعارات القديمة السابقة لأول زيارة
+          if (!user && visitorFirstVisit > 0 && logCreatedAt < visitorFirstVisit) {
+            return false;
+          }
+
+          if (!log.targetAudience || log.targetAudience === 'all') return true;
+          if (log.targetAudience === 'wholesale') return userType === 'wholesale' || userType === 'merchant';
+          if (log.targetAudience === 'market') return userType === 'market';
+          if (log.targetAudience === 'retail') return userType === 'individual' || userType === 'visitor' || !user;
+          return true;
+        })
+        .map((log: PushNotificationLog) => {
+          let safeUrl = log.url || '/products?filter=offers';
+          if (safeUrl.startsWith('/admin') || safeUrl.includes('/admin/')) {
+            if (safeUrl.includes('offer')) safeUrl = '/products?filter=offers';
+            else if (safeUrl.includes('product')) safeUrl = '/products';
+            else safeUrl = '/products?filter=offers';
+          }
+          return {
+            ...log,
+            url: safeUrl,
+          };
+        });
+
+      setNotifications(freshLogs);
+
+      if (freshLogs.length === 0) {
+        localStorage.removeItem('souq_saved_notifications');
+        setUnreadCount(0);
+      } else {
+        localStorage.setItem('souq_saved_notifications', JSON.stringify(freshLogs));
+        const lastReadTime = Number(localStorage.getItem('etihad_notifications_last_read') || '0');
+        const unread = freshLogs.filter((n: PushNotificationLog) => new Date(n.createdAt).getTime() > lastReadTime).length;
+        setUnreadCount(unread);
       }
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
-  }, [user?.accountType]);
+  }, [user?.accountType, user?.id, user?.name]);
 
   const subscribeUserToPush = async (reg?: ServiceWorkerRegistration, showToastAlert = true) => {
     try {
