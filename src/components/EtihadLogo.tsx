@@ -19,8 +19,8 @@ export default function EtihadLogo({ className = '', size = 'md', href = '', sho
     <div className={`relative inline-flex items-center group transition-transform duration-300 hover:scale-[1.02] ${className}`}>
       {/* Official Souq Al-Jumla Logo Image */}
       <img
-        src="/souq-aljumla-logo.png"
-        alt="سوق الجملة - الأكبر والأشمل في كربلاء"
+        src="/souq-aljumla-logo.png?v=3"
+        alt="سوق جملة كربلاء"
         className={`${sizeClasses[size]} w-auto object-contain drop-shadow-xs transition-opacity`}
       />
     </div>
