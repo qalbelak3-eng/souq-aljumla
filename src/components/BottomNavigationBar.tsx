@@ -60,7 +60,7 @@ function BottomNavContent() {
         isNavVisible ? 'translate-y-0' : 'translate-y-full pointer-events-none'
       }`}
     >
-      <div className="max-w-lg mx-auto px-2 py-1.5 flex items-center justify-around">
+      <div className="max-w-lg mx-auto px-2 py-1 flex items-center justify-around h-[56px]">
         
         {/* 1. الرئيسية: ملون عند التفعيل ورمادي عند عدم التفعيل بدون إطار أصفر */}
         <Link

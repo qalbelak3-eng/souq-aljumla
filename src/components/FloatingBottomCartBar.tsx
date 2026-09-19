@@ -38,13 +38,13 @@ export default function FloatingBottomCartBar() {
 
   return (
     <div
-      className={`fixed inset-x-3 sm:inset-x-6 max-w-lg mx-auto z-40 select-none print:hidden transition-all duration-300 ease-out will-change-transform ${
+      className={`fixed inset-x-0 z-40 select-none print:hidden transition-all duration-300 ease-out will-change-transform ${
         isNavVisible
-          ? 'bottom-[calc(66px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(72px+env(safe-area-inset-bottom,0px))]'
-          : 'bottom-[calc(10px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(14px+env(safe-area-inset-bottom,0px))]'
+          ? 'bottom-[calc(56px+env(safe-area-inset-bottom,0px))]'
+          : 'bottom-0 pb-[env(safe-area-inset-bottom,0px)]'
       }`}
     >
-      <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-2.5 shadow-[0_14px_45px_rgba(0,0,0,0.18)] border border-slate-200/90 space-y-2">
+      <div className="max-w-lg mx-auto bg-white rounded-t-3xl border-t border-slate-200/90 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] p-2.5 sm:p-3 space-y-2">
         
         {/* Top Message & Progress: Hungerstation Style */}
         {isBelowMinOrder ? (
@@ -67,14 +67,10 @@ export default function FloatingBottomCartBar() {
             </div>
           </div>
         ) : (
-          <div className="space-y-1 px-1 pt-0.5 text-center">
+          <div className="py-0.5 text-center">
             <div className="text-[11px] sm:text-xs text-slate-800 font-black flex items-center justify-center gap-1.5">
               <span>🎉</span>
               <span><strong>مبروك!</strong> يمكنك الآن إتمام طلبك.</span>
-            </div>
-            {/* Completed Green Line */}
-            <div className="w-full bg-emerald-100 rounded-full h-1 overflow-hidden">
-              <div className="bg-emerald-500 h-full rounded-full w-full" />
             </div>
           </div>
         )}
