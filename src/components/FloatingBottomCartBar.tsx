@@ -79,11 +79,11 @@ export default function FloatingBottomCartBar() {
         <button
           type="button"
           onClick={() => setIsCartDrawerOpen(true)}
-          className="w-full bg-[#FFDF00] hover:bg-[#F2D400] active:scale-[0.98] text-slate-950 rounded-2xl py-2.5 sm:py-3 px-4 flex items-center justify-between font-black text-xs sm:text-sm transition-all shadow-md cursor-pointer border border-amber-300/80 group"
+          className="w-full bg-[#FFDF00] hover:bg-[#F2D400] active:scale-[0.99] text-slate-950 rounded-xl py-2.5 sm:py-3 px-4 flex items-center justify-between font-black text-xs sm:text-sm transition-all cursor-pointer group"
         >
           {/* Right: Circle Count Badge + Title */}
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white text-slate-950 font-mono font-black text-xs flex items-center justify-center shadow-xs">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white text-slate-950 font-mono font-black text-xs flex items-center justify-center">
               {totalItemsCount}
             </div>
             <span className="font-black text-slate-950 text-xs sm:text-sm">
