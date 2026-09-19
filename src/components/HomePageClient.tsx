@@ -196,7 +196,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
   const bottomShowcases = activeShowcases.filter((b) => !b.position || b.position === 'bottom' || b.position === 'all');
 
   return (
-    <div className="space-y-5 sm:space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
+    <div className="space-y-5 sm:space-y-6 pb-32 overflow-x-hidden w-full max-w-full">
       
       {/* 1. AUTO-SLIDING BANNERS (TOP) - Hungerstation Full Bleed Hero */}
       <section className="w-full">

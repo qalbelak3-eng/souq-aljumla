@@ -6,7 +6,6 @@ import AnnouncementBar from '@/components/AnnouncementBar';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import CartDrawer from '@/components/CartDrawer';
-import WhatsAppFloatingButton from '@/components/WhatsAppFloatingButton';
 import PopupAdvertisement from '@/components/PopupAdvertisement';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import LuckyWheelWidget from '@/components/LuckyWheelWidget';
@@ -43,13 +42,15 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
   }
 
   if (isProfileRoute || isOrdersRoute) {
-    // Dedicated Profile / Orders View with Hungerstation Bottom Navigation
+    // Dedicated Profile / Orders View with Hungerstation Bottom Navigation and persistent Cart
     return (
       <>
         <main className="flex-1 min-h-screen flex flex-col justify-start bg-white">
           {children}
         </main>
         <BottomNavigationBar />
+        <CartDrawer />
+        <FloatingBottomCartBar />
       </>
     );
   }
@@ -76,7 +77,6 @@ export default function StoreLayoutWrapper({ children }: { children: React.React
       {!isProductsCatalog && <Footer />}
       <BottomNavigationBar />
       <CartDrawer />
-      <WhatsAppFloatingButton />
       <FloatingBottomCartBar />
       <LuckyWheelWidget />
       <PopupAdvertisement />

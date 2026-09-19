@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Sparkles, Gift } from 'lucide-react';
 import LuckyWheelModal from '@/components/LuckyWheelModal';
 import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
 
 export default function LuckyWheelWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,6 +14,7 @@ export default function LuckyWheelWidget() {
   const [cooldownHours, setCooldownHours] = useState(24);
   const pathname = usePathname();
   const { user } = useAuth();
+  const { totalItemsCount } = useCart();
 
   useEffect(() => {
     fetch('/api/lucky-wheel')
@@ -46,7 +48,11 @@ export default function LuckyWheelWidget() {
   return (
     <>
       {/* Floating Circular Widget Button */}
-      <div className="fixed bottom-[calc(76px+env(safe-area-inset-bottom,0px))] right-5 sm:bottom-[calc(80px+env(safe-area-inset-bottom,0px))] sm:right-7 z-50 flex items-center gap-2 print:hidden select-none">
+      <div className={`fixed right-5 sm:right-7 z-50 flex items-center gap-2 print:hidden select-none transition-all duration-300 ${
+        totalItemsCount > 0
+          ? 'bottom-[calc(148px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(154px+env(safe-area-inset-bottom,0px))]'
+          : 'bottom-[calc(76px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(80px+env(safe-area-inset-bottom,0px))]'
+      }`}>
         <button
           onClick={() => setIsOpen(true)}
           className="group relative flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-500 to-amber-400 text-slate-950 shadow-[0_8px_25px_rgba(245,158,11,0.45)] hover:shadow-[0_12px_30px_rgba(245,158,11,0.6)] transform hover:scale-105 active:scale-95 transition-all duration-300 border-2 border-white/60 cursor-pointer animate-pulse"
