@@ -6,6 +6,7 @@ import { Sparkles, Gift } from 'lucide-react';
 import LuckyWheelModal from '@/components/LuckyWheelModal';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
+import { useScrollNav } from '@/context/ScrollNavContext';
 
 export default function LuckyWheelWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,6 +16,7 @@ export default function LuckyWheelWidget() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { totalItemsCount } = useCart();
+  const { isNavVisible } = useScrollNav();
 
   useEffect(() => {
     fetch('/api/lucky-wheel')
@@ -48,10 +50,14 @@ export default function LuckyWheelWidget() {
   return (
     <>
       {/* Floating Circular Widget Button */}
-      <div className={`fixed right-5 sm:right-7 z-50 flex items-center gap-2 print:hidden select-none transition-all duration-300 ${
-        totalItemsCount > 0
-          ? 'bottom-[calc(148px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(154px+env(safe-area-inset-bottom,0px))]'
-          : 'bottom-[calc(76px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(80px+env(safe-area-inset-bottom,0px))]'
+      <div className={`fixed right-5 sm:right-7 z-50 flex items-center gap-2 print:hidden select-none transition-all duration-300 ease-out will-change-transform ${
+        isNavVisible
+          ? totalItemsCount > 0
+            ? 'bottom-[calc(148px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(154px+env(safe-area-inset-bottom,0px))]'
+            : 'bottom-[calc(76px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(80px+env(safe-area-inset-bottom,0px))]'
+          : totalItemsCount > 0
+            ? 'bottom-[calc(92px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(98px+env(safe-area-inset-bottom,0px))]'
+            : 'bottom-[calc(16px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(20px+env(safe-area-inset-bottom,0px))]'
       }`}>
         <button
           onClick={() => setIsOpen(true)}

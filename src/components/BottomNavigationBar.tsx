@@ -6,12 +6,14 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { ShoppingBag, BadgePercent, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationsContext';
+import { useScrollNav } from '@/context/ScrollNavContext';
 
 function BottomNavContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
+  const { isNavVisible } = useScrollNav();
 
   // Optimistic click state for instant 0ms visual feedback
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
@@ -54,7 +56,9 @@ function BottomNavContent() {
   return (
     <nav
       aria-label="شريط التنقل السفلي"
-      className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200/80 shadow-[0_-2px_15px_rgba(0,0,0,0.04)] print:hidden select-none pb-[env(safe-area-inset-bottom,0px)]"
+      className={`fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200/80 shadow-[0_-2px_15px_rgba(0,0,0,0.04)] print:hidden select-none pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-300 ease-out will-change-transform ${
+        isNavVisible ? 'translate-y-0' : 'translate-y-full pointer-events-none'
+      }`}
     >
       <div className="max-w-lg mx-auto px-2 py-1.5 flex items-center justify-around">
         

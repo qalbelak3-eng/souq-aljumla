@@ -10,6 +10,7 @@ import ServiceWorkerCleaner from '@/components/ServiceWorkerCleaner';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import AbandonedCartNotifier from '@/components/AbandonedCartNotifier';
 import CustomerGreetingsNotifier from '@/components/CustomerGreetingsNotifier';
+import { ScrollNavProvider } from '@/context/ScrollNavContext';
 
 export const viewport: Viewport = {
   themeColor: '#fff8c1',
@@ -79,9 +80,11 @@ export default function RootLayout({
               <CartProvider>
                 <AbandonedCartNotifier />
                 <NotificationsProvider>
-                  <StoreLayoutWrapper>
-                    {children}
-                  </StoreLayoutWrapper>
+                  <ScrollNavProvider>
+                    <StoreLayoutWrapper>
+                      {children}
+                    </StoreLayoutWrapper>
+                  </ScrollNavProvider>
                 </NotificationsProvider>
               </CartProvider>
             </AuthProvider>

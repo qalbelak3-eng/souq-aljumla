@@ -3,6 +3,7 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
+import { useScrollNav } from '@/context/ScrollNavContext';
 
 export default function FloatingBottomCartBar() {
   const pathname = usePathname();
@@ -11,9 +12,11 @@ export default function FloatingBottomCartBar() {
     subtotal,
     isCartDrawerOpen,
     setIsCartDrawerOpen,
+    minOrderAmount,
     isBelowMinOrder,
     amountNeededForMinOrder,
   } = useCart();
+  const { isNavVisible } = useScrollNav();
 
   // Do not show on Checkout, Admin, Auth, Driver, or Cart pages
   // Hide if cart drawer is open
@@ -31,20 +34,48 @@ export default function FloatingBottomCartBar() {
     return null;
   }
 
+  const progressPercent = Math.min(100, Math.round((subtotal / (minOrderAmount || 10000)) * 100));
+
   return (
-    <div className="fixed bottom-[calc(66px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(72px+env(safe-area-inset-bottom,0px))] inset-x-3 sm:inset-x-6 max-w-lg mx-auto z-40 select-none print:hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-2 sm:p-2.5 shadow-[0_14px_45px_rgba(0,0,0,0.18)] border border-slate-200/90 space-y-1.5">
+    <div
+      className={`fixed inset-x-3 sm:inset-x-6 max-w-lg mx-auto z-40 select-none print:hidden transition-all duration-300 ease-out will-change-transform ${
+        isNavVisible
+          ? 'bottom-[calc(66px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(72px+env(safe-area-inset-bottom,0px))]'
+          : 'bottom-[calc(10px+env(safe-area-inset-bottom,0px))] sm:bottom-[calc(14px+env(safe-area-inset-bottom,0px))]'
+      }`}
+    >
+      <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-2.5 shadow-[0_14px_45px_rgba(0,0,0,0.18)] border border-slate-200/90 space-y-2">
         
-        {/* Top Message: Hungerstation Style */}
+        {/* Top Message & Progress: Hungerstation Style */}
         {isBelowMinOrder ? (
-          <div className="text-center text-[11px] sm:text-xs text-amber-800 font-bold px-2 pt-0.5 flex items-center justify-center gap-1.5">
-            <span>⚠️</span>
-            <span>أضف بـ <strong className="font-mono font-black text-amber-950">{amountNeededForMinOrder.toLocaleString()} د.ع</strong> لإكمال الحد الأدنى</span>
+          <div className="space-y-1.5 px-1 pt-0.5" dir="rtl">
+            <div className="text-[11px] sm:text-xs text-slate-800 font-bold flex items-center justify-between">
+              <span>
+                أضف <strong className="text-slate-950 font-black font-mono">{amountNeededForMinOrder.toLocaleString()} د.ع</strong> إضافية لإتمام طلبك.
+              </span>
+              <span className="text-[10px] text-amber-700 font-mono font-black">
+                {progressPercent}%
+              </span>
+            </div>
+
+            {/* Hungerstation Slim Progress Bar */}
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-amber-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.max(5, progressPercent)}%` }}
+              />
+            </div>
           </div>
         ) : (
-          <div className="text-center text-[11px] sm:text-xs text-slate-700 font-bold px-2 pt-0.5 flex items-center justify-center gap-1.5">
-            <span>🎉</span>
-            <span><strong>مبروك!</strong> يمكنك الآن إتمام طلبك.</span>
+          <div className="space-y-1 px-1 pt-0.5 text-center">
+            <div className="text-[11px] sm:text-xs text-slate-800 font-black flex items-center justify-center gap-1.5">
+              <span>🎉</span>
+              <span><strong>مبروك!</strong> يمكنك الآن إتمام طلبك.</span>
+            </div>
+            {/* Completed Green Line */}
+            <div className="w-full bg-emerald-100 rounded-full h-1 overflow-hidden">
+              <div className="bg-emerald-500 h-full rounded-full w-full" />
+            </div>
           </div>
         )}
 
