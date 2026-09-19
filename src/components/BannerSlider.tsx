@@ -146,21 +146,33 @@ export default function BannerSlider({
     if (position !== 'top') return;
 
     const updateThemeColor = () => {
+      // 1. Calculate targetColor for Android status-bar
+      const targetColor = window.scrollY > 40
+        ? '#ffffff'
+        : (banners[activeDotIndex]?.bannerBgColor || '#fff8c1');
+
+      // 2. Update --active-banner-bg (preserving active banner color, never white)
+      const activeBannerColor = banners[activeDotIndex]?.bannerBgColor || '#fff8c1';
+      if (typeof document !== 'undefined') {
+        document.documentElement.style.setProperty('--active-banner-bg', activeBannerColor);
+      }
+
+      // 3. Find existing standard meta[name="theme-color"]
       let metaTheme = document.querySelector('meta[name="theme-color"]');
-      if (!metaTheme) {
-        metaTheme = document.createElement('meta');
-        metaTheme.setAttribute('name', 'theme-color');
-        document.head.appendChild(metaTheme);
+
+      // 4. If content already equals targetColor, do NOT replace it
+      if (metaTheme && metaTheme.getAttribute('content') === targetColor) {
+        return;
       }
-      if (window.scrollY > 40) {
-        metaTheme.setAttribute('content', '#ffffff');
-      } else {
-        const activeColor = banners[activeDotIndex]?.bannerBgColor || '#fff8c1';
-        metaTheme.setAttribute('content', activeColor);
-        if (typeof document !== 'undefined') {
-          document.documentElement.style.setProperty('--active-banner-bg', activeColor);
-        }
+
+      // 5. If color is different: remove old, create ONE new standard meta tag
+      if (metaTheme) {
+        metaTheme.remove();
       }
+      const newMeta = document.createElement('meta');
+      newMeta.name = 'theme-color';
+      newMeta.content = targetColor;
+      document.head.appendChild(newMeta);
     };
 
     updateThemeColor();
