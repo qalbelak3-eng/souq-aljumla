@@ -50,14 +50,14 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '48x48' },
-      { url: '/favicon.png', sizes: '48x48', type: 'image/png' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/app-icon.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.ico?v=2', sizes: '48x48' },
+      { url: '/favicon.png?v=2', sizes: '48x48', type: 'image/png' },
+      { url: '/icon-192.png?v=2', sizes: '192x192', type: 'image/png' },
+      { url: '/app-icon.png?v=2', sizes: '512x512', type: 'image/png' },
     ],
-    shortcut: '/favicon.ico',
+    shortcut: '/favicon.ico?v=2',
     apple: [
-      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+      { url: '/apple-touch-icon.png?v=2', sizes: '180x180', type: 'image/png' },
     ],
   },
   keywords: 'سوق جملة كربلاء, سوق الجملة, سوق الجملة كربلاء, الأكبر والأشمل في كربلاء, جملة ومفرد, كربلاء, العراق, سناكات, مواد غذائية',
@@ -71,6 +71,14 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        {/* Explicit Cache-Busted Favicon Links to overwrite browser icon cache immediately */}
+        <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png?v=2" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/app-icon.png?v=2" />
+        <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2" />
+        <link rel="shortcut icon" href="/favicon.ico?v=2" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
+
         {/* Google Official Site Name Structured Data (Schema.org JSON-LD) */}
         <script
           type="application/ld+json"

@@ -284,7 +284,7 @@ export default function BannerSlider({
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
-        <div className={`w-full h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] bg-[#fff8c1] rounded-none animate-pulse ${className}`} />
+        <div className={`w-full h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] bg-[#fff8c1] rounded-b-3xl sm:rounded-b-[32px] animate-pulse ${className}`} />
       );
     }
     const aspectClass = isCompact
@@ -303,7 +303,7 @@ export default function BannerSlider({
     if (position === 'top') {
       return (
         <div
-          className={`relative w-full overflow-hidden select-none rounded-none h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] ${className}`}
+          className={`relative w-full overflow-hidden select-none rounded-b-3xl sm:rounded-b-[32px] h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] ${className}`}
           style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
           {/* Floating Search Bar on Hero Background */}
@@ -508,7 +508,7 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-[400ms] ease-out ${
         position === 'top'
-          ? 'rounded-none aspect-[24/19] w-full'
+          ? 'rounded-b-3xl sm:rounded-b-[32px] aspect-[24/19] w-full'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
