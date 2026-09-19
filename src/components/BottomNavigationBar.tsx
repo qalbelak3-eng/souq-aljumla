@@ -78,7 +78,7 @@ function BottomNavContent() {
             className="w-[22px] h-[22px] max-w-[22px] max-h-[22px] rounded-md overflow-hidden flex items-center justify-center shrink-0"
           >
             <img
-              src={isHome ? '/images/souq-app-icon.png' : '/images/souq-app-icon-grey.png'}
+              src={isHome ? '/images/souq-app-icon.png?v=4' : '/images/souq-app-icon-grey.png?v=4'}
               alt="الرئيسية"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               className="w-full h-full object-cover rounded-[3px] pointer-events-none"
