@@ -21,7 +21,11 @@ export default function ProductCard({ product }: { product: Product }) {
 
   const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
   const { price: currentPrice, tierLabel, tier } = getProductPriceForUser(product, selectedType, user);
-  const currentUnit = selectedType === 'wholesale' ? product.wholesaleUnit : product.retailUnit;
+  const currentUnit = selectedType === 'wholesale' 
+    ? (user?.accountType === 'market' 
+        ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || product.wholesaleUnit)
+        : product.wholesaleUnit)
+    : product.retailUnit;
   const isOutOfStock = (product.stock ?? 0) <= 0;
 
   // Offer / Discount calculation
@@ -49,9 +53,9 @@ export default function ProductCard({ product }: { product: Product }) {
         {/* Top Badges */}
         <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none flex flex-col gap-1 items-start">
           {hasDiscount ? (
-            <span className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 text-white text-[10px] sm:text-[11px] font-black px-2.5 py-1 rounded-xl shadow-md flex items-center gap-1 animate-pulse">
-              <span>🔥 {product.offerBadge || 'عرض خاص'}</span>
-              {discountPercent > 0 && <span className="bg-white/20 px-1 py-0.2 rounded-md font-mono">-%{discountPercent}</span>}
+            <span className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 text-white text-[10px] sm:text-[11px] font-black px-2.5 py-1 rounded-xl shadow-md flex items-center gap-1">
+              <span>{(product.offerBadge || 'عرض خاص').replace(/[🔥✨⚡]/g, '').trim()}</span>
+              {discountPercent > 0 && <span className="bg-white/20 px-1 py-0.2 rounded-md font-bold">-%{discountPercent}</span>}
             </span>
           ) : isApprovedMerchant ? (
             <span
@@ -103,11 +107,11 @@ export default function ProductCard({ product }: { product: Product }) {
         {/* Product Title & Packaging Unit Description */}
         <div className="space-y-1 mb-2">
           <Link href={`/product/${product.id}`}>
-            <h3 className="text-xs sm:text-sm font-bold text-slate-800 line-clamp-2 hover:text-brand-blue transition leading-snug">
+            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 line-clamp-2 hover:text-brand-blue transition leading-snug">
               {product.name}
             </h3>
           </Link>
-          <p className="text-[11px] text-slate-500 line-clamp-1">
+          <p className="text-[11px] sm:text-xs text-slate-500 font-medium line-clamp-1">
             {currentUnit}
           </p>
         </div>
@@ -119,7 +123,7 @@ export default function ProductCard({ product }: { product: Product }) {
           <div className="text-right space-y-0.5">
             {hasDiscount && oldPrice && (
               <div className="flex items-center gap-1 text-[11px] leading-none">
-                <span className="text-slate-400 font-bold line-through font-mono">
+                <span className="text-slate-400 font-bold line-through">
                   {oldPrice.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-slate-400">د.ع</span>
@@ -127,12 +131,12 @@ export default function ProductCard({ product }: { product: Product }) {
             )}
             
             <div className="flex items-baseline gap-1">
-              <span className={`text-sm sm:text-base font-black block leading-none font-mono ${
+              <span className={`text-base sm:text-lg font-black block leading-none tracking-tight ${
                 hasDiscount ? 'text-red-600' : 'text-slate-900'
               }`}>
                 {currentPrice.toLocaleString()}
               </span>
-              <span className="text-[10px] text-slate-600 font-bold">
+              <span className="text-[11px] text-slate-600 font-bold">
                 د.ع
               </span>
             </div>

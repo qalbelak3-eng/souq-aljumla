@@ -95,6 +95,7 @@ export default function AdminProductsPage() {
 
   const [retailUnit, setRetailUnit] = useState('قطعة مفردة');
   const [wholesaleUnit, setWholesaleUnit] = useState('كرتون جملة (6 علب × 24 قطعة)');
+  const [marketUnit, setMarketUnit] = useState('كرتون ماركت (6 علب × 24 قطعة)');
   const [imageUrl, setImageUrl] = useState('');
   const [stock, setStock] = useState<number | ''>(200);
   const [minStockAlert, setMinStockAlert] = useState<number | ''>(15); // حد التنبيه الأدنى
@@ -200,6 +201,7 @@ export default function AdminProductsPage() {
     setItemsPerBox(24);
     setRetailUnit('قطعة مفردة');
     setWholesaleUnit('كرتون جملة (6 علب × 24 قطعة)');
+    setMarketUnit('كرتون ماركت (6 علب × 24 قطعة)');
     setImageUrl('https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800');
     setStock(150);
     setMinStockAlert(15);
@@ -253,6 +255,7 @@ export default function AdminProductsPage() {
     setItemsPerBox(p.itemsPerBox || (p.itemsPerWholesaleUnit ? Math.max(1, Math.round(p.itemsPerWholesaleUnit / (p.boxesPerCarton || 6))) : 24));
     setRetailUnit(p.retailUnit || 'قطعة مفردة');
     setWholesaleUnit(p.wholesaleUnit || `كرتون جملة (${p.boxesPerCarton || 6} علب × ${p.itemsPerBox || 24} قطعة)`);
+    setMarketUnit(p.marketUnit || (p.wholesaleUnit ? p.wholesaleUnit.replace(/جملة/g, 'ماركت') : `كرتون ماركت (${p.boxesPerCarton || 6} علب × ${p.itemsPerBox || 24} قطعة)`));
     setImageUrl(p.images?.[0] || '');
     setStock(p.stock);
     setMinStockAlert(p.minStockAlert ?? 15);
@@ -329,6 +332,7 @@ export default function AdminProductsPage() {
       pieceCostPrice: Math.round((cPrice / totalPieces) * 10) / 10,
       retailUnit: retailUnit.trim() || 'قطعة مفردة',
       wholesaleUnit: wholesaleUnit.trim() || `كرتون جملة (${boxes} علب × ${piecesPerBox} قطعة)`,
+      marketUnit: marketUnit.trim() || undefined,
       images: [imageUrl.trim() || 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?q=80&w=800'],
       stock: Number(stock),
       minStockAlert: Number(minStockAlert) || 15,
@@ -629,7 +633,7 @@ export default function AdminProductsPage() {
                             <span className="font-black text-slate-900 text-xs sm:text-sm leading-snug">{p.name}</span>
                             {Boolean(p.originalPrice && p.originalPrice > p.price) && (
                               <span className="bg-red-100 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded-md">
-                                🔥 {p.offerBadge || 'عرض خاص'}
+                                {(p.offerBadge || 'عرض خاص').replace(/[🔥✨⚡]/g, '').trim()}
                               </span>
                             )}
                           </div>
@@ -1116,9 +1120,20 @@ export default function AdminProductsPage() {
               </div>
 
               {/* Units Description */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700 block">وصف عبوة الجملة:</label>
+                  <label className="font-bold text-slate-700 block">وصف عبوة الماركت 🏪:</label>
+                  <input
+                    type="text"
+                    value={marketUnit}
+                    onChange={(e) => setMarketUnit(e.target.value)}
+                    placeholder="مثال: كرتون ماركت (24 قطعة)"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">وصف عبوة الجملة 📦:</label>
                   <input
                     type="text"
                     value={wholesaleUnit}
@@ -1129,7 +1144,7 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700 block">وصف عبوة المفرد:</label>
+                  <label className="font-bold text-slate-700 block">وصف عبوة المفرد 🛍️:</label>
                   <input
                     type="text"
                     value={retailUnit}

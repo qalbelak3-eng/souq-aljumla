@@ -28,7 +28,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const productId = params.id as string;
   const { addToCart } = useCart();
-  const { isApprovedMerchant } = useAuth();
+  const { user, isApprovedMerchant } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
@@ -94,7 +94,11 @@ export default function ProductDetailPage() {
   }
 
   const activePrice = saleType === 'wholesale' ? product.wholesalePrice : product.price;
-  const activeUnit = saleType === 'wholesale' ? product.wholesaleUnit : product.retailUnit;
+  const activeUnit = saleType === 'wholesale' 
+    ? (user?.accountType === 'market' 
+        ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || product.wholesaleUnit)
+        : product.wholesaleUnit) 
+    : product.retailUnit;
   const totalPrice = activePrice * quantity;
 
   const handleAddToCart = () => {
@@ -210,10 +214,16 @@ export default function ProductDetailPage() {
                 }`}
               >
                 <div>
-                  <span className="text-xs font-black block text-slate-800">شراء بالكرتون 📦</span>
-                  <span className="text-[11px] text-slate-500 block">({product.wholesaleUnit || 'كرتون'})</span>
+                  <span className="text-xs font-black block text-slate-800">
+                    {user?.accountType === 'market' ? 'شراء بكرتون الماركت 🏪' : 'شراء بالكرتون 📦'}
+                  </span>
+                  <span className="text-[11px] text-slate-500 block">
+                    ({(user?.accountType === 'market' 
+                        ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت')) 
+                        : product.wholesaleUnit) || 'كرتون'})
+                  </span>
                 </div>
-                <span className="text-sm font-black text-emerald-700 font-mono mt-1">
+                <span className="text-sm font-black text-emerald-700 tracking-tight mt-1">
                   {activePrice.toLocaleString()} د.ع
                 </span>
               </button>

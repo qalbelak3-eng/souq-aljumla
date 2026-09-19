@@ -49,6 +49,7 @@ export interface Product {
   wholesalePrice: number; // سعر كرتون الجملة (التاجر البرونزي 🥉)
   marketPrice?: number; // سعر كرتون الجملة لأصحاب الماركتات والمحلات 🏪
   wholesaleUnit: string; // مثال: "كرتون جملة (6 علب × 24 قطعة)"
+  marketUnit?: string; // وصف عبوة الماركت (مثال: "كرتون ماركت (4 علب × 12 قطعة)")
   specialPrice?: number; // سعر كرتون الجملة الخاص (التاجر الفضي 🥈)
   vipPrice?: number; // سعر كرتون الجملة المخفض (التاجر الذهبي VIP 🥇)
   wholesaleMinQuantity?: number;

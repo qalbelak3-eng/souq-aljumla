@@ -18,7 +18,7 @@ export function getProductPriceForUser(
   // 2. Market Customer (ماركت معتمد)
   if (user.accountType === 'market') {
     const price = Number(product.marketPrice) > 0 ? Number(product.marketPrice) : Number(product.wholesalePrice);
-    return { price, tierLabel: 'سعر جملة الماركت', tier: 'market' };
+    return { price, tierLabel: 'سعر الماركت', tier: 'market' };
   }
 
   // 3. Wholesale Merchant (تاجر جملة معتمد)

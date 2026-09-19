@@ -108,7 +108,11 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
             {products.map((product) => {
               const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
               const { price: currentPrice } = getProductPriceForUser(product, selectedType, user);
-              const currentUnit = selectedType === 'wholesale' ? product.wholesaleUnit : product.retailUnit;
+              const currentUnit = selectedType === 'wholesale' 
+                ? (user?.accountType === 'market' 
+                    ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || product.wholesaleUnit)
+                    : product.wholesaleUnit)
+                : product.retailUnit;
               const isOutOfStock = (product.stock ?? 0) <= 0;
 
               const oldPrice = selectedType === 'wholesale'

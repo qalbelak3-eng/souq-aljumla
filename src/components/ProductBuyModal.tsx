@@ -72,7 +72,11 @@ export default function ProductBuyModal({
   const { price: currentPrice, tierLabel, tier } = getProductPriceForUser(product, saleType, user);
   const { price: wholesaleCalculatedPrice } = getProductPriceForUser(product, 'wholesale', user);
   const { price: retailCalculatedPrice } = getProductPriceForUser(product, 'retail', user);
-  const currentUnit = saleType === 'wholesale' ? product.wholesaleUnit : product.retailUnit;
+  const currentUnit = saleType === 'wholesale' 
+    ? (user?.accountType === 'market' 
+        ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || product.wholesaleUnit) 
+        : product.wholesaleUnit) 
+    : product.retailUnit;
   const oldPrice = saleType === 'wholesale' ? product.originalWholesalePrice : product.originalPrice;
   const hasDiscount = Boolean(oldPrice && oldPrice > currentPrice);
   const total = currentPrice * Math.max(0, quantity);
@@ -182,8 +186,12 @@ export default function ProductBuyModal({
               <span className="flex items-center gap-1">
                 <span>📦 بالكرتون / الباكيت</span>
               </span>
-              <span className="text-[10px] text-slate-500 font-medium">({product.wholesaleUnit || 'كرتون'})</span>
-              <span className="font-mono text-xs font-black text-emerald-700 mt-0.5">
+              <span className="text-[10px] text-slate-500 font-medium">
+                ({user?.accountType === 'market' 
+                  ? (product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || 'كرتون')
+                  : (product.wholesaleUnit || 'كرتون')})
+              </span>
+              <span className="text-xs font-black text-emerald-700 mt-0.5 tracking-tight">
                 {wholesaleCalculatedPrice.toLocaleString()} د.ع
               </span>
             </button>
@@ -195,11 +203,15 @@ export default function ProductBuyModal({
                 📦
               </div>
               <div>
-                <span className="font-black text-emerald-950 text-xs block leading-tight">{tierLabel || 'سعر جملة الماركت'}</span>
-                <span className="text-[10px] text-emerald-700 font-bold">الشراء بالكرتون: {product.wholesaleUnit || 'كرتون'}</span>
+                <span className="font-black text-emerald-950 text-xs block leading-tight">{tierLabel || 'سعر الماركت'}</span>
+                <span className="text-[10px] text-emerald-700 font-bold">
+                  {user?.accountType === 'market'
+                    ? `الشراء بالكرتون: ${product.marketUnit || product.wholesaleUnit?.replace(/جملة/g, 'ماركت') || 'كرتون'}`
+                    : `الشراء بالكرتون: ${product.wholesaleUnit || 'كرتون'}`}
+                </span>
               </div>
             </div>
-            <span className="font-mono font-black text-xs sm:text-sm text-emerald-800">{wholesaleCalculatedPrice.toLocaleString()} د.ع</span>
+            <span className="font-black text-xs sm:text-sm text-emerald-800 tracking-tight">{wholesaleCalculatedPrice.toLocaleString()} د.ع</span>
           </div>
         ) : null}
 
@@ -207,14 +219,14 @@ export default function ProductBuyModal({
         <div className="flex items-baseline justify-between border-y border-slate-100 py-2 px-1">
           <span className="text-xs font-bold text-slate-600">سعر الوحدة المختارة:</span>
           <div className="flex items-baseline gap-1.5">
-            <span className={`text-xl font-black leading-none font-mono ${
+            <span className={`text-xl font-black leading-none tracking-tight ${
               hasDiscount ? 'text-red-600' : 'text-slate-900'
             }`}>
               {currentPrice.toLocaleString()}
             </span>
             <span className="text-xs font-bold text-slate-600">د.ع</span>
             {hasDiscount && oldPrice && (
-              <span className="text-[11px] text-slate-400 font-bold line-through font-mono mr-1">
+              <span className="text-[11px] text-slate-400 font-bold line-through mr-1">
                 {oldPrice.toLocaleString()} د.ع
               </span>
             )}
@@ -298,7 +310,7 @@ export default function ProductBuyModal({
         <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
           <span className="font-bold text-slate-600">المجموع</span>
           <div className="text-left">
-            <span className="text-xl font-black text-brand-coral font-mono">
+            <span className="text-xl font-black text-brand-coral tracking-tight">
               {total.toLocaleString()}
             </span>
             <span className="text-xs font-bold text-brand-coral mr-1">د.ع</span>
