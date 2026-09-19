@@ -266,6 +266,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    try {
+      localStorage.removeItem('etihad_food_cart_iq');
+      localStorage.removeItem('etihad_food_coupon_iq');
+      localStorage.removeItem('etihad_cart_guest');
+      localStorage.removeItem('etihad_coupon_guest');
+    } catch {}
     saveUserToStorage(null);
   };
 
