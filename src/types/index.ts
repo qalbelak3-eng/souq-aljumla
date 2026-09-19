@@ -94,6 +94,19 @@ export interface Product {
   createdAt: string;
 }
 
+export type InternalProductFields =
+  | 'costPrice'
+  | 'boxCostPrice'
+  | 'pieceCostPrice'
+  | 'minStockAlert'
+  | 'expiryAlertDays'
+  | 'orderedWholesaleQty'
+  | 'orderedMarketQty'
+  | 'orderedRetailQty'
+  | 'orderedTotalQty';
+
+export type PublicProduct = Omit<Product, InternalProductFields>;
+
 export interface ProductOffer {
   id: string;
   productId: string;

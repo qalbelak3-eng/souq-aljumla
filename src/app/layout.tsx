@@ -23,6 +23,9 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://souqaljomla.com'),
+  alternates: {
+    canonical: 'https://souqaljomla.com',
+  },
   title: 'سوق جملة كربلاء | الأكبر والأشمل لتجارة المواد الغذائية بالجملة 🇮🇶',
   description: 'المتجر العراقي الرسمي لـ سوق جملة كربلاء (سوق الجملة) - الأكبر والأشمل في كربلاء لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد بالدينار العراقي.',
   applicationName: 'سوق جملة كربلاء',
@@ -98,6 +101,21 @@ export default function RootLayout({
               'url': 'https://souqaljomla.com',
               'description': 'المتجر العراقي الرسمي لـ سوق جملة كربلاء لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد',
               'inLanguage': 'ar-IQ'
+            }),
+          }}
+        />
+
+        {/* Google Official Organization Structured Data (Schema.org JSON-LD) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Organization',
+              'name': 'سوق جملة كربلاء',
+              'alternateName': 'سوق الجملة',
+              'url': 'https://souqaljomla.com',
+              'logo': 'https://souqaljomla.com/app-icon.png'
             }),
           }}
         />
