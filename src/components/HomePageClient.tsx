@@ -175,15 +175,21 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
 
   // Section visibility & limits from settings
   const showOffers = (settings?.showOffersSection ?? true) && offerProducts.length > 0;
-  const offersTitle = settings?.offersSectionTitle || 'العروض والتخفيضات الخاصة 🔥';
+  const rawOffersTitle = settings?.offersSectionTitle || 'العروض والتخفيضات الخاصة';
+  const offersTitle = rawOffersTitle.replace(/[🔥✨🏆📦]/g, '').trim();
   const offersLimit = Number(settings?.offersLimit) || 8;
 
   const showBestSellers = (settings?.showBestSellersSection ?? true) && displayBestSellers.length > 0;
-  const bestSellersTitle = settings?.bestSellersSectionTitle || 'الأكثر طلباً ومبيعاً 🏆';
+  const rawBestSellersTitle = settings?.bestSellersSectionTitle || 'الأكثر طلباً ومبيعاً';
+  const bestSellersTitle = rawBestSellersTitle.replace(/[🔥✨🏆📦]/g, '').trim();
   const bestSellersLimit = Number(settings?.bestSellersLimit) || 8;
 
   const showNewArrivals = (settings?.showNewArrivalsSection ?? true) && (newArrivalProducts.length > 0 || products.length > 0);
-  const newArrivalsTitle = settings?.newArrivalsSectionTitle || 'وصل حديثاً للمستودع ✨';
+  const rawNewArrivalsTitle = settings?.newArrivalsSectionTitle || 'وصل حديثاً للمتجر';
+  const newArrivalsTitle = rawNewArrivalsTitle
+    .replace(/للمستودع/g, 'للمتجر')
+    .replace(/[🔥✨🏆📦]/g, '')
+    .trim();
   const newArrivalsLimit = Number(settings?.newArrivalsLimit) || 8;
 
   // Active Promotional Campaign Showcases for Home (sorted by configured order)
@@ -213,7 +219,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
       {/* 3. DYNAMIC CATEGORIES - JUMLATY STYLE WITH ANIMATED ICONS */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+          <h2 className="text-xl sm:text-2xl font-black text-[#562810]">
             الأقسام
           </h2>
         </div>
@@ -262,9 +268,8 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
       {showOffers && (
         <section className="max-w-5xl mx-auto px-4 sm:px-6 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg sm:text-2xl font-black text-slate-900 flex items-center gap-1.5">
-              <span>{offersTitle}</span>
-              <span className="text-red-500 text-lg">🔥</span>
+            <h2 className="text-lg sm:text-2xl font-black text-[#562810]">
+              {offersTitle}
             </h2>
 
             <Link
@@ -288,9 +293,8 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
       {showBestSellers && (
         <section className="max-w-5xl mx-auto px-4 sm:px-6 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg sm:text-2xl font-black text-slate-900 flex items-center gap-1.5">
-              <span>{bestSellersTitle}</span>
-              <span className="text-amber-500 text-lg">🏆</span>
+            <h2 className="text-lg sm:text-2xl font-black text-[#562810]">
+              {bestSellersTitle}
             </h2>
 
             <Link
@@ -322,13 +326,12 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
         </section>
       ))}
 
-      {/* 6. SECTION 3: NEW ARRIVALS / LATEST PRODUCTS (وصل حديثاً للمستودع) */}
+      {/* 6. SECTION 3: NEW ARRIVALS / LATEST PRODUCTS (وصل حديثاً للمتجر) */}
       {showNewArrivals && (
         <section className="max-w-5xl mx-auto px-4 sm:px-6 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg sm:text-2xl font-black text-slate-900 flex items-center gap-1.5">
-              <span>{newArrivalsTitle}</span>
-              <span className="text-sky-500 text-lg">✨</span>
+            <h2 className="text-lg sm:text-2xl font-black text-[#562810]">
+              {newArrivalsTitle}
             </h2>
 
             <Link

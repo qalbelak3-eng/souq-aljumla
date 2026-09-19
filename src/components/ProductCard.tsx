@@ -69,7 +69,7 @@ export default function ProductCard({ product }: { product: Product }) {
             </span>
           ) : product.isNew ? (
             <span className="bg-sky-500 text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-xs">
-              ✨ جديد
+              جديد
             </span>
           ) : null}
         </div>

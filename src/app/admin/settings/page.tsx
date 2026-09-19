@@ -1049,7 +1049,7 @@ export default function AdminSettingsPage() {
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">عنوان القسم في الواجهة:</label>
                   <input
                     type="text"
-                    value={settings.offersSectionTitle ?? 'العروض والتخفيضات الخاصة 🔥'}
+                    value={settings.offersSectionTitle ?? 'العروض والتخفيضات الخاصة'}
                     onChange={(e) => setSettings({ ...settings, offersSectionTitle: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-rose-400"
                   />
@@ -1099,7 +1099,7 @@ export default function AdminSettingsPage() {
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">عنوان القسم في الواجهة:</label>
                   <input
                     type="text"
-                    value={settings.bestSellersSectionTitle ?? 'الأكثر طلباً ومبيعاً 🏆'}
+                    value={settings.bestSellersSectionTitle ?? 'الأكثر طلباً ومبيعاً'}
                     onChange={(e) => setSettings({ ...settings, bestSellersSectionTitle: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-amber-400"
                   />
@@ -1129,7 +1129,7 @@ export default function AdminSettingsPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">✨</span>
-                  <span className="font-black text-slate-900 text-xs">وصل حديثاً للمستودع</span>
+                  <span className="font-black text-slate-900 text-xs">وصل حديثاً للمتجر</span>
                 </div>
 
                 {/* Toggle Button */}
@@ -1149,7 +1149,7 @@ export default function AdminSettingsPage() {
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">عنوان القسم في الواجهة:</label>
                   <input
                     type="text"
-                    value={settings.newArrivalsSectionTitle ?? 'وصل حديثاً للمستودع ✨'}
+                    value={settings.newArrivalsSectionTitle ?? 'وصل حديثاً للمتجر'}
                     onChange={(e) => setSettings({ ...settings, newArrivalsSectionTitle: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-sky-400"
                   />
