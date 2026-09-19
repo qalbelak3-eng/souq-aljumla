@@ -508,7 +508,7 @@ export default function BannerSlider({
       style={{ backgroundColor: banners[activeDotIndex]?.bannerBgColor || '#f8fafc' }}
       className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y transition-colors duration-[400ms] ease-out ${
         position === 'top'
-          ? 'rounded-none aspect-[4/3] w-full'
+          ? 'rounded-none aspect-[24/19] w-full'
           : 'rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 aspect-[16/9]'
       } ${className}`}
     >
