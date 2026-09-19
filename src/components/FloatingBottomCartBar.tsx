@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { useScrollNav } from '@/context/ScrollNavContext';
@@ -17,6 +17,22 @@ export default function FloatingBottomCartBar() {
     amountNeededForMinOrder,
   } = useCart();
   const { isNavVisible } = useScrollNav();
+
+  // Animation state for green line on minimum order completion
+  const [showGreenCompleteBar, setShowGreenCompleteBar] = useState(false);
+  const prevBelowMinOrderRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    // When switching from below minimum order to met/completed
+    if (prevBelowMinOrderRef.current === true && !isBelowMinOrder) {
+      setShowGreenCompleteBar(true);
+      const timer = setTimeout(() => {
+        setShowGreenCompleteBar(false);
+      }, 1600);
+      return () => clearTimeout(timer);
+    }
+    prevBelowMinOrderRef.current = isBelowMinOrder;
+  }, [isBelowMinOrder]);
 
   // Do not show on Checkout, Admin, Auth, Driver, or Cart pages
   // Hide if cart drawer is open
@@ -58,7 +74,7 @@ export default function FloatingBottomCartBar() {
               </span>
             </div>
 
-            {/* Hungerstation Slim Progress Bar */}
+            {/* Hungerstation Slim Progress Bar (Orange) */}
             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
               <div
                 className="bg-amber-500 h-full rounded-full transition-all duration-300"
@@ -67,10 +83,22 @@ export default function FloatingBottomCartBar() {
             </div>
           </div>
         ) : (
-          <div className="py-0.5 text-center">
-            <div className="text-[11px] sm:text-xs text-slate-800 font-black flex items-center justify-center gap-1.5">
-              <span>🎉</span>
+          <div className="px-1 pt-0.5" dir="rtl">
+            <div className="text-[11px] sm:text-xs text-slate-800 font-bold text-right">
               <span><strong>مبروك!</strong> يمكنك الآن إتمام طلبك.</span>
+            </div>
+
+            {/* Hungerstation Green Progress Line: animates upon reaching min-order, then fades out smoothly */}
+            <div
+              className={`w-full overflow-hidden transition-all duration-700 ease-out ${
+                showGreenCompleteBar
+                  ? 'max-h-3 opacity-100 mt-1.5'
+                  : 'max-h-0 opacity-0 mt-0 pointer-events-none'
+              }`}
+            >
+              <div className="w-full bg-emerald-100 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-emerald-600 h-full rounded-full w-full transition-all duration-500" />
+              </div>
             </div>
           </div>
         )}
