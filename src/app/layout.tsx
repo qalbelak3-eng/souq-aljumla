@@ -22,21 +22,45 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'سوق الجملة | الأكبر والأشمل في كربلاء 🇮🇶',
-  description: 'المتجر العراقي الرسمي لـ سوق الجملة - الأكبر والأشمل في كربلاء لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد بالدينار العراقي.',
-  applicationName: 'سوق الجملة',
+  metadataBase: new URL('https://souqaljomla.com'),
+  title: 'سوق جملة كربلاء | الأكبر والأشمل لتجارة المواد الغذائية بالجملة 🇮🇶',
+  description: 'المتجر العراقي الرسمي لـ سوق جملة كربلاء (سوق الجملة) - الأكبر والأشمل في كربلاء لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد بالدينار العراقي.',
+  applicationName: 'سوق جملة كربلاء',
   manifest: '/manifest.json',
+  openGraph: {
+    siteName: 'سوق جملة كربلاء',
+    title: 'سوق جملة كربلاء | الأكبر والأشمل في كربلاء 🇮🇶',
+    description: 'المتجر العراقي الرسمي لـ سوق جملة كربلاء - الأكبر والأشمل لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد.',
+    url: 'https://souqaljomla.com',
+    locale: 'ar_IQ',
+    type: 'website',
+    images: [
+      {
+        url: '/app-icon.png',
+        width: 512,
+        height: 512,
+        alt: 'سوق جملة كربلاء',
+      },
+    ],
+  },
   appleWebApp: {
     capable: true,
-    title: 'سوق الجملة',
+    title: 'سوق جملة كربلاء',
     statusBarStyle: 'black-translucent',
   },
   icons: {
-    icon: '/app-icon.png',
-    shortcut: '/app-icon.png',
-    apple: '/apple-touch-icon.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/favicon.png', sizes: '48x48', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/app-icon.png', sizes: '512x512', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
-  keywords: 'سوق الجملة, سوق الجملة كربلاء, الأكبر والأشمل في كربلاء, جملة ومفرد, كربلاء, العراق, سناكات, مواد غذائية',
+  keywords: 'سوق جملة كربلاء, سوق الجملة, سوق الجملة كربلاء, الأكبر والأشمل في كربلاء, جملة ومفرد, كربلاء, العراق, سناكات, مواد غذائية',
 };
 
 export default function RootLayout({
@@ -47,6 +71,28 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        {/* Google Official Site Name Structured Data (Schema.org JSON-LD) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              'name': 'سوق جملة كربلاء',
+              'alternateName': [
+                'سوق الجملة كربلاء',
+                'سوق الجملة في كربلاء',
+                'سوق الجملة',
+                'سوق جملة كربلاء العراقي',
+                'Souq Al-Jumla Karbala',
+                'Souq Al-Jumla'
+              ],
+              'url': 'https://souqaljomla.com',
+              'description': 'المتجر العراقي الرسمي لـ سوق جملة كربلاء لتجارة وتوريد المواد الغذائية والسناكات بالجملة والمفرد',
+              'inLanguage': 'ar-IQ'
+            }),
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
