@@ -169,6 +169,7 @@ export default function CheckoutPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
 
   // Selected area object matching city
@@ -428,6 +429,11 @@ export default function CheckoutPage() {
     e.preventDefault();
     setErrorMessage('');
 
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (isBelowMinOrder) {
       setErrorMessage(`عذراً، الحد الأدنى لقيمة الطلبية في المتجر هو ${minOrderAmount.toLocaleString()} د.ع. مجموع مشترياتك الحالي هو ${subtotal.toLocaleString()} د.ع (متبقي ${amountNeededForMinOrder.toLocaleString()} د.ع).`);
       return;
@@ -564,6 +570,38 @@ export default function CheckoutPage() {
           يتم إرسال موقعك الجغرافي وتفاصيل الفاتورة تلقائياً مع الطلبية لتسريع وصول المندوب
         </p>
       </div>
+
+      {!user && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 p-4 sm:p-5 rounded-3xl space-y-3 text-slate-900 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-xl shrink-0 shadow-xs">
+              🛍️
+            </div>
+            <div>
+              <h3 className="font-black text-sm text-slate-900">
+                عليك التسجيل لإتمام الشراء
+              </h3>
+              <p className="text-xs text-slate-600 font-bold mt-0.5">
+                أهلاً بك يا غالي! لتأكيد طلبك وتحديد موقعك بدقة، يرجى إنشاء حساب جديد أو تسجيل الدخول.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <Link
+              href="/register?redirect=/checkout"
+              className="bg-brand-coral hover:bg-brand-coralHover text-white font-black text-xs py-2 px-4 rounded-xl shadow-xs transition flex items-center gap-1.5"
+            >
+              <span>إنشاء حساب جديد للطلب 👤</span>
+            </Link>
+            <Link
+              href="/login?redirect=/checkout"
+              className="bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs py-2 px-3.5 rounded-xl border border-slate-200 transition flex items-center gap-1.5"
+            >
+              <span>تسجيل الدخول (لدي حساب) 🔑</span>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {isPendingApproval && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 p-5 rounded-3xl space-y-4 text-slate-900 shadow-sm animate-fadeIn">
@@ -1322,6 +1360,19 @@ export default function CheckoutPage() {
                   ⚠️ حساب الماركت/التاجر قيد المراجعة. ستقوم الإدارة بالتواصل معك لاعتماده وتفعيل إرسال الفواتير.
                 </p>
               </div>
+            ) : !user ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(true)}
+                  className="w-full bg-brand-coral hover:bg-brand-coralHover text-white font-black py-4 px-4 rounded-2xl shadow-md transition text-xs flex items-center justify-center gap-2 glow-coral cursor-pointer"
+                >
+                  <span>عليك التسجيل لإتمام الشراء 👤🚀</span>
+                </button>
+                <p className="text-center text-[11px] text-amber-900 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                  ⚠️ التسوق متاح للجميع، ولكن لحفظ طلبيتك وتأكيد الشراء يرجى إنشاء حساب أو تسجيل الدخول.
+                </p>
+              </div>
             ) : (
               <button
                 type="submit"
@@ -1339,6 +1390,53 @@ export default function CheckoutPage() {
         </div>
 
       </form>
+
+      {/* Modal: تنبيه يجب التسجيل لإتمام الشراء */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 overflow-hidden select-none flex items-center justify-center p-4" dir="rtl">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity cursor-pointer"
+            onClick={() => setShowAuthModal(false)}
+          />
+
+          <div className="relative bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100 z-10 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center text-2xl font-black shadow-xs">
+              🛍️
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="font-black text-base text-slate-900">عليك التسجيل لإتمام الشراء</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                أهلاً بك يا غالي! لحفظ سلتك وتأكيد طلبيتك وضمان سرعة التوصيل لكربلاء، يرجى إنشاء حساب جديد أو تسجيل الدخول.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <Link
+                href="/register?redirect=/checkout"
+                className="w-full bg-brand-coral hover:bg-brand-coralHover text-white font-black py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer glow-coral"
+              >
+                <span>إنشاء حساب جديد للطلب 👤</span>
+              </Link>
+
+              <Link
+                href="/login?redirect=/checkout"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+              >
+                <span>تسجيل الدخول (لدي حساب) 🔑</span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold py-1 transition cursor-pointer"
+              >
+                العودة ومراجعة السلة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

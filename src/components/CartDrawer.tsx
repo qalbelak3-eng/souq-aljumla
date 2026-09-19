@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, MessageCircle, Truck, Sparkles } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
@@ -26,7 +26,8 @@ export default function CartDrawer() {
     freeDeliveryThreshold,
   } = useCart();
 
-  const { isApprovedMerchant } = useAuth();
+  const { isApprovedMerchant, user } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   if (!isCartDrawerOpen) return null;
 
@@ -236,6 +237,15 @@ export default function CartDrawer() {
                       <span>+ تصفح الأصناف وإكمال الحد الأدنى 🛒</span>
                     </button>
                   </div>
+                ) : !user ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthModal(true)}
+                    className="w-full bg-brand-coral hover:bg-brand-coralHover text-white font-black py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer glow-coral"
+                  >
+                    <span>إتمام الطلبية وتأكيد الشراء 🚀</span>
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                  </button>
                 ) : (
                   <Link
                     href="/checkout"
@@ -260,6 +270,61 @@ export default function CartDrawer() {
 
         </div>
       </div>
+
+      {/* Modal: تنبيه يجب التسجيل لإتمام الشراء */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 overflow-hidden select-none flex items-center justify-center p-4" dir="rtl">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity cursor-pointer"
+            onClick={() => setShowAuthModal(false)}
+          />
+
+          <div className="relative bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-slate-100 z-10 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center text-2xl font-black shadow-xs">
+              🛍️
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="font-black text-base text-slate-900">عليك التسجيل لإتمام الشراء</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                أهلاً بك يا غالي! لحفظ سلتك وتأكيد طلبيتك وضمان سرعة التوصيل لكربلاء، يرجى إنشاء حساب جديد أو تسجيل الدخول.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <Link
+                href="/register?redirect=/checkout"
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setIsCartDrawerOpen(false);
+                }}
+                className="w-full bg-brand-coral hover:bg-brand-coralHover text-white font-black py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer glow-coral"
+              >
+                <span>إنشاء حساب جديد للطلب 👤</span>
+              </Link>
+
+              <Link
+                href="/login?redirect=/checkout"
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setIsCartDrawerOpen(false);
+                }}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+              >
+                <span>تسجيل الدخول (لدي حساب) 🔑</span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold py-1 transition cursor-pointer"
+              >
+                متابعة تصفح السلة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
