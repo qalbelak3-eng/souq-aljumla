@@ -36,7 +36,7 @@ export default function CustomerGreetingsNotifier() {
         if (!alreadyWelcomed) {
           localStorage.setItem(welcomeKey, 'true');
           sendSystemNotification({
-            title: `🎁 أهلاً وسهلاً بك ${user.name ? `يا ${user.name.split(' ')[0]}` : ''} في سوق الجملة!`,
+            title: `🎁 أهلاً وسهلاً بك ${user.name ? `يا ${user.name.split(' ')[0]}` : ''}!`,
             body: 'نورت متجرك يا غالي! حسابك جاهز لتسوّق أفضل المواد الغذائية والسناكات بأسعار الجملة والمفرد مع توصيل فوري لكربلاء 🚚✨',
             url: '/products?filter=offers',
             tag: 'welcome-new-user-' + user.id,
@@ -51,7 +51,7 @@ export default function CustomerGreetingsNotifier() {
         const userName = user?.name ? `يا ${user.name.split(' ')[0]}` : 'يا غالي';
         sendSystemNotification({
           title: `❤️ مشتاقين لشوفتك ${userName}!`,
-          body: 'أهلاً بعودتك لسوق الجملة! جهّزنا لك عروض وتخفيضات وبضائع جديدة ومميزة بانتظارك اليوم ✨🛍️',
+          body: 'أهلاً بعودتك! جهّزنا لك عروض وتخفيضات وبضائع جديدة ومميزة بانتظارك اليوم ✨🛍️',
           url: '/products?filter=offers',
           tag: 'welcome-back-' + Math.floor(now / (24 * 60 * 60 * 1000)),
           soundType: 'delivered',

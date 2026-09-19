@@ -91,7 +91,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           const firstName = user.name ? `يا ${user.name.split(' ')[0]}` : 'يا غالي';
           const welcomeNotif: PushNotificationLog = {
             id: `welcome-${user.id}-${nowTime}`,
-            title: `🎁 أهلاً وسهلاً بك ${firstName} في سوق الجملة!`,
+            title: `🎁 أهلاً وسهلاً بك ${firstName}!`,
             body: 'نورت متجرك يا غالي! حسابك جاهز لتسوّق أفضل المواد الغذائية والسناكات بأسعار الجملة والمفرد مع توصيل فوري لكربلاء 🚚✨',
             url: '/products?filter=offers',
             targetAudience: 'all',
