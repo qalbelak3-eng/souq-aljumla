@@ -82,16 +82,16 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
 
   return (
     <div className={`relative my-2 sm:my-6 select-none ${className}`}>
-      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (متناسق بدون ظل أو حدود ليتطابق مع الخلفية البيضاء، ومتجاوب كامل على الجوال) */}
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (تقوس الحافات العلوية مثل هنقرستيشن تماماً) */}
       <div 
-        className="relative w-full rounded-none sm:rounded-3xl overflow-hidden shadow-none border-0 aspect-[1200/550] max-h-[550px] bg-transparent group"
+        className="relative w-full rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-none border-0 aspect-[1200/550] max-h-[550px] bg-transparent group"
         style={{ backgroundColor: banner.bannerBgColor || banner.campaignBgColor || 'transparent' }}
       >
         <Link href={destinationUrl} className="block w-full h-full relative cursor-pointer">
           <img
             src={banner.image}
             alt={banner.title || 'حملة عروض'}
-            className="w-full h-full object-cover object-center rounded-none sm:rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
+            className="w-full h-full object-cover object-center rounded-t-3xl sm:rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
           />
           {/* Top Navigation Arrow (للدخول إلى صفحة القسم أو العرض) */}
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/40 hover:bg-white/70 backdrop-blur-md text-white hover:text-slate-900 flex items-center justify-center transition shadow-xs active:scale-95">
@@ -100,12 +100,12 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         </Link>
       </div>
 
-      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (رفع المنتجات وتصغيرها لتطابق هنقرستيشن مع امتداد كامل للشاشة) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (تنزيل المنتجات قليلاً جداً وبداية بمسافة أنيقة من اليمين) */}
       {products.length > 0 && (
-        <div className="relative -mt-[84px] sm:-mt-[120px] md:-mt-[180px] lg:-mt-[270px] z-10 w-full px-0">
+        <div className="relative -mt-[68px] sm:-mt-[105px] md:-mt-[160px] lg:-mt-[245px] z-10 w-full px-0">
           <div
             ref={scrollContainerRef}
-            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-3 sm:px-4 w-full"
+            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 w-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {products.map((product) => {
@@ -131,7 +131,7 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
               return (
                 <div
                   key={product.id}
-                  className="w-[112px] sm:w-[138px] md:w-[155px] shrink-0 bg-white rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 border border-slate-100/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
+                  className="w-[112px] sm:w-[138px] md:w-[155px] shrink-0 first:ms-3.5 sm:first:ms-4 last:me-3.5 sm:last:me-4 bg-white rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 border border-slate-100/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
                   onClick={() => setSelectedProductForModal(product)}
                 >
                   {/* Image & Discount Badge */}
