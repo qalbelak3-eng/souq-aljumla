@@ -96,15 +96,14 @@ export default function TextProductShelf({ banner, allProducts = [], className =
         </Link>
       </div>
 
-      {/* 2. HORIZONTAL PRODUCT STRIP (شريط المنتجات بنفس حجم ونمط حملات العروض ممتد لنهاية الشاشة) */}
-      <div
-        ref={scrollContainerRef}
-        className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {/* بداية شريط المنتجات بمسافة 16px متناسقة مع حافة الصفحة في RTL */}
-        <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
-        {products.map((product) => {
+      {/* 2. HORIZONTAL PRODUCT STRIP (شريط المنتجات ممتد لنهاية الشاشة من اليسار مع محاذاة 16px باليمين) */}
+      <div className="w-full pr-4 sm:pr-6 pl-0">
+        <div
+          ref={scrollContainerRef}
+          className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {products.map((product) => {
           const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
           const { price: currentPrice } = getProductPriceForUser(product, selectedType, user);
           const currentUnit = selectedType === 'wholesale' 
@@ -214,8 +213,9 @@ export default function TextProductShelf({ banner, allProducts = [], className =
             </div>
           );
         })}
-        {/* نهاية شريط المنتجات بمسافة متناسقة عند اكتمال التمرير */}
-        <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
+          {/* مسافة أنيقة عند اكتمال التمرير لليسار */}
+          <div className="w-4 sm:w-6 shrink-0 pointer-events-none" aria-hidden="true" />
+        </div>
       </div>
 
       {/* Buy Modal */}

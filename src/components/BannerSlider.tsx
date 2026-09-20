@@ -267,18 +267,19 @@ export default function BannerSlider({
     }
   };
 
+  // Only top hero slider displays skeleton loader. For category and secondary positions,
+  // do not show an empty pulsing box to prevent layout flash when category has no banners.
+  if (position !== 'top' && banners.length === 0) {
+    return null;
+  }
+
   if (isLoading && banners.length === 0) {
     if (position === 'top') {
       return (
         <div className={`w-full h-[calc(275px+env(safe-area-inset-top,0px))] sm:h-[320px] md:h-[380px] lg:h-[420px] bg-[#fff8c1] rounded-b-3xl sm:rounded-b-[32px] animate-pulse ${className}`} />
       );
     }
-    const aspectClass = isCompact
-      ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
-      : 'aspect-[16/9] min-h-[250px] sm:min-h-[360px] md:min-h-[440px]';
-    return (
-      <div className={`w-full ${aspectClass} bg-white rounded-3xl animate-pulse border border-slate-100 shadow-sm ${className}`} />
-    );
+    return null;
   }
 
   if (banners.length === 0) return null;

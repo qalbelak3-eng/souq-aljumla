@@ -100,16 +100,14 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         </Link>
       </div>
 
-      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (تنزيل المنتجات قليلاً جداً وبداية بمسافة أنيقة متطابقة مع الأقسام) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (محاذاة 16px من اليمين وامتداد كامل لحافة الشاشة من اليسار) */}
       {products.length > 0 && (
-        <div className="relative -mt-[68px] sm:-mt-[105px] md:-mt-[160px] lg:-mt-[245px] z-10 w-full px-0">
+        <div className="relative -mt-[68px] sm:-mt-[105px] md:-mt-[160px] lg:-mt-[245px] z-10 w-full pr-4 sm:pr-6 pl-0">
           <div
             ref={scrollContainerRef}
             className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 w-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {/* بداية شريط المنتجات بمسافة 16px متناسقة مع حافة الصفحة في RTL */}
-            <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
             {products.map((product) => {
               const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
               const { price: currentPrice } = getProductPriceForUser(product, selectedType, user);
@@ -220,8 +218,8 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                 </div>
               );
             })}
-            {/* نهاية شريط المنتجات بمسافة متناسقة عند اكتمال التمرير */}
-            <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
+            {/* مسافة أنيقة عند اكتمال التمرير لليسار */}
+            <div className="w-4 sm:w-6 shrink-0 pointer-events-none" aria-hidden="true" />
           </div>
         </div>
       )}

@@ -388,6 +388,16 @@ function ProductsCatalog() {
     !queryParam &&
     dynamicCompanies.length > 0;
 
+  // Category promotional banners (regular sliding banners configured for this specific category)
+  const categoryBanners = banners.filter(
+    (b) =>
+      b.isActive &&
+      !b.isCampaignShowcase &&
+      b.position === 'category' &&
+      b.category &&
+      normalizeCat(b.category) === normalizeCat(selectedCategory)
+  );
+
   // Category specific showcase campaigns (only if explicitly set to display inside this category)
   const categoryCampaigns = banners.filter(
     (b) =>
@@ -436,8 +446,8 @@ function ProductsCatalog() {
           </div>
 
           {/* Category Promotional Sliding Banner (e.g. Sprite or Drinks promotion) */}
-          {selectedCategory && selectedCategory !== 'الكل' && (
-            <BannerSlider position="category" category={selectedCategory} className="mb-2" />
+          {selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
+            <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
           )}
 
           {/* Category Showcase Campaigns (e.g. منتجاتنا الطازجة or special themed product carousel) */}
@@ -520,8 +530,8 @@ function ProductsCatalog() {
           </div>
 
           {/* Category Promotional Sliding Banner if viewing category without company filter */}
-          {!selectedCompany && selectedCategory && selectedCategory !== 'الكل' && (
-            <BannerSlider position="category" category={selectedCategory} className="mb-2" />
+          {!selectedCompany && selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
+            <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
           )}
 
           {/* Products 2-Column Mobile Grid */}
