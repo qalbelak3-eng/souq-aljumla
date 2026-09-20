@@ -211,7 +211,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
 
       {/* 2.5. TOP THEMED CAMPAIGN SHOWCASES (e.g. منتجاتنا الطازجة) */}
       {topShowcases.map((showcase) => (
-        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <section key={showcase.id} className="max-w-[1240px] mx-auto px-3 sm:px-5">
           <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
         </section>
       ))}
@@ -259,7 +259,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
 
       {/* 3.6 BELOW CATEGORIES CAMPAIGN SHOWCASES */}
       {belowCatShowcases.map((showcase) => (
-        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <section key={showcase.id} className="max-w-[1240px] mx-auto px-3 sm:px-5">
           <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
         </section>
       ))}
@@ -321,7 +321,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
 
       {/* 5.6 MIDDLE THEMED CAMPAIGN SHOWCASES */}
       {middleShowcases.map((showcase) => (
-        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <section key={showcase.id} className="max-w-[1240px] mx-auto px-3 sm:px-5">
           <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
         </section>
       ))}
@@ -357,7 +357,7 @@ export default function HomePageClient({ serverBanners }: HomePageClientProps) {
       </section>
 
       {bottomShowcases.map((showcase) => (
-        <section key={showcase.id} className="max-w-5xl mx-auto px-4 sm:px-6">
+        <section key={showcase.id} className="max-w-[1240px] mx-auto px-3 sm:px-5">
           <CampaignShowcaseCard banner={showcase} allProducts={validProducts} />
         </section>
       ))}

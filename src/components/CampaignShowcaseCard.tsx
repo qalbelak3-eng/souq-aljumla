@@ -82,8 +82,11 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
 
   return (
     <div className={`relative my-4 sm:my-6 select-none ${className}`}>
-      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد بارتفاع 600) */}
-      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 h-[300px] sm:h-[420px] md:h-[500px] lg:h-[600px] bg-slate-100 group">
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد بارتفاع 550) */}
+      <div 
+        className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 h-[280px] sm:h-[380px] md:h-[460px] lg:h-[550px] bg-slate-100 group"
+        style={{ backgroundColor: banner.bannerBgColor || banner.campaignBgColor || '#f8fafc' }}
+      >
         <Link href={destinationUrl} className="block w-full h-full relative cursor-pointer">
           <img
             src={banner.image}
@@ -97,9 +100,9 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         </Link>
       </div>
 
-      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (المنتجات متداخلة بجمالية داخل البنر) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (رفع المنتجات لسد الفراغ الكبير داخل البنر) */}
       {products.length > 0 && (
-        <div className="relative -mt-16 sm:-mt-22 md:-mt-28 z-10 px-2 sm:px-4">
+        <div className="relative -mt-[85px] sm:-mt-[140px] md:-mt-[190px] lg:-mt-[240px] z-10 px-2 sm:px-4">
           <div
             ref={scrollContainerRef}
             className="flex items-stretch gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-1"

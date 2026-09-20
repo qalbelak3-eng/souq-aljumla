@@ -960,7 +960,7 @@ export default function AdminBannersPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-xs text-slate-900">📐 أبعاد حملات العروض والأقسام:</span>
                   <span className="bg-teal-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
-                    🎨 بنر مصمم: 1200 × 600 px (ارتفاع 600px - نسبة 2:1)
+                    🎨 بنر مصمم: 1200 × 550 px (ارتفاع 550px)
                   </span>
                   <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-md shadow-xs">
                     📝 القسم الكتابي الفاصل: لا يحتاج صورة نهائياً (عنوان وألوان وشريط منتجات)
@@ -1039,7 +1039,7 @@ export default function AdminBannersPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="relative aspect-[2/1] w-full overflow-hidden bg-slate-100">
+                    <div className="relative aspect-[1200/550] w-full overflow-hidden bg-slate-100">
                       <img
                         src={banner.image}
                         alt={banner.title}
