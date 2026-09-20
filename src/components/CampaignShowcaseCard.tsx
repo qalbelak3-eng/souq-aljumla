@@ -100,12 +100,12 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         </Link>
       </div>
 
-      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (رفع المنتجات وتصغيرها لتطابق هنقرستيشن) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (رفع المنتجات وتصغيرها لتطابق هنقرستيشن مع امتداد كامل للشاشة) */}
       {products.length > 0 && (
-        <div className="relative -mt-[84px] sm:-mt-[120px] md:-mt-[180px] lg:-mt-[270px] z-10 px-2.5 sm:px-4">
+        <div className="relative -mt-[84px] sm:-mt-[120px] md:-mt-[180px] lg:-mt-[270px] z-10 w-full px-0">
           <div
             ref={scrollContainerRef}
-            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-1"
+            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-3 sm:px-4 w-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {products.map((product) => {
