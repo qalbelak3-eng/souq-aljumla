@@ -333,7 +333,7 @@ export default function BannerSlider({
     }
 
     const aspectClass = isCompact
-      ? 'aspect-[22/8] sm:aspect-[24/8] min-h-[140px] sm:min-h-[180px]'
+      ? 'aspect-[1200/350]'
       : 'aspect-[16/9] max-h-[360px] sm:max-h-[420px]';
     return (
       <div
@@ -399,7 +399,8 @@ export default function BannerSlider({
           {extendedBanners.map((banner, idx) => (
             <div
               key={`compact-banner-${banner.id}-${idx}`}
-              className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[22/8] sm:aspect-[24/8] min-h-[135px] sm:min-h-[175px] bg-white transition-transform active:scale-[0.99]"
+              className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[1200/350] bg-white transition-transform active:scale-[0.99]"
+              style={{ backgroundColor: banner.bannerBgColor || '#ffffff' }}
             >
               <Link
                 href={banner.linkUrl || '/products'}

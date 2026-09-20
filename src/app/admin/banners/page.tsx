@@ -762,16 +762,16 @@ export default function AdminBannersPage() {
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-black text-xs text-slate-900">📐 دليل أبعاد سلايدر الإعلانات الثانوي:</span>
+                  <span className="font-black text-xs text-slate-900">📐 دليل أبعاد سلايدر الإعلانات الثانوي والأقسام:</span>
                   <span className="bg-emerald-700 text-white font-mono font-black text-[11px] px-2.5 py-0.5 rounded-lg shadow-xs">
-                    1200 × 400 px (أو 1080 × 360 px)
+                    1200 × 350 px (أو 2400 × 700 px لدقة فائقة)
                   </span>
                   <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-md font-mono border border-emerald-200">
-                    نسبة 24:8 نحيف ومدمج (سلايدر إعلانات ثانوي)
+                    نسبة 1200:350 مدمج وأنيق بدون قص الأطراف
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  مخصص للسلايدرات الإعلانية الأنيقة والنحيفة أسفل الأقسام بنسبة 3:1 ليكون مدمجاً وخفيفاً بدون أن يأخذ مساحة طولية كبيرة. ⚡ <strong>ضغط فوري:</strong> يتم ضغط الصورة آلياً.
+                  مخصص للسلايدرات الإعلانية الأنيقة والنحيفة في الأقسام والصفحة الرئيسية بدون أي قص للأطراف. 💡 <strong>نصيحة للجودة:</strong> صمم بدقة 2400×700 بكسل لتحصل على وضوح ونقاوة كريستالية 4K على شاشات الجوال.
                 </p>
               </div>
             </div>
@@ -1317,7 +1317,11 @@ export default function AdminBannersPage() {
                       <div className="w-full h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-1">
                         <span>اضغط على الزر أعلاه لاختيار صورة الإعلان المصممة</span>
                         <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                          📐 القياس الموصى به (ستايل هنقرستيشن): 1080 × 900 بكسل (أول 260px بالأعلى مخصصة لشريط البحث والموقع)
+                          {isCampaignShowcase
+                            ? '📐 القياس الموصى به (حملة مصممة): 1200 × 550 بكسل'
+                            : isSpriteSlider || position === 'category' || position === 'below_categories' || position === 'middle'
+                            ? '📐 القياس الموصى به (سلايدر ثانوي أو أقسام): 1200 × 350 بكسل (أو 2400 × 700 لحدة فائقة)'
+                            : '📐 القياس الموصى به (ستايل هنقرستيشن رئيسي): 1080 × 900 بكسل'}
                         </span>
                       </div>
                     )}
