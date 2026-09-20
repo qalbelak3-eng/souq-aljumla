@@ -152,7 +152,7 @@ export default function AdminBannersPage() {
     setLinkUrl('');
     setBadge('');
     setPosition('bottom');
-    setCategory(categories[0]?.name || '');
+    setCategory('');
     setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
     setIsActive(true);
     setIsCampaignShowcase(true);
@@ -173,7 +173,7 @@ export default function AdminBannersPage() {
     setLinkUrl('');
     setBadge('');
     setPosition('bottom');
-    setCategory(categories[0]?.name || '');
+    setCategory('');
     setOrder(banners.filter((b) => b.isCampaignShowcase).length + 1);
     setIsActive(true);
     setIsCampaignShowcase(true);

@@ -388,12 +388,13 @@ function ProductsCatalog() {
     !queryParam &&
     dynamicCompanies.length > 0;
 
-  // Category specific showcase campaigns
+  // Category specific showcase campaigns (only if explicitly set to display inside this category)
   const categoryCampaigns = banners.filter(
     (b) =>
       b.isActive &&
       b.isCampaignShowcase &&
-      (b.position === 'category' || b.position === 'all' || (b.category && normalizeCat(b.category) === normalizeCat(selectedCategory)))
+      ((b.position === 'category' && b.category && normalizeCat(b.category) === normalizeCat(selectedCategory)) ||
+       b.position === 'all')
   );
 
   const currentCategoryObj = categories.find((c) => c.name === selectedCategory);
