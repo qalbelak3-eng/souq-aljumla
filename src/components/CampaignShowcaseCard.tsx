@@ -82,13 +82,13 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
 
   return (
     <div className={`relative my-4 sm:my-6 select-none ${className}`}>
-      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد) */}
-      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 aspect-[18/8] sm:aspect-[22/8] md:aspect-[24/8] min-h-[170px] sm:min-h-[220px] md:min-h-[260px] bg-slate-100 group">
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد بارتفاع 600) */}
+      <div className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 h-[300px] sm:h-[420px] md:h-[500px] lg:h-[600px] bg-slate-100 group">
         <Link href={destinationUrl} className="block w-full h-full relative cursor-pointer">
           <img
             src={banner.image}
             alt={banner.title || 'حملة عروض'}
-            className="w-full h-full object-cover rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
+            className="w-full h-full object-cover object-center rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
           />
           {/* Top Navigation Arrow (للدخول إلى صفحة القسم أو العرض) */}
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/40 hover:bg-white/70 backdrop-blur-md text-white hover:text-slate-900 flex items-center justify-center transition shadow-xs active:scale-95">
