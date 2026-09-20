@@ -99,7 +99,7 @@ export default function TextProductShelf({ banner, allProducts = [], className =
       {/* 2. HORIZONTAL PRODUCT STRIP (شريط المنتجات بنفس حجم ونمط حملات العروض ممتد لنهاية الشاشة) */}
       <div
         ref={scrollContainerRef}
-        className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full"
+        className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full pr-4 sm:pr-6 pl-0"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {products.map((product) => {
@@ -125,7 +125,7 @@ export default function TextProductShelf({ banner, allProducts = [], className =
           return (
             <div
               key={product.id}
-              className="w-[112px] sm:w-[138px] md:w-[155px] shrink-0 first:ms-3.5 sm:first:ms-4 last:me-3.5 sm:last:me-4 bg-white rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 border border-slate-100/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
+              className="w-[112px] sm:w-[138px] md:w-[155px] shrink-0 bg-white rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 border border-slate-100/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:shadow-md transition-all flex flex-col justify-between group snap-start cursor-pointer"
               onClick={() => setSelectedProductForModal(product)}
             >
               {/* Image & Discount Badge */}
@@ -212,6 +212,7 @@ export default function TextProductShelf({ banner, allProducts = [], className =
             </div>
           );
         })}
+        <div className="w-2 sm:w-4 shrink-0" aria-hidden="true" />
       </div>
 
       {/* Buy Modal */}
