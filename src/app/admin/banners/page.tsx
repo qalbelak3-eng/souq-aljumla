@@ -110,7 +110,7 @@ export default function AdminBannersPage() {
     setLinkUrl('/products');
     setBadge('توصيل سريع 🚚');
     setPosition('top');
-    setCategory(categories[0]?.name || '');
+    setCategory('');
     setOrder(banners.filter((b) => !b.isCampaignShowcase && !b.isSpriteSlider && b.position !== 'below_categories').length + 1);
     setIsActive(true);
     setIsCampaignShowcase(false);
@@ -193,8 +193,8 @@ export default function AdminBannersPage() {
     setImage(banner.image || '');
     setLinkUrl(banner.linkUrl || '');
     setBadge(banner.badge || '');
-    setPosition(banner.position || 'top');
-    setCategory(banner.category || (categories[0]?.name || ''));
+    setPosition(activeTab === 'slider' ? 'top' : (banner.position || 'top'));
+    setCategory(activeTab === 'slider' ? '' : (banner.category || (categories[0]?.name || '')));
     setOrder(banner.order || 1);
     setIsActive(banner.isActive);
     setBannerBgColor(banner.bannerBgColor || '');
@@ -234,19 +234,22 @@ export default function AdminBannersPage() {
 
     setIsSaving(true);
 
+    const finalPosition = activeTab === 'slider' ? 'top' : position;
+    const finalCategory = (activeTab === 'slider' || finalPosition !== 'category') ? '' : category.trim();
+
     const payload = {
       title: title.trim(),
       subtitle: subtitle.trim(),
       image: image.trim(),
       linkUrl: linkUrl.trim(),
       badge: badge.trim(),
-      position,
-      category: position === 'category' || category ? category.trim() : '',
+      position: finalPosition,
+      category: finalCategory,
       order: Number(order) || 1,
       bannerBgColor: bannerBgColor.trim() || undefined,
       isCampaignShowcase,
       isTextShelf,
-      isSpriteSlider: isSpriteSlider || position === 'below_categories',
+      isSpriteSlider: isSpriteSlider || finalPosition === 'below_categories',
       campaignBgColor: isCampaignShowcase ? campaignBgColor : undefined,
       campaignProductsTitle: isCampaignShowcase ? (campaignProductsTitle.trim() || title.trim()) : undefined,
       campaignProductIds: isCampaignShowcase ? campaignProductIds : undefined,
@@ -1408,23 +1411,56 @@ export default function AdminBannersPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">موقع عرض البنر:</label>
-                      <select
-                        value={position}
-                        onChange={(e) => setPosition(e.target.value as any)}
-                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
-                      >
-                        <option value="top">🔝 أعلى الصفحة الرئيسية</option>
-                        <option value="below_categories">🎯 أسفل الأقسام مباشرة</option>
-                        <option value="middle">وسط الصفحة الرئيسية</option>
-                        <option value="bottom">🔽 أسفل الصفحة الرئيسية</option>
-                        <option value="category">📂 داخل قسم محدد بالمتجر</option>
-                        <option value="all">🌐 يظهر في جميع الأماكن</option>
-                      </select>
-                    </div>
+                  {activeTab !== 'slider' ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-700 font-bold mb-1">موقع عرض البنر:</label>
+                          <select
+                            value={position}
+                            onChange={(e) => setPosition(e.target.value as any)}
+                            className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
+                          >
+                            <option value="top">🔝 أعلى الصفحة الرئيسية</option>
+                            <option value="below_categories">🎯 أسفل الأقسام مباشرة</option>
+                            <option value="middle">وسط الصفحة الرئيسية</option>
+                            <option value="bottom">🔽 أسفل الصفحة الرئيسية</option>
+                            <option value="category">📂 داخل قسم محدد بالمتجر</option>
+                            <option value="all">🌐 يظهر في جميع الأماكن</option>
+                          </select>
+                        </div>
 
+                        <div>
+                          <label className="block text-slate-700 font-bold mb-1">ترتيب الظهور التسلسلي (Order):</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            value={order}
+                            onChange={(e) => setOrder(Number(e.target.value))}
+                            className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {position === 'category' && (
+                        <div>
+                          <label className="block text-slate-700 font-bold mb-1">القسم المستهدف:</label>
+                          <select
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
+                          >
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.name}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </>
+                  ) : (
                     <div>
                       <label className="block text-slate-700 font-bold mb-1">ترتيب الظهور التسلسلي (Order):</label>
                       <input
@@ -1435,23 +1471,6 @@ export default function AdminBannersPage() {
                         onChange={(e) => setOrder(Number(e.target.value))}
                         className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold font-mono"
                       />
-                    </div>
-                  </div>
-
-                  {position === 'category' && (
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">القسم المستهدف:</label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue font-bold cursor-pointer"
-                      >
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   )}
 

@@ -27,8 +27,7 @@ export default function BannerSlider({
     if (initialData && initialData.length > 0) return initialData;
     return [];
   });
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [displayIndex, setDisplayIndex] = useState(1);
+  const [displayIndex, setDisplayIndex] = useState(2);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoading, setIsLoading] = useState(() => !initialData || initialData.length === 0);
 
@@ -83,21 +82,28 @@ export default function BannerSlider({
 
   const isCompact = aspectRatio === 'compact' || position === 'middle' || position === 'bottom' || position === 'category' || position === 'below_categories';
 
-  // Infinite loop cloned list: [last, ...banners, first]
+  // Infinite loop cloned list with 2-item padding on each side for smooth peek-carousel and full-width carousel
   const extendedBanners = useMemo(() => {
     if (banners.length <= 1) return banners;
     const first = banners[0];
+    const second = banners[1] || banners[0];
     const last = banners[banners.length - 1];
-    return [last, ...banners, first];
+    const secondLast = banners[banners.length - 2] || last;
+    return [secondLast, last, ...banners, first, second];
   }, [banners]);
+
+  // Reset displayIndex to 2 (first real item) when banners array loads or changes
+  useEffect(() => {
+    if (banners.length > 1) {
+      setDisplayIndex(2);
+    }
+  }, [banners.length]);
 
   // Active indicator dot index (0 to banners.length - 1)
   const activeDotIndex = useMemo(() => {
     if (banners.length <= 1) return 0;
-    if (displayIndex <= 0) return banners.length - 1;
-    if (displayIndex >= extendedBanners.length - 1) return 0;
-    return displayIndex - 1;
-  }, [displayIndex, banners.length, extendedBanners.length]);
+    return ((displayIndex - 2) % banners.length + banners.length) % banners.length;
+  }, [displayIndex, banners.length]);
 
   // Infinite Loop Navigation Handlers
   const slideNext = useCallback(() => {
@@ -115,31 +121,27 @@ export default function BannerSlider({
   const goToSlide = useCallback((index: number) => {
     if (banners.length <= 1) return;
     setIsTransitioning(true);
-    setDisplayIndex(index + 1);
+    setDisplayIndex(index + 2);
   }, [banners.length]);
 
   // Handle instant jump at the clone edges for seamless continuous loop
   const handleTransitionEnd = () => {
     setIsTransitioning(false);
-    if (displayIndex >= extendedBanners.length - 1) {
-      setDisplayIndex(1);
-    } else if (displayIndex <= 0) {
-      setDisplayIndex(banners.length);
+    if (displayIndex >= banners.length + 2) {
+      setDisplayIndex(2);
+    } else if (displayIndex <= 1) {
+      setDisplayIndex(banners.length + 1);
     }
   };
 
-  // Auto slide every 4.5 seconds in a continuous infinite forward motion
+  // Auto slide every 4.5 seconds in a continuous infinite forward motion for both main and secondary sliders
   useEffect(() => {
     if (banners.length <= 1 || isSwiping) return;
     const interval = setInterval(() => {
-      if (isCompact) {
-        setCurrentIndex((prev) => (prev + 1) % banners.length);
-      } else {
-        slideNext();
-      }
+      slideNext();
     }, 4500);
     return () => clearInterval(interval);
-  }, [banners.length, isSwiping, isCompact, slideNext]);
+  }, [banners.length, isSwiping, slideNext]);
 
   // Dynamic theme-color sync (matches Hungerstation mobile status bar color behind clock and battery)
   useEffect(() => {
@@ -204,22 +206,14 @@ export default function BannerSlider({
     const minSwipeDistance = 30;
 
     if (isHorizontalSwipe.current && dragOffset !== 0) {
-      if (isCompact) {
-        if (dragOffset < -minSwipeDistance) {
-          setCurrentIndex((prev) => (prev + 1) % banners.length);
-        } else if (dragOffset > minSwipeDistance) {
-          setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
-        }
+      if (dragOffset < -minSwipeDistance) {
+        // Swiped Left -> Move to next slide seamlessly
+        slideNext();
+      } else if (dragOffset > minSwipeDistance) {
+        // Swiped Right -> Move to previous slide seamlessly
+        slidePrev();
       } else {
-        if (dragOffset < -minSwipeDistance) {
-          // Swiped Left -> Move to next slide seamlessly
-          slideNext();
-        } else if (dragOffset > minSwipeDistance) {
-          // Swiped Right -> Move to previous slide seamlessly
-          slidePrev();
-        } else {
-          setIsTransitioning(true);
-        }
+        setIsTransitioning(true);
       }
     }
 
@@ -251,20 +245,12 @@ export default function BannerSlider({
     if (!isSwiping || banners.length <= 1) return;
     const minSwipeDistance = 35;
 
-    if (isCompact) {
-      if (dragOffset < -minSwipeDistance) {
-        setCurrentIndex((prev) => (prev + 1) % banners.length);
-      } else if (dragOffset > minSwipeDistance) {
-        setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
-      }
+    if (dragOffset < -minSwipeDistance) {
+      slideNext();
+    } else if (dragOffset > minSwipeDistance) {
+      slidePrev();
     } else {
-      if (dragOffset < -minSwipeDistance) {
-        slideNext();
-      } else if (dragOffset > minSwipeDistance) {
-        slidePrev();
-      } else {
-        setIsTransitioning(true);
-      }
+      setIsTransitioning(true);
     }
 
     setIsSwiping(false);
@@ -372,19 +358,19 @@ export default function BannerSlider({
   // 1. COMPACT / SECONDARY PEEK CAROUSEL (وسط الشاشة مع ظهور طرف الإعلانين يميناً ويساراً)
   // ═══════════════════════════════════════════════════════════════════
   if (isCompact) {
-    // عرض الكرت 84% مع مسافة 3% ليتوسط الكرت النشط وتظهر أطراف الإعلانات المتجاورة
+    // عرض الكرت 84% مع مسافة 2.5% ليتوسط الكرت النشط وتظهر أطراف الإعلانات المتجاورة
     const cardWidthPercent = 84;
     const gapPercent = 2.5;
     const stepPercent = cardWidthPercent + gapPercent; // 86.5%
     const centerOffset = (100 - cardWidthPercent) / 2; // 8% مسافة متساوية يميناً ويساراً
 
     const compactTransform = dragOffset !== 0
-      ? `translateX(calc(${centerOffset}% - ${currentIndex * stepPercent}% + ${dragOffset}px))`
-      : `translateX(calc(${centerOffset}% - ${currentIndex * stepPercent}%))`;
+      ? `translateX(calc(${centerOffset}% - ${displayIndex * stepPercent}% + ${dragOffset}px))`
+      : `translateX(calc(${centerOffset}% - ${displayIndex * stepPercent}%))`;
 
-    const compactTransition = isSwiping
-      ? 'none'
-      : 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)';
+    const compactTransition = isTransitioning && !isSwiping
+      ? 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)'
+      : 'none';
 
     return (
       <div
@@ -398,8 +384,9 @@ export default function BannerSlider({
         onMouseLeave={handleMouseUp}
         className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y py-1 ${className}`}
       >
-        {/* Track with live real-time finger tracking & centered peek effect */}
+        {/* Track with live real-time finger tracking, centered peek effect & continuous infinite loop */}
         <div
+          onTransitionEnd={handleTransitionEnd}
           className="flex items-center will-change-transform"
           style={{
             transform: compactTransform,
@@ -408,9 +395,9 @@ export default function BannerSlider({
             gap: `${gapPercent}%`,
           }}
         >
-          {banners.map((banner) => (
+          {extendedBanners.map((banner, idx) => (
             <div
-              key={banner.id}
+              key={`compact-banner-${banner.id}-${idx}`}
               className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[22/8] sm:aspect-[24/8] min-h-[135px] sm:min-h-[175px] bg-white transition-transform active:scale-[0.99]"
             >
               <Link
@@ -433,33 +420,6 @@ export default function BannerSlider({
           ))}
         </div>
 
-        {/* Navigation Arrows for Desktop Hover */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length);
-          }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
-          aria-label="السابق"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setCurrentIndex((prev) => (prev + 1) % banners.length);
-          }}
-          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-xs opacity-0 group-hover:opacity-100 transition shadow z-20 cursor-pointer"
-          aria-label="التالي"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
         {/* Pagination Indicator Dots */}
         <div className="flex items-center justify-center gap-1.5 pt-2">
           {banners.map((_, idx) => (
@@ -469,10 +429,10 @@ export default function BannerSlider({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setCurrentIndex(idx);
+                goToSlide(idx);
               }}
               className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                currentIndex === idx
+                activeDotIndex === idx
                   ? 'w-6 bg-brand-blue shadow-xs'
                   : 'w-1.5 bg-slate-300 hover:bg-slate-400'
               }`}

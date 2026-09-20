@@ -1366,17 +1366,22 @@ export function getBanners(onlyActive = true, position?: string, category?: stri
   if (category && category !== 'الكل') {
     const normCat = category.trim().toLowerCase();
     list = list.filter(b => {
+      // Main top banners must NEVER show inside category pages
+      if (b.position === 'top') return false;
+
       const bannerCat = (b.category || '').trim().toLowerCase();
-      // If banner is targeted to this category OR is 'all'
-      if (b.position === 'category' || bannerCat) {
-        return !bannerCat || bannerCat === 'الكل' || bannerCat === normCat;
+      const matchesCategory = bannerCat === normCat || bannerCat === 'الكل';
+
+      if (position && position !== 'all') {
+        return (b.position === position || (position === 'category' && b.isSpriteSlider)) && matchesCategory;
       }
-      return b.position === 'all';
+
+      return (b.position === 'category' || b.isSpriteSlider || b.isCampaignShowcase) && matchesCategory;
     });
   } else if (position && position !== 'all') {
     list = list.filter(b => {
       const bannerPos = b.position || 'top';
-      return bannerPos === position || bannerPos === 'all';
+      return bannerPos === position || (position === 'top' && !b.position && !b.isCampaignShowcase && !b.isSpriteSlider);
     });
   }
 
