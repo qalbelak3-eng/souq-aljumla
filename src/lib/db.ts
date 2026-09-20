@@ -2056,11 +2056,15 @@ export function addPayment(paymentData: {
   const vType = paymentData.voucherType || 'receipt';
   const prefix = vType === 'disbursement' ? 'DSB' : 'REC';
   
-  const maxPaySeq = (db.payments || []).reduce((max, p) => {
+  const maxPaymentSeq = (db.payments || []).reduce((max, p) => {
     const num = parseInt(p.receiptNumber?.replace(/\D/g, '') || '0', 10);
     return num > max ? num : max;
   }, 1000);
-  const nextPaySeq = maxPaySeq + 1;
+  const maxOrderSeq = (db.orders || []).reduce((max, o) => {
+    const num = parseInt(o.paymentReceiptNumber?.replace(/\D/g, '') || '0', 10);
+    return num > max ? num : max;
+  }, 1000);
+  const nextPaySeq = Math.max(maxPaymentSeq, maxOrderSeq) + 1;
   const receiptNumber = `${prefix}-${nextPaySeq}`;
 
   const newPayment: PaymentRecord = {
@@ -2110,6 +2114,128 @@ export function addPayment(paymentData: {
   return newPayment;
 }
 
+/**
+ * التحقق مما إذا كان سند القبض ناتجاً عن تصفية عهدة سائق
+ */
+export function isDriverSettlementPayment(payment: PaymentRecord, db: DatabaseSchema): boolean {
+  if (payment.id.startsWith('pay-drv-')) return true;
+  if (payment.receivedBy && payment.receivedBy.includes('تصفية عهدة السائق')) return true;
+  if (payment.receiptNumber && (db.orders || []).some(o => o.paymentReceiptNumber === payment.receiptNumber)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * عكس سند مالي منشور بدقة وأمان رقابي (Immutable Voucher Reversal - Phase 2B-3)
+ * - لا يتم حذف السند الأصلي ولا تعديل قيمته أو تاريخه
+ * - ينشأ سند عكسي مستقل برقم REV-{originalReceiptNumber} وبنفس المبلغ موجباً
+ * - يوسم السند الأصلي كمعكوس ويرتبط بسند العكس
+ * - تاريخ حركة العكس هو تاريخ اللحظة الحالية (createdAt = now)
+ */
+export function reversePayment(
+  id: string,
+  reason: string,
+  operator?: { name?: string; username?: string; role?: string }
+): { success: boolean; reversal?: PaymentRecord; original?: PaymentRecord; error?: string } {
+  const db = ensureDbExists();
+  if (!db.payments) return { success: false, error: 'سجل السندات غير موجود' };
+
+  const idx = db.payments.findIndex(p => p.id === id || p.receiptNumber === id);
+  if (idx === -1) {
+    return { success: false, error: 'السند المالي غير موجود' };
+  }
+
+  const original = db.payments[idx];
+
+  // 1. الحماية: منع عكس السند المعكوس مسبقاً (No Double Reversal)
+  if (original.isReversed) {
+    return { success: false, error: 'هذا السند تم عكسه مسبقاً ولا يمكن عكسه مرة أخرى (منع العكس المزدوج).' };
+  }
+
+  // 2. الحماية: منع عكس سند العكس (No Reversing a Reversal)
+  if (original.voucherType === 'reversal' || original.reversalOfId || original.receiptNumber.startsWith('REV-')) {
+    return { success: false, error: 'لا يمكن عكس سند عكس (سندات العكس نهائية وغير قابلة للعكس).' };
+  }
+
+  // 3. الحماية: سبب العكس إجباري
+  const cleanReason = (reason || '').trim();
+  if (cleanReason.length < 5) {
+    return { success: false, error: 'يرجى كتابة سبب واضح ومفصل لعكس السند (لا يقل عن 5 أحرف).' };
+  }
+
+  // 4. الحماية: منع عكس السندات الناتجة عن تصفية عهدة السائقين مؤقتاً (مؤجلة لمرحلة 2B-4)
+  if (isDriverSettlementPayment(original, db)) {
+    return {
+      success: false,
+      error: 'لا يمكن عكس سند قبض ناتج عن تصفية عهدة سائق بصورة منفردة. هذه الحالة تتطلب تسوية خاصة مؤجلة إلى محرك تصفيات السائقين (المرحلة 2B-4).'
+    };
+  }
+
+  const now = new Date();
+  const reversalReceiptNumber = `REV-${original.receiptNumber}`;
+
+  // إنشاء سند العكس (قيمة موجبة دائماً)
+  const reversalPayment: PaymentRecord = {
+    id: `pay-rev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    receiptNumber: reversalReceiptNumber,
+    customerPhone: original.customerPhone,
+    customerName: original.customerName,
+    amount: original.amount, // موجب دائماً
+    paymentMethod: original.paymentMethod,
+    voucherType: 'reversal',
+    reversalOfId: original.id,
+    reversalReason: cleanReason,
+    receivedBy: operator?.name || 'المحاسب',
+    createdAt: now.toISOString(),
+  };
+
+  // وسم وربط السند الأصلي في الذاكرة
+  original.isReversed = true;
+  original.reversalVoucherId = reversalPayment.id;
+  original.reversedAt = now.toISOString();
+  original.reversedBy = operator?.username || operator?.name || 'admin';
+  original.reversalReason = cleanReason;
+
+  // إدراج سند العكس في الذاكرة
+  db.payments.unshift(reversalPayment);
+
+  // حفظ التغييرات المرتبطة في الذاكرة ثم كتابتها للقرص
+  saveDb(db);
+
+  // تسجيل الحدث في سجل الرقابة
+  const isOriginalReceipt = original.voucherType !== 'disbursement' && !original.receiptNumber.startsWith('DSB');
+  logAuditEvent({
+    actionType: 'payment_reversed',
+    actionLabel: `عكس سند مالي 🔄 (#${original.receiptNumber})`,
+    category: 'accounting',
+    categoryLabel: 'المحاسبة وسندات القبض والصرف',
+    operator: {
+      name: operator?.name || 'المحاسب',
+      username: operator?.username || 'accountant',
+      role: (operator?.role as any) || 'staff',
+    },
+    target: {
+      type: 'payment',
+      id: original.id,
+      referenceNumber: original.receiptNumber,
+      name: original.customerName,
+    },
+    financialImpact: {
+      amount: original.amount,
+      fundType: original.paymentMethod === 'cash' ? 'cash_181' : 'bank_182',
+    },
+    details: `تم إصدار سند العكس (${reversalReceiptNumber}) لإلغاء أثر ${isOriginalReceipt ? 'سند القبض' : 'سند الصرف'} (${original.receiptNumber}) بمبلغ ${original.amount.toLocaleString()} د.ع لحساب (${original.customerName}). السبب: ${cleanReason}`,
+    severity: 'warning',
+  });
+
+  return {
+    success: true,
+    reversal: reversalPayment,
+    original,
+  };
+}
+
 export function updatePayment(
   id: string,
   updates: Partial<PaymentRecord>,
@@ -2120,80 +2246,31 @@ export function updatePayment(
   const idx = db.payments.findIndex(p => p.id === id);
   if (idx === -1) return null;
 
-  const oldRec = { ...db.payments[idx] };
-  db.payments[idx] = {
-    ...db.payments[idx],
-    ...updates,
-    amount: updates.amount !== undefined ? Number(updates.amount) : db.payments[idx].amount,
-  };
+  const current = db.payments[idx];
+
+  // الحماية الرقابية: منع تعديل المبالغ أو الحسابات أو الأنواع للسندات المنشورة (Immutable Voucher)
+  if (updates.amount !== undefined && Number(updates.amount) !== current.amount) {
+    return null; // محظور تعديل المبلغ تاريخياً - يجب استخدام reversePayment
+  }
+  if (updates.voucherType !== undefined && updates.voucherType !== current.voucherType) {
+    return null; // محظور تغيير نوع السند
+  }
+  if (updates.customerPhone !== undefined && updates.customerPhone !== current.customerPhone) {
+    return null; // محظور تغيير الحساب
+  }
+
+  // يسمح بتحديث الملاحظات فقط
+  if (updates.notes !== undefined) {
+    current.notes = updates.notes;
+  }
   saveDb(db);
-
-  // Automatically log to Audit Trail
-  logAuditEvent({
-    actionType: 'payment_updated',
-    actionLabel: 'تعديل سند قبض ⚠️',
-    category: 'accounting',
-    categoryLabel: 'المحاسبة وسندات القبض',
-    operator: {
-      name: operator?.name || 'المحاسب',
-      username: operator?.username || 'accountant',
-      role: 'staff',
-    },
-    target: {
-      type: 'payment',
-      id,
-      referenceNumber: oldRec.receiptNumber,
-      name: oldRec.customerName,
-    },
-    financialImpact: {
-      amount: db.payments[idx].amount,
-      previousBalance: oldRec.amount,
-      newBalance: db.payments[idx].amount,
-      fundType: 'cash_181',
-    },
-    details: `تم تعديل بيانات سند القبض (${oldRec.receiptNumber}) للعميل (${oldRec.customerName}) من مبلغ ${oldRec.amount.toLocaleString()} د.ع إلى ${db.payments[idx].amount.toLocaleString()} د.ع`,
-    severity: 'warning',
-  });
-
-  return db.payments[idx];
+  return current;
 }
 
 export function deletePayment(id: string, operator?: { name: string; username: string }): boolean {
-  const db = ensureDbExists();
-  if (!db.payments) return false;
-  const idx = db.payments.findIndex(p => p.id === id);
-  if (idx === -1) return false;
-
-  const deletedRec = db.payments[idx];
-  db.payments.splice(idx, 1);
-  saveDb(db);
-
-  // Automatically log to Audit Trail
-  logAuditEvent({
-    actionType: 'payment_deleted',
-    actionLabel: 'حذف سند قبض 🚨',
-    category: 'accounting',
-    categoryLabel: 'المحاسبة وسندات القبض',
-    operator: {
-      name: operator?.name || 'المدير العام',
-      username: operator?.username || 'admin',
-      role: 'admin',
-    },
-    target: {
-      type: 'payment',
-      id,
-      referenceNumber: deletedRec.receiptNumber,
-      name: deletedRec.customerName,
-    },
-    financialImpact: {
-      amount: deletedRec.amount,
-      fundType: 'cash_181',
-    },
-    details: `تم حذف سند القبض (${deletedRec.receiptNumber}) نهائياً بمبلغ ${deletedRec.amount.toLocaleString()} د.ع الخاص بالعميل (${deletedRec.customerName})`,
-    severity: 'danger',
-  });
-
-  return true;
+  // الحماية الرقابية الصارمة: الحذف المادي المباشر للسندات المالية محظور قطعاً (Immutable Voucher)
+  // لتصحيح أو إلغاء أي سند يجب استخدام reversePayment حصراً.
+  return false;
 }
 
 // =========================================================================
@@ -2320,40 +2397,81 @@ export function getCashVaultMovements(filter?: { dateFrom?: string; dateTo?: str
     }
   });
 
-  // 2. Cash Receipts & Disbursements (سندات القبض وسندات الصرف النقدية)
+  // 2. Cash Receipts & Disbursements & Reversals (سندات القبض وسندات الصرف النقدية وسندات العكس)
   (db.payments || []).forEach((p) => {
     if (p.paymentMethod === 'cash') {
-      const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
-      if (isDisb) {
-        rawMovements.push({
-          date: p.createdAt,
-          type: 'outflow',
-          category: 'expense',
-          categoryLabel: 'سند صرف نقدي (سداد مورد / مصاريف)',
-          amount: Number(p.amount) || 0,
-          referenceNumber: p.receiptNumber,
-          partyName: p.customerName,
-          performedBy: {
-            name: p.receivedBy || 'المحاسب',
-            username: 'accountant',
-          },
-          notes: p.notes || `صرف دفعة نقدية لحساب ${p.customerName}`,
-        });
+      const isReversal = p.voucherType === 'reversal' || p.receiptNumber?.startsWith('REV-');
+
+      if (isReversal) {
+        const orig = (db.payments || []).find(x => x.id === p.reversalOfId || x.reversalVoucherId === p.id);
+        const reversesReceipt = orig ? (orig.voucherType !== 'disbursement' && !orig.receiptNumber?.startsWith('DSB')) : p.receiptNumber?.includes('-REC-');
+
+        if (reversesReceipt) {
+          // عكس سند قبض نقدي = صادر (Outflow) من الصندوق بتاريخ اليوم
+          rawMovements.push({
+            date: p.createdAt,
+            type: 'outflow',
+            category: 'adjustment',
+            categoryLabel: 'سند عكس قبض نقدي 🔄',
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.receiptNumber,
+            partyName: p.customerName,
+            performedBy: {
+              name: p.receivedBy || 'المحاسب',
+              username: 'accountant',
+            },
+            notes: p.reversalReason ? `عكس سند قبض (${orig?.receiptNumber || ''}): ${p.reversalReason}` : (p.notes || `عكس سند قبض لحساب ${p.customerName}`),
+          });
+        } else {
+          // عكس سند صرف نقدي = وارد (Inflow) للصندوق بتاريخ اليوم
+          rawMovements.push({
+            date: p.createdAt,
+            type: 'inflow',
+            category: 'adjustment',
+            categoryLabel: 'سند عكس صرف نقدي 🔄',
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.receiptNumber,
+            partyName: p.customerName,
+            performedBy: {
+              name: p.receivedBy || 'المحاسب',
+              username: 'accountant',
+            },
+            notes: p.reversalReason ? `عكس سند صرف (${orig?.receiptNumber || ''}): ${p.reversalReason}` : (p.notes || `عكس سند صرف لحساب ${p.customerName}`),
+          });
+        }
       } else {
-        rawMovements.push({
-          date: p.createdAt,
-          type: 'inflow',
-          category: 'debt_collection',
-          categoryLabel: 'سند قبض نقدي (تسديد زبون)',
-          amount: Number(p.amount) || 0,
-          referenceNumber: p.receiptNumber,
-          partyName: p.customerName,
-          performedBy: {
-            name: p.receivedBy || 'المحاسب',
-            username: 'accountant',
-          },
-          notes: p.notes || `تسديد دفعة نقدية لحساب الزبون ${p.customerName}`,
-        });
+        const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
+        if (isDisb) {
+          rawMovements.push({
+            date: p.createdAt,
+            type: 'outflow',
+            category: 'expense',
+            categoryLabel: 'سند صرف نقدي (سداد مورد / مصاريف)',
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.receiptNumber,
+            partyName: p.customerName,
+            performedBy: {
+              name: p.receivedBy || 'المحاسب',
+              username: 'accountant',
+            },
+            notes: p.notes || `صرف دفعة نقدية لحساب ${p.customerName}`,
+          });
+        } else {
+          rawMovements.push({
+            date: p.createdAt,
+            type: 'inflow',
+            category: 'debt_collection',
+            categoryLabel: 'سند قبض نقدي (تسديد زبون)',
+            amount: Number(p.amount) || 0,
+            referenceNumber: p.receiptNumber,
+            partyName: p.customerName,
+            performedBy: {
+              name: p.receivedBy || 'المحاسب',
+              username: 'accountant',
+            },
+            notes: p.notes || `تسديد دفعة نقدية لحساب الزبون ${p.customerName}`,
+          });
+        }
       }
     }
   });
@@ -2543,6 +2661,61 @@ function formatShortRef(ref: string, defaultPrefix: string): string {
   return ref;
 }
 
+/**
+ * Single source of truth for converting an AccountOpeningBalance into statement debit/credit
+ * based on the account category and the store's accounting ledger engine:
+ * 
+ * 1. For Customer / Employee / Driver:
+ *    - 'debit' (لنا / مطلوب منه لنا): person owes the store -> increases debt (Debit)
+ *    - 'credit' (علينا / مستحق له بذمتنا): store owes person (credit balance/advance) -> decreases debt (Credit)
+ * 
+ * 2. For Supplier:
+ *    - 'credit' (علينا / مستحق له بذمتنا): store owes supplier (Payable debt) -> increases payable (Debit, joining purchase invoices)
+ *    - 'debit' (لنا / مطلوب منه لنا): supplier owes store (advance payment/rebate claim) -> decreases payable (Credit)
+ */
+export function resolveOpeningBalanceSemantics(op: {
+  category?: AccountCategory;
+  type: 'debit' | 'credit';
+  amount: number;
+}): { debit: number; credit: number; description: string } {
+  const isSupplier = op.category === 'supplier';
+
+  if (isSupplier) {
+    if (op.type === 'credit') {
+      // علينا للمورد (مستحق له بذمتنا / Payable): يزيد رصيد المورد المستحق بذمتنا (ينضم لفواتير التوريد)
+      return {
+        debit: op.amount,
+        credit: 0,
+        description: 'رصيد افتتاحي (مستحق للمجهز / علينا)',
+      };
+    } else {
+      // لنا من المورد (مطلوب لنا / دفعة مقدمة أو مطالبة): يخفض مستحقات المورد
+      return {
+        debit: 0,
+        credit: op.amount,
+        description: 'رصيد افتتاحي (دفعة مقدمة للمجهز / لنا)',
+      };
+    }
+  } else {
+    // Customer, Employee, Driver
+    if (op.type === 'debit') {
+      // لنا (مدين): دين مطلوب منه لنا
+      return {
+        debit: op.amount,
+        credit: 0,
+        description: 'رصيد افتتاحي (لنا / مدين)',
+      };
+    } else {
+      // علينا (دائن): مستحق له بذمتنا
+      return {
+        debit: 0,
+        credit: op.amount,
+        description: 'رصيد افتتاحي (علينا / دائن)',
+      };
+    }
+  }
+}
+
 // Get detailed Account Statement for ANY customer/guest by phone number
 export function getCustomerStatement(identifier: string, startDate?: string, endDate?: string): AccountStatement | null {
   const db = ensureDbExists();
@@ -2605,12 +2778,16 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
   const businessName = user?.businessName || primaryOrder?.customer.businessName;
   
   let accountType = 'زبون عادي / زائر';
+  let effectiveCategory: AccountCategory = 'customer';
   if (user?.category === 'supplier' || purchases.length > 0) {
     accountType = 'مجهز / مورد بضائع 🏭';
+    effectiveCategory = 'supplier';
   } else if (user?.category === 'employee') {
     accountType = 'موظف / كادر الشركة 💼';
+    effectiveCategory = 'employee';
   } else if (user?.category === 'driver') {
     accountType = 'مندوب توصيل 🚚';
+    effectiveCategory = 'driver';
   } else if (user?.pricingTier === 'wholesale' || user?.accountType === 'wholesale') {
     accountType = 'تاجر جملة 👑';
   } else if (user?.pricingTier === 'market' || user?.accountType === 'merchant' || user?.accountType === 'market') {
@@ -2639,17 +2816,23 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
 
   // Opening Balances
   openings.forEach(op => {
-    const isDebit = op.type === 'debit';
+    const opCategory = op.category || effectiveCategory;
+    const { debit, credit, description } = resolveOpeningBalanceSemantics({
+      category: opCategory,
+      type: op.type,
+      amount: op.amount,
+    });
+
     rawTxList.push({
       date: op.date || op.createdAt,
       type: 'adjustment',
       referenceNumber: `OPN-${op.id.slice(-6)}`,
       referenceId: op.id,
-      description: isDebit ? 'رصيد افتتاحي (لنا / مدين)' : 'رصيد افتتاحي (علينا / دائن)',
-      debit: isDebit ? op.amount : 0,
-      credit: !isDebit ? op.amount : 0,
+      description,
+      debit,
+      credit,
       paymentMethod: 'رصيد افتتاحي',
-      notes: op.notes || (isDebit ? 'رصيد افتتاحي مدين (مطلوب لنا)' : 'رصيد افتتاحي دائن (مستحق بذمتنا)'),
+      notes: op.notes || description,
     });
   });
 
@@ -2688,19 +2871,72 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     });
   });
 
-  // Payments / Receipts / Disbursements
+  // Payments / Receipts / Disbursements / Reversals
   payments.forEach(p => {
+    const isReversal = p.voucherType === 'reversal' || p.receiptNumber?.startsWith('REV-');
     const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
+
+    let debit = 0;
+    let credit = 0;
+    let description = '';
+
+    if (isReversal) {
+      const orig = (db.payments || []).find(x => x.id === p.reversalOfId || x.reversalVoucherId === p.id);
+      const reversesReceipt = orig ? (orig.voucherType !== 'disbursement' && !orig.receiptNumber?.startsWith('DSB')) : p.receiptNumber?.includes('-REC-');
+
+      if (effectiveCategory === 'customer' || effectiveCategory === 'employee' || effectiveCategory === 'driver') {
+        if (reversesReceipt) {
+          // Reversing receipt: undo customer payment -> restores debt/balance -> DEBIT
+          debit = p.amount;
+          credit = 0;
+          description = `سند عكس قبض (#${orig?.receiptNumber || p.reversalOfId || ''})${p.reversalReason ? ` - ${p.reversalReason}` : ''}`;
+        } else {
+          // Reversing disbursement: undo refund/advance -> CREDIT
+          debit = 0;
+          credit = p.amount;
+          description = `سند عكس صرف (#${orig?.receiptNumber || p.reversalOfId || ''})${p.reversalReason ? ` - ${p.reversalReason}` : ''}`;
+        }
+      } else { // supplier
+        if (reversesReceipt) {
+          debit = p.amount;
+          credit = 0;
+          description = `سند عكس قبض (#${orig?.receiptNumber || p.reversalOfId || ''})${p.reversalReason ? ` - ${p.reversalReason}` : ''}`;
+        } else {
+          // Reversing disbursement to supplier: undo supplier payment -> restores what we owe supplier -> DEBIT
+          debit = p.amount;
+          credit = 0;
+          description = `سند عكس صرف (#${orig?.receiptNumber || p.reversalOfId || ''})${p.reversalReason ? ` - ${p.reversalReason}` : ''}`;
+        }
+      }
+    } else if (isDisb) {
+      if (effectiveCategory === 'supplier') {
+        // Paying supplier -> settles invoice -> CREDIT
+        debit = 0;
+        credit = p.amount;
+        description = p.isReversed ? `سند صرف للمجهز [معكوس] (${p.receiptNumber})` : 'سند صرف وتوريد دفعة للمجهز';
+      } else {
+        // Refunding customer / employee advance / driver disbursement -> DEBIT
+        debit = p.amount;
+        credit = 0;
+        description = p.isReversed ? `سند صرف [معكوس] (${p.receiptNumber})` : 'سند صرف نقدي';
+      }
+    } else {
+      // Normal receipt
+      debit = 0;
+      credit = p.amount;
+      description = p.isReversed ? `سند قبض [معكوس] (${p.receiptNumber})` : 'سند قبض / استلام';
+    }
+
     rawTxList.push({
       date: p.createdAt,
       type: 'payment',
-      referenceNumber: p.receiptNumber || formatShortRef(p.id, isDisb ? 'DSB' : 'REC'),
+      referenceNumber: p.receiptNumber || formatShortRef(p.id, isReversal ? 'REV' : isDisb ? 'DSB' : 'REC'),
       referenceId: p.id,
-      description: isDisb ? 'سند صرف / دفع' : 'سند قبض / دفعة',
-      debit: 0,
-      credit: p.amount,
+      description,
+      debit,
+      credit,
       paymentMethod: p.paymentMethod,
-      notes: p.notes || '',
+      notes: p.isReversed ? `[معكوس] ${p.notes || ''}` : (p.notes || ''),
     });
   });
 
@@ -2719,8 +2955,6 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
     totalPaid += tx.credit;
     currentBalance += (tx.debit - tx.credit);
 
-    const isDisb = tx.referenceNumber?.startsWith('DSB') || tx.description?.includes('صرف');
-
     return {
       id: `tx-${idx + 1}-${tx.referenceNumber}`,
       date: tx.date,
@@ -2729,7 +2963,11 @@ export function getCustomerStatement(identifier: string, startDate?: string, end
         tx.type === 'invoice'
           ? 'فاتورة مبيعات 📦'
           : tx.type === 'payment'
-          ? (isDisb ? 'سند صرف / تسديد 💳' : 'سند قبض / استلام 💵')
+          ? (tx.referenceNumber?.startsWith('REV-')
+              ? 'سند عكس قيد 🔄'
+              : (tx.referenceNumber?.startsWith('DSB') || tx.description?.includes('صرف')
+                  ? 'سند صرف / تسديد 💳'
+                  : 'سند قبض / استلام 💵'))
           : 'رصيد افتتاحي ⚖️',
       referenceNumber: tx.referenceNumber,
       referenceId: tx.referenceId,
@@ -3005,27 +3243,33 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
     const clean = (op.phone || '').replace(/\D/g, '');
     if (!clean) return;
 
-    const isDebit = op.type === 'debit';
     const existing = phoneMap.get(clean);
+    const matchedUser = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === clean);
+    const isSupplierInv = (db.purchaseInvoices || []).some(inv => (inv.supplierPhone || '').replace(/\D/g, '') === clean);
+    const category: AccountCategory = existing?.category || op.category || matchedUser?.category || (isSupplierInv ? 'supplier' : 'customer');
+
+    const { debit, credit } = resolveOpeningBalanceSemantics({
+      category,
+      type: op.type,
+      amount: op.amount,
+    });
+
     if (existing) {
-      if (isDebit) {
-        existing.totalInvoiced += op.amount;
-      } else {
-        existing.totalPaid += op.amount;
-      }
+      existing.totalInvoiced += debit;
+      existing.totalPaid += credit;
       if (new Date(op.createdAt).getTime() > new Date(existing.lastDate).getTime()) {
         existing.lastDate = op.createdAt;
       }
-      if (!existing.category && op.category) existing.category = op.category;
+      if (!existing.category && category) existing.category = category;
       if (!existing.notes && op.notes) existing.notes = op.notes;
     } else {
       phoneMap.set(clean, {
         name: op.name,
-        accountType: op.category === 'supplier' ? 'مجهز / مورد 🏭' : op.category === 'employee' ? 'موظف 💼' : op.category === 'driver' ? 'مندوب توصيل 🚚' : 'زبون 👤',
-        category: op.category,
+        accountType: category === 'supplier' ? 'مجهز / مورد 🏭' : category === 'employee' ? 'موظف 💼' : category === 'driver' ? 'مندوب توصيل 🚚' : 'زبون 👤',
+        category,
         ordersCount: 0,
-        totalInvoiced: isDebit ? op.amount : 0,
-        totalPaid: !isDebit ? op.amount : 0,
+        totalInvoiced: debit,
+        totalPaid: credit,
         lastDate: op.createdAt,
         notes: op.notes,
       });
@@ -3075,20 +3319,67 @@ export function getAllCustomerAccounts(): CustomerAccountSummary[] {
     const clean = (p.customerPhone || '').replace(/\D/g, '');
     if (!clean) return;
 
+    const isReversal = p.voucherType === 'reversal' || p.receiptNumber?.startsWith('REV-');
+    const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB') || p.receiptNumber?.startsWith('PAY');
+
     const existing = phoneMap.get(clean);
     if (existing) {
-      existing.totalPaid += p.amount;
+      if (isReversal) {
+        const orig = (db.payments || []).find(x => x.id === p.reversalOfId || x.reversalVoucherId === p.id);
+        const reversesReceipt = orig ? (orig.voucherType !== 'disbursement' && !orig.receiptNumber?.startsWith('DSB')) : p.receiptNumber?.includes('-REC-');
+        if (existing.category === 'supplier') {
+          // For Supplier:
+          // Disbursement paid invoices -> increased totalPaid. Reversing it must decrease totalPaid (restores payable debt).
+          // Receipt was refund/rebate from supplier -> increased totalPaid. Reversing it must decrease totalPaid.
+          existing.totalPaid -= p.amount;
+        } else {
+          // For Customer / Employee / Driver:
+          // Receipt paid debt -> increased totalPaid. Reversing it decreases totalPaid.
+          // Disbursement was refund/advance -> decreased totalPaid. Reversing it increases totalPaid.
+          if (reversesReceipt) {
+            existing.totalPaid -= p.amount;
+          } else {
+            existing.totalPaid += p.amount;
+          }
+        }
+      } else if (isDisb) {
+        if (existing.category === 'supplier') {
+          existing.totalPaid += p.amount;
+        } else {
+          existing.totalPaid -= p.amount;
+        }
+      } else {
+        existing.totalPaid += p.amount;
+      }
+
       if (new Date(p.createdAt).getTime() > new Date(existing.lastDate).getTime()) {
         existing.lastDate = p.createdAt;
       }
     } else {
+      const matchedUser = db.users.find(u => u.phone && u.phone.replace(/\D/g, '') === clean);
+      const isSupplier = matchedUser?.category === 'supplier' || (db.purchaseInvoices || []).some(inv => (inv.supplierPhone || '').replace(/\D/g, '') === clean);
+      const category: AccountCategory = matchedUser?.category || (isSupplier ? 'supplier' : 'customer');
+      let initPaid = p.amount;
+
+      if (isReversal) {
+        const orig = (db.payments || []).find(x => x.id === p.reversalOfId || x.reversalVoucherId === p.id);
+        const reversesReceipt = orig ? (orig.voucherType !== 'disbursement' && !orig.receiptNumber?.startsWith('DSB')) : p.receiptNumber?.includes('-REC-');
+        if (category === 'supplier') {
+          initPaid = -p.amount;
+        } else {
+          initPaid = reversesReceipt ? -p.amount : p.amount;
+        }
+      } else if (isDisb) {
+        initPaid = category === 'supplier' ? p.amount : -p.amount;
+      }
+
       phoneMap.set(clean, {
         name: p.customerName,
-        accountType: 'زبون مباشر 👤',
-        category: 'customer',
+        accountType: category === 'supplier' ? 'مجهز / مورد 🏭' : category === 'employee' ? 'موظف 💼' : category === 'driver' ? 'مندوب توصيل 🚚' : 'زبون مباشر 👤',
+        category,
         ordersCount: 0,
         totalInvoiced: 0,
-        totalPaid: p.amount,
+        totalPaid: initPaid,
         lastDate: p.createdAt,
       });
     }
@@ -3533,10 +3824,17 @@ export function getDailyReconciliationReport(dateStr?: string): DailyReconciliat
   let receiptVouchersTotal = 0;
   let disbursementVouchersCount = 0;
   let disbursementVouchersTotal = 0;
+  let reversalVouchersCount = 0;
+  let reversalVouchersTotal = 0;
 
   dayPayments.forEach(p => {
+    const isReversal = p.voucherType === 'reversal' || p.receiptNumber?.startsWith('REV-');
     const isDisb = p.voucherType === 'disbursement' || p.receiptNumber?.startsWith('DSB');
-    if (isDisb) {
+
+    if (isReversal) {
+      reversalVouchersCount++;
+      reversalVouchersTotal += (p.amount || 0);
+    } else if (isDisb) {
       disbursementVouchersCount++;
       disbursementVouchersTotal += (p.amount || 0);
     } else {
@@ -3605,6 +3903,8 @@ export function getDailyReconciliationReport(dateStr?: string): DailyReconciliat
     receiptVouchersTotal,
     disbursementVouchersCount,
     disbursementVouchersTotal,
+    reversalVouchersCount,
+    reversalVouchersTotal,
     purchasesCount: dayPurchases.length,
     purchasesTotalAmount,
     purchasesCashPaid,
@@ -3795,14 +4095,19 @@ export function settleDriverCash(
   let createdReceiptsCount = 0;
   let totalSettledCalculated = 0;
 
-  // Calculate highest existing receipt sequence monotonically
+  // Calculate highest existing receipt sequence monotonically across payments and orders
   const maxPaymentSeq = payments.reduce((max, p) => {
     const num = parseInt(p.receiptNumber?.replace(/\D/g, '') || '0', 10);
     return num > max ? num : max;
   }, 1000);
+  const maxOrderSeq = (db.orders || []).reduce((max, o) => {
+    const num = parseInt(o.paymentReceiptNumber?.replace(/\D/g, '') || '0', 10);
+    return num > max ? num : max;
+  }, 1000);
+  const baseReceiptSeq = Math.max(maxPaymentSeq, maxOrderSeq);
 
   unsettledOrders.forEach((order, oIdx) => {
-    const nextSeq = maxPaymentSeq + oIdx + 1;
+    const nextSeq = baseReceiptSeq + oIdx + 1;
     const receiptNumber = `REC-${nextSeq}`;
     
     let collected = order.collectedAmount !== undefined ? order.collectedAmount : order.total;

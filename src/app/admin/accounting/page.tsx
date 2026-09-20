@@ -39,6 +39,7 @@ import {
   History,
   Sparkles,
   RefreshCw,
+  RotateCcw,
   Activity,
   Key,
   Users,
@@ -163,16 +164,16 @@ function AdminAccountingContent() {
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('');
 
-  // Edit Payment Modal State
-  const [editingPayment, setEditingPayment] = useState<{
+  // Reversal Payment Modal State (Phase 2B-3)
+  const [reversingPayment, setReversingPayment] = useState<{
     id: string;
     receiptNumber: string;
     amount: number;
-    paymentMethod: string;
-    notes: string;
     customerPhone: string;
   } | null>(null);
-  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [reversalReasonInput, setReversalReasonInput] = useState<string>('');
+  const [isSubmittingReversal, setIsSubmittingReversal] = useState<boolean>(false);
+  const [reversalError, setReversalError] = useState<string>('');
 
   // Edit Invoice / Order Modal State
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -512,68 +513,58 @@ function AdminAccountingContent() {
     }
   };
 
-  // Open Edit Payment Modal
-  const handleOpenEditPayment = (tx: AccountTransaction) => {
-    if (!selectedStatement) return;
-    setEditingPayment({
-      id: tx.referenceId || '',
+  // Open Reverse Payment Modal (Phase 2B-3)
+  const handleOpenReversePayment = (tx: AccountTransaction) => {
+    if (!selectedStatement || !tx.referenceId) return;
+    setReversingPayment({
+      id: tx.referenceId,
       receiptNumber: tx.referenceNumber,
-      amount: tx.credit,
-      paymentMethod: tx.paymentMethod || 'cash',
-      notes: tx.notes || '',
+      amount: tx.credit > 0 ? tx.credit : tx.debit,
       customerPhone: selectedStatement.customer.phone,
     });
+    setReversalReasonInput('');
+    setReversalError('');
   };
 
-  // Submit Payment Edit
-  const handleSavePaymentEdit = async (e: React.FormEvent) => {
+  // Confirm and Submit Payment Reversal
+  const handleConfirmReversal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingPayment || !selectedStatement) return;
+    if (!reversingPayment || !selectedStatement) return;
+    if (reversalReasonInput.trim().length < 5) {
+      setReversalError('يرجى كتابة سبب واضح ومفصل لعكس السند (5 أحرف على الأقل)');
+      return;
+    }
 
-    setIsSubmittingEdit(true);
+    setIsSubmittingReversal(true);
+    setReversalError('');
     try {
       const res = await fetch('/api/accounting/payments', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editingPayment.id,
-          amount: Number(editingPayment.amount),
-          paymentMethod: editingPayment.paymentMethod,
-          notes: editingPayment.notes,
-          customerPhone: editingPayment.customerPhone,
+          action: 'reverse',
+          paymentId: reversingPayment.id,
+          reason: reversalReasonInput.trim(),
+          operatorName: currentOperator?.name || 'المحاسب',
+          operatorUsername: currentOperator?.username || 'accountant',
+          operatorRole: currentOperator?.role || 'staff',
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setEditingPayment(null);
-        fetchAccounts();
+        setReversingPayment(null);
+        fetchAccounts(true);
+        fetchVaultData(true);
+        fetchAuditLogs(true);
         handleViewStatement(selectedStatement.customer.phone, statementStartDate, statementEndDate);
+        toast.success(data.message || 'تم إصدار سند العكس بنجاح 🔄');
+      } else {
+        setReversalError(data.error || 'فشل عكس السند');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setReversalError(err.message || 'حدث خطأ أثناء عكس السند');
     } finally {
-      setIsSubmittingEdit(false);
-    }
-  };
-
-  // Delete Payment
-  const handleDeletePayment = async (tx: AccountTransaction) => {
-    if (!selectedStatement || !tx.referenceId) return;
-    if (!confirm(`هل أنت متأكد من حذف سند القبض رقم #${tx.referenceNumber} بمبلغ ${tx.credit.toLocaleString()} د.ع؟\nسيتم إعادة احتساب الرصيد المتبقي فوراً.`)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/accounting/payments?id=${encodeURIComponent(tx.referenceId)}&phone=${encodeURIComponent(selectedStatement.customer.phone)}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchAccounts();
-        handleViewStatement(selectedStatement.customer.phone, statementStartDate, statementEndDate);
-      }
-    } catch (err) {
-      console.error(err);
+      setIsSubmittingReversal(false);
     }
   };
 
@@ -2955,20 +2946,26 @@ function AdminAccountingContent() {
                               <td className="py-2.5 px-3 text-center whitespace-nowrap no-print print:hidden">
                                 {tx.type === 'payment' ? (
                                   <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      onClick={() => handleOpenEditPayment(tx)}
-                                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded-lg border border-slate-200 transition"
-                                      title="تعديل سند القبض"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5 text-brand-blue" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeletePayment(tx)}
-                                      className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-lg border border-red-200 transition"
-                                      title="حذف سند القبض وتصحيح الكشف"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    {tx.referenceNumber?.startsWith('REV-') ? (
+                                      <span className="bg-purple-50 text-purple-700 text-[10px] font-black px-2 py-0.5 rounded-md border border-purple-200 flex items-center gap-1">
+                                        <span>🔄</span>
+                                        <span>سند عكس</span>
+                                      </span>
+                                    ) : tx.description?.includes('[معكوس') || tx.notes?.includes('[معكوس]') ? (
+                                      <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                                        <span>🔒</span>
+                                        <span>معكوس</span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleOpenReversePayment(tx)}
+                                        className="bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-900 text-[10px] font-black px-2.5 py-1 rounded-lg border border-amber-300 transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                                        title="عكس هذا السند المالي بسند معاكس رسمي (Immutable Reversal)"
+                                      >
+                                        <RotateCcw className="w-3 h-3 text-amber-700" />
+                                        <span>عكس السند 🔄</span>
+                                      </button>
+                                    )}
                                   </div>
                                 ) : (
                                   <div className="flex items-center justify-center gap-1">
@@ -3025,77 +3022,72 @@ function AdminAccountingContent() {
         </div>
       )}
 
-      {/* MODAL 3: EDIT PAYMENT VOUCHER (Z-[70] TO APPEAR ON TOP) */}
-      {editingPayment && (
+      {/* MODAL 3: REVERSE PAYMENT VOUCHER (Z-[70] TO APPEAR ON TOP) - Phase 2B-3 */}
+      {reversingPayment && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-xs animate-in zoom-in-95">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Edit2 className="w-5 h-5 text-brand-blue" />
-                <span>تعديل سند القبض #{editingPayment.receiptNumber} ⚙️</span>
+                <RotateCcw className="w-5 h-5 text-amber-600" />
+                <span>عكس السند المالي #{reversingPayment.receiptNumber} 🔄</span>
               </h3>
               <button
-                onClick={() => setEditingPayment(null)}
+                onClick={() => setReversingPayment(null)}
                 className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSavePaymentEdit} className="space-y-3.5">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-amber-900 space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5 text-xs">
+                <span>⚠️</span>
+                <span>تنبيه محاسبي وقانوني (Audit Trail):</span>
+              </p>
+              <p className="text-[11px] leading-relaxed text-amber-800">
+                وفقاً لمعايير الرقابة المالية، <strong>لا يتم حذف السندات المنشورة</strong> أو تعديل مبالغها. سيتم إصدار سند عكسي رسمي جديد بمبلغ <strong className="font-mono text-slate-900">{reversingPayment.amount.toLocaleString()} د.ع</strong> بتاريخ ولحظة الآن، مع ربطه وتأشير السند الأصلي كمعكوس 🔒.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmReversal} className="space-y-3.5">
               <div className="space-y-1">
-                <label className="font-black text-slate-800 block">المبلغ المقبوض (د.ع) *:</label>
-                <input
-                  type="number"
+                <label className="font-black text-slate-800 block">سبب العكس (إجباري ومسجل بالتدقيق) *:</label>
+                <textarea
                   required
-                  min="1"
-                  value={editingPayment.amount}
-                  onChange={(e) => setEditingPayment({ ...editingPayment, amount: Number(e.target.value) })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-sm font-black font-mono text-slate-900 focus:bg-white focus:border-brand-blue"
+                  rows={3}
+                  value={reversalReasonInput}
+                  onChange={(e) => setReversalReasonInput(e.target.value)}
+                  placeholder="اكتب سبب عكس السند بالتفصيل (مثل: خطأ في إدخال المبلغ، تكرار السند، شيك راجع)..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-amber-500 resize-none"
                 />
+                <span className="text-[10px] text-slate-500 block text-left font-mono">
+                  {reversalReasonInput.trim().length}/5 أحرف كحد أدنى
+                </span>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-black text-slate-800 block">طريقة القبض والدفع:</label>
-                <select
-                  value={editingPayment.paymentMethod}
-                  onChange={(e) => setEditingPayment({ ...editingPayment, paymentMethod: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
-                >
-                  <option value="cash">💵 نقداً (كاش للمندوب/المحل)</option>
-                  <option value="zaincash">📱 زين كاش (Zain Cash)</option>
-                  <option value="qicard">💳 ماستركارد / كي كارد (Qi Card)</option>
-                  <option value="bank_transfer">🏦 حوالة مصرفية / مكتب صرافة</option>
-                  <option value="other">📝 أخرى</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-black text-slate-800 block">ملاحظات السند:</label>
-                <input
-                  type="text"
-                  value={editingPayment.notes}
-                  onChange={(e) => setEditingPayment({ ...editingPayment, notes: e.target.value })}
-                  placeholder="ملاحظات توضيحية..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 focus:bg-white focus:border-brand-blue"
-                />
-              </div>
+              {reversalError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                  <span>❌</span>
+                  <span>{reversalError}</span>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setEditingPayment(null)}
+                  onClick={() => setReversingPayment(null)}
+                  disabled={isSubmittingReversal}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingEdit}
-                  className="flex-1 bg-brand-blue hover:bg-brand-blueDark text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+                  disabled={isSubmittingReversal || reversalReasonInput.trim().length < 5}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-black py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  {isSubmittingEdit ? 'جاري الحفظ...' : 'حفظ التعديلات 💾'}
+                  {isSubmittingReversal ? 'جاري العكس...' : 'تأكيد عكس السند 🔄'}
                 </button>
               </div>
             </form>

@@ -709,6 +709,8 @@ export interface DailyReconciliationSummary {
   receiptVouchersTotal: number; // سندات قبض نقدية مباشرة
   disbursementVouchersCount: number;
   disbursementVouchersTotal: number; // سندات صرف نقدية
+  reversalVouchersCount?: number;
+  reversalVouchersTotal?: number; // سندات عكس قيود نقدية
   
   // Purchases (المشتريات والتوريدات)
   purchasesCount: number;
@@ -824,7 +826,8 @@ export type CashMovementCategory =
   | 'purchase_payment' // صرف وسداد فاتورة مشتريات
   | 'expense' // مصاريف تشغيلية ونثرية
   | 'owner_withdrawal' // مسحوبات شخصية / أرباح
-  | 'deposit_adjustment'; // إيداع وتغذية الصندوق
+  | 'deposit_adjustment' // إيداع وتغذية الصندوق
+  | 'adjustment'; // تسوية وعكس سندات مالية
 
 export interface CashVaultMovement {
   id: string;
@@ -870,6 +873,7 @@ export type AuditActionType =
   | 'payment_created'
   | 'payment_updated'
   | 'payment_deleted'
+  | 'payment_reversed'
   | 'disbursement_created'
   | 'driver_custody_settled'
   | 'purchase_created'
