@@ -81,17 +81,17 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
     : `/campaigns/${banner.id}`;
 
   return (
-    <div className={`relative my-4 sm:my-6 select-none ${className}`}>
-      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (البنر الخلفي الممتد بارتفاع 550) */}
+    <div className={`relative my-2 sm:my-6 select-none ${className}`}>
+      {/* 1. GRAPHIC DESIGNER BANNER IMAGE (متناسق بدون ظل أو حدود ليتطابق مع الخلفية البيضاء، ومتجاوب كامل على الجوال) */}
       <div 
-        className="relative w-full rounded-3xl overflow-hidden shadow-xs border border-slate-100/60 h-[280px] sm:h-[380px] md:h-[460px] lg:h-[550px] bg-slate-100 group"
-        style={{ backgroundColor: banner.bannerBgColor || banner.campaignBgColor || '#f8fafc' }}
+        className="relative w-full rounded-none sm:rounded-3xl overflow-hidden shadow-none border-0 aspect-[1200/550] max-h-[550px] bg-transparent group"
+        style={{ backgroundColor: banner.bannerBgColor || banner.campaignBgColor || 'transparent' }}
       >
         <Link href={destinationUrl} className="block w-full h-full relative cursor-pointer">
           <img
             src={banner.image}
             alt={banner.title || 'حملة عروض'}
-            className="w-full h-full object-cover object-center rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
+            className="w-full h-full object-cover object-center rounded-none sm:rounded-3xl group-hover:scale-[1.01] transition-transform duration-300"
           />
           {/* Top Navigation Arrow (للدخول إلى صفحة القسم أو العرض) */}
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/40 hover:bg-white/70 backdrop-blur-md text-white hover:text-slate-900 flex items-center justify-center transition shadow-xs active:scale-95">
@@ -100,9 +100,9 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         </Link>
       </div>
 
-      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (رفع المنتجات لسد الفراغ الكبير داخل البنر) */}
+      {/* 2. OVERLAPPING HORIZONTAL PRODUCTS STRIP (تداخل المنتجات بانسيابية على الجوال والكمبيوتر) */}
       {products.length > 0 && (
-        <div className="relative -mt-[85px] sm:-mt-[140px] md:-mt-[190px] lg:-mt-[240px] z-10 px-2 sm:px-4">
+        <div className="relative -mt-12 sm:-mt-24 md:-mt-40 lg:-mt-[240px] z-10 px-3 sm:px-4">
           <div
             ref={scrollContainerRef}
             className="flex items-stretch gap-2.5 sm:gap-3.5 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 px-1"
