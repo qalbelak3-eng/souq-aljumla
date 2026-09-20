@@ -233,39 +233,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       return;
     }
 
-    try {
-      const auth = typeof window !== 'undefined' ? localStorage.getItem('etihad_admin_auth') : null;
-      if (auth) {
-        const parsed = JSON.parse(auth);
-        if (parsed && parsed.username) {
-          setCurrentAdmin(parsed);
+    // التحقق الموثوق من جلسة الإدارة مع السيرفر
+    fetch('/api/admin/auth?t=' + Date.now(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'check' }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.admin) {
+          setCurrentAdmin(data.admin);
           setIsAuthenticated(true);
-          return;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('etihad_admin_auth', JSON.stringify(data.admin));
+          }
+        } else {
+          setIsAuthenticated(false);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('etihad_admin_auth');
+          }
+          router.push('/admin/login');
         }
-      }
-
-      // 👑 إذا لم توجد جلسة، نقوم بإنشاء جلسة المدير العام الافتراضية فوراً لفتح لوحة التحكم بسلاسة
-      const defaultAdmin = {
-        id: 'admin_master',
-        name: 'المدير العام',
-        username: 'admin',
-        role: 'admin' as const,
-        jobTitle: 'كامل الصلاحيات',
-        permissions: ['*'],
-        token: 'auth_master_' + Date.now(),
-        loggedAt: new Date().toISOString(),
-      };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('etihad_admin_auth', JSON.stringify(defaultAdmin));
-      }
-      setCurrentAdmin(defaultAdmin);
-      setIsAuthenticated(true);
-      return;
-    } catch (e) {
-      console.error(e);
-      setIsAuthenticated(true);
-    }
-  }, [pathname, isLoginPage]);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+        router.push('/admin/login');
+      });
+  }, [pathname, isLoginPage, router]);
 
   useEffect(() => {
     if (isAuthenticated && !isLoginPage) {

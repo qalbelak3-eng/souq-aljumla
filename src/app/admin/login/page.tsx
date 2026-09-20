@@ -39,7 +39,6 @@ export default function AdminLoginPage() {
           role: data.admin.role || 'admin',
           jobTitle: data.admin.jobTitle || 'مدير النظام',
           permissions: data.admin.permissions || ['*'],
-          token: 'auth_' + Date.now(),
           loggedAt: new Date().toISOString(),
         }));
         router.push('/admin');

@@ -1,8 +1,20 @@
 import { NextResponse } from 'next/server';
 import { settleDriverCash } from '@/lib/db';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'drivers') && !hasPermission(admin, 'accounting')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية تصفية عهدة السائقين' }, { status: 403 });
+    }
+
     let customAmount: number | undefined;
     let notes: string | undefined;
     let orderAdjustments: Record<string, { collectedAmount: number; collectionStatus?: any }> | undefined;

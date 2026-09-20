@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getAllCustomerAccounts, createAccountingAccount } from '@/lib/db';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'accounting')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية الاطلاع على دليل الحسابات' }, { status: 403 });
+    }
+
     const accounts = getAllCustomerAccounts();
     const customerAccounts = accounts.filter(a => a.category !== 'supplier');
     const supplierAccounts = accounts.filter(a => a.category === 'supplier');
@@ -42,6 +51,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'accounting')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إنشاء الحسابات وتعيين الأرصدة' }, { status: 403 });
+    }
+
     const body = await request.json();
     const {
       category,
@@ -55,7 +72,6 @@ export async function POST(request: Request) {
       fixedDiscountPercent,
       notes,
       openingBalance,
-      operator
     } = body;
 
     if (!name || !name.trim()) {
@@ -74,6 +90,13 @@ export async function POST(request: Request) {
 
     const validCategories = ['customer', 'supplier', 'employee', 'driver'];
     const selectedCategory = validCategories.includes(category) ? category : 'customer';
+
+    // اشتقاق هوية المنفذ حصراً من جلسة السيرفر
+    const operator = {
+      name: admin.name,
+      username: admin.username,
+      role: admin.role,
+    };
 
     const result = createAccountingAccount({
       category: selectedCategory,

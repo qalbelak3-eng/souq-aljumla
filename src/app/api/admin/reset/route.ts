@@ -1,8 +1,17 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDatabaseStats, resetDatabaseSection } from '@/lib/db';
+import { getAuthenticatedAdmin } from '@/lib/auth';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(req: NextRequest) {
   try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+
     const stats = getDatabaseStats();
     return NextResponse.json({ success: true, stats });
   } catch (error: any) {
@@ -12,6 +21,16 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+
+    // تصفير أقسام النظام وقاعدة البيانات محصور حصراً بالمدير العام الماستر (Master Admin)
+    if (admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'هذه العملية الحساسة محصورة بصلاحيات المدير العام فقط (Master Admin)' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { target } = body;
 

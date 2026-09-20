@@ -292,24 +292,48 @@ export function ensureDbExists(): DatabaseSchema {
   return inMemoryDb;
 }
 
-function saveDb(data: DatabaseSchema) {
-  inMemoryDb = sanitizeDb(data);
+let _faultInjectionFailSaveDb = false;
+
+export function setFaultInjectionFailSaveDb(fail: boolean) {
+  _faultInjectionFailSaveDb = fail;
+}
+
+export function saveDb(data: DatabaseSchema): boolean {
+  if (_faultInjectionFailSaveDb) {
+    console.warn('⚠️ FAULT-INJECTION: Simulating disk write failure in saveDb()');
+    return false;
+  }
 
   try {
+    const sanitized = sanitizeDb(data);
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const jsonStr = JSON.stringify(inMemoryDb, null, 2);
-    fs.writeFileSync(DB_FILE, jsonStr, 'utf-8');
+    const jsonStr = JSON.stringify(sanitized, null, 2);
+
+    // Minimal Atomic File Replace:
+    // Write to a temporary file in the same directory, then atomic rename
+    const tempFile = path.join(DATA_DIR, `store_db.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`);
+    fs.writeFileSync(tempFile, jsonStr, 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
 
     // 🛡️ Automatic Backup: حفظ نسخة احتياطية حية دائمة
-    const backupDir = path.join(DATA_DIR, 'backups');
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
+    try {
+      const backupDir = path.join(DATA_DIR, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(backupDir, 'store_db_latest.backup.json'), jsonStr, 'utf-8');
+    } catch (bErr) {
+      console.warn('Backup write warning:', bErr);
     }
-    fs.writeFileSync(path.join(backupDir, 'store_db_latest.backup.json'), jsonStr, 'utf-8');
+
+    // لا نحدث الذاكرة إلا بعد نجاح الكتابة الفيزيائية والتبديل الذري على القرص
+    inMemoryDb = sanitized;
+    return true;
   } catch (e) {
-    console.error('saveDb serverless disk write error (using in-memory):', e);
+    console.error('CRITICAL: saveDb disk write failure:', e);
+    return false;
   }
 }
 
@@ -2048,6 +2072,8 @@ export function addPayment(paymentData: {
   voucherType?: 'receipt' | 'disbursement';
   operatorName?: string;
   operatorUsername?: string;
+  operatorRole?: string;
+  accountCategory?: AccountCategory;
 }): PaymentRecord {
   const db = ensureDbExists();
   if (!db.payments) db.payments = [];
@@ -2081,11 +2107,12 @@ export function addPayment(paymentData: {
   };
 
   db.payments.unshift(newPayment);
-  saveDb(db);
 
-  // Automatically log to Audit Trail
+  // Automatically log to Audit Trail in the same single transaction
   const isDisb = vType === 'disbursement';
-  logAuditEvent({
+  const auditEntry: AuditLogEntry = {
+    id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: now.toISOString(),
     actionType: isDisb ? 'disbursement_created' : 'payment_created',
     actionLabel: isDisb ? `إصدار سند صرف نقدي 💳 (#${receiptNumber})` : `إصدار سند قبض نقدي 💵 (#${receiptNumber})`,
     category: 'accounting',
@@ -2093,7 +2120,7 @@ export function addPayment(paymentData: {
     operator: {
       name: paymentData.operatorName || paymentData.receivedBy || 'المحاسب',
       username: paymentData.operatorUsername || 'accountant',
-      role: 'staff',
+      role: (paymentData.operatorRole as any) || 'staff',
     },
     target: {
       type: 'payment',
@@ -2109,7 +2136,18 @@ export function addPayment(paymentData: {
       ? `قام المحاسب بإصدار سند صرف مالي برقم (${receiptNumber}) بمبلغ ${newPayment.amount.toLocaleString()} د.ع لحساب: ${newPayment.customerName} (${newPayment.customerPhone})`
       : `قام المحاسب بإصدار سند قبض نقدي برقم (${receiptNumber}) بمبلغ ${newPayment.amount.toLocaleString()} د.ع لحساب: ${newPayment.customerName} (${newPayment.customerPhone})`,
     severity: isDisb ? 'warning' : 'info',
-  });
+  };
+
+  if (!db.auditLogs) db.auditLogs = [];
+  db.auditLogs.unshift(auditEntry);
+  if (db.auditLogs.length > 5000) db.auditLogs = db.auditLogs.slice(0, 5000);
+
+  const saved = saveDb(db);
+  if (!saved) {
+    db.payments.shift();
+    db.auditLogs.shift();
+    return null as any;
+  }
 
   return newPayment;
 }
@@ -2190,7 +2228,14 @@ export function reversePayment(
     createdAt: now.toISOString(),
   };
 
-  // وسم وربط السند الأصلي في الذاكرة
+  // حفظ الحالة السابقة للسند الأصلي للتمكن من التراجع في حالة فشل الكتابة على القرص (Rollback)
+  const prevIsReversed = original.isReversed;
+  const prevReversalVoucherId = original.reversalVoucherId;
+  const prevReversedAt = original.reversedAt;
+  const prevReversedBy = original.reversedBy;
+  const prevReversalReason = original.reversalReason;
+
+  // وسم وربط السند الأصلي
   original.isReversed = true;
   original.reversalVoucherId = reversalPayment.id;
   original.reversedAt = now.toISOString();
@@ -2200,12 +2245,11 @@ export function reversePayment(
   // إدراج سند العكس في الذاكرة
   db.payments.unshift(reversalPayment);
 
-  // حفظ التغييرات المرتبطة في الذاكرة ثم كتابتها للقرص
-  saveDb(db);
-
-  // تسجيل الحدث في سجل الرقابة
+  // إعداد قيد سجل الرقابة وتضمينه في نفس المعاملة
   const isOriginalReceipt = original.voucherType !== 'disbursement' && !original.receiptNumber.startsWith('DSB');
-  logAuditEvent({
+  const auditLogEntry: AuditLogEntry = {
+    id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: now.toISOString(),
     actionType: 'payment_reversed',
     actionLabel: `عكس سند مالي 🔄 (#${original.receiptNumber})`,
     category: 'accounting',
@@ -2227,7 +2271,28 @@ export function reversePayment(
     },
     details: `تم إصدار سند العكس (${reversalReceiptNumber}) لإلغاء أثر ${isOriginalReceipt ? 'سند القبض' : 'سند الصرف'} (${original.receiptNumber}) بمبلغ ${original.amount.toLocaleString()} د.ع لحساب (${original.customerName}). السبب: ${cleanReason}`,
     severity: 'warning',
-  });
+  };
+
+  if (!db.auditLogs) db.auditLogs = [];
+  db.auditLogs.unshift(auditLogEntry);
+  if (db.auditLogs.length > 5000) db.auditLogs = db.auditLogs.slice(0, 5000);
+
+  // 🛡️ حفظ كافة التغييرات المتكاملة في عملية حفظ ذرية واحدة للقرص
+  const saved = saveDb(db);
+  if (!saved) {
+    // 🛡️ Rollback: التراجع الفوري عن كافة التغييرات في الذاكرة لضمان عدم حدوث نجاح وهمي
+    original.isReversed = prevIsReversed;
+    original.reversalVoucherId = prevReversalVoucherId;
+    original.reversedAt = prevReversedAt;
+    original.reversedBy = prevReversedBy;
+    original.reversalReason = prevReversalReason;
+    db.payments.shift(); // remove reversalPayment
+    db.auditLogs.shift(); // remove auditLogEntry
+    return {
+      success: false,
+      error: 'فشل حفظ عملية العكس وسجل التدقيق على القرص (خطأ في وسيط التخزين). لم يتم تعديل أي بيانات.',
+    };
+  }
 
   return {
     success: true,
