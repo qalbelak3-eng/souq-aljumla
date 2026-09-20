@@ -25,6 +25,7 @@ import {
   PurchaseInvoice,
   PurchaseInvoiceItem,
   Driver,
+  DriverSettlement,
   Vehicle,
   DeliveryCollectionStatus,
   CustomerWithStats,
@@ -74,6 +75,7 @@ interface DatabaseSchema {
   offers?: ProductOffer[];
   purchaseInvoices?: PurchaseInvoice[];
   drivers?: Driver[];
+  driverSettlements?: DriverSettlement[];
   vehicles?: Vehicle[];
   staff?: StaffMember[];
   auditLogs?: AuditLogEntry[];
@@ -249,6 +251,7 @@ export function ensureDbExists(): DatabaseSchema {
         }
         if (!inMemoryDb.pushSubscriptions) inMemoryDb.pushSubscriptions = [];
         if (!inMemoryDb.pushNotificationLogs) inMemoryDb.pushNotificationLogs = [];
+        if (!inMemoryDb.driverSettlements) inMemoryDb.driverSettlements = [];
         return inMemoryDb;
       }
     }
@@ -264,6 +267,7 @@ export function ensureDbExists(): DatabaseSchema {
         }
         if (!inMemoryDb.pushSubscriptions) inMemoryDb.pushSubscriptions = [];
         if (!inMemoryDb.pushNotificationLogs) inMemoryDb.pushNotificationLogs = [];
+        if (!inMemoryDb.driverSettlements) inMemoryDb.driverSettlements = [];
         return inMemoryDb;
       }
     }
@@ -278,6 +282,7 @@ export function ensureDbExists(): DatabaseSchema {
     coupons: initialCoupons,
     banners: initialBanners,
     payments: [],
+    driverSettlements: [],
     purchaseInvoices: [],
     offers: [],
     pushSubscriptions: [],
@@ -615,53 +620,121 @@ export function createOrder(orderData: Omit<Order, 'id' | 'orderNumber' | 'creat
   return newOrder;
 }
 
+/**
+ * استعادة مخزون الطلبية بأمان مع ضمان عدم التكرار (Idempotent Stock Restoration)
+ * تُرجع true إذا تم استرجاع المخزون، أو false إذا كان قد استُرجع مسبقاً
+ */
+export function restoreOrderInventory(order: Order, db: DatabaseSchema): boolean {
+  if (order.inventoryRestored) {
+    return false; // تمت استعادة المخزون مسبقاً - حماية Idempotency
+  }
+
+  for (const item of order.items || []) {
+    const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
+    if (prodIdx > -1) {
+      const prod = db.products[prodIdx];
+      const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
+      let restoredStock = 0;
+      if (item.saleType === 'wholesale') {
+        restoredStock = Number(item.quantity) || 1;
+      } else {
+        const qtyPieces = Number(item.quantity) || 1;
+        restoredStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
+      }
+      prod.stock = Number(((prod.stock || 0) + restoredStock).toFixed(2));
+    }
+  }
+
+  order.inventoryRestored = true;
+  return true;
+}
+
+/**
+ * تطبيق قواعد إلغاء / إرجاع الطلب بدقة وأمان (Returned / Cancelled Safety Rules - Phase 2B-2)
+ * - status = 'cancelled'
+ * - collectionStatus = 'returned' (إذا كان الإلغاء ناتجاً عن إرجاع أو رفض تسليم)
+ * - remainingDebtAmount = 0 (لا دين على الزبون من هذا الطلب)
+ * - collectedAmount = 0 (لا كاش محصل)
+ * - paidAmount = 0
+ * - استرجاع المخزون مرة واحدة فقط
+ * - تحديث عهدة السائق النقدية واستبعاد الطلب منها
+ */
+export function applyOrderCancellationOrReturn(
+  order: Order,
+  db: DatabaseSchema,
+  options?: { isReturn?: boolean; notes?: string }
+): { success: boolean; error?: string } {
+  const isReturn = !!options?.isReturn;
+  const hasFinancialActivity = (order.paidAmount || 0) > 0 || (order.collectedAmount || 0) > 0;
+
+  // الحماية: رفض الإلغاء العادي للطلبات ذات الحركة المالية (دفع أو تحصيل)
+  // تتطلب هذه الطلبات تسوية واسترداد مالي (Reversal / Refund Workflow) بدلاً من الإلغاء المباشر
+  if (!isReturn && hasFinancialActivity) {
+    return {
+      success: false,
+      error: 'لا يمكن إلغاء الطلبية لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). تتطلب العملية تسوية واسترداد مالي (Financial Reversal / Refund Workflow).'
+    };
+  }
+
+  const prevCollected = order.collectedAmount || 0;
+
+  order.status = 'cancelled';
+  if (isReturn) {
+    order.collectionStatus = 'returned';
+  }
+  order.remainingDebtAmount = 0;
+  order.collectedAmount = 0;
+  order.paidAmount = 0;
+  if (options?.notes) {
+    order.driverNotes = options.notes;
+  }
+  order.updatedAt = new Date().toISOString();
+
+  // استعادة المخزون بأمان مرة واحدة فقط
+  restoreOrderInventory(order, db);
+
+  // تحديث عهدة كاش السائق بخصم ما تم تحصيله من هذا الطلب دون Math.max الصامت
+  if (prevCollected > 0 && order.driverId && db.drivers) {
+    const driverIdx = db.drivers.findIndex(d => d.id === order.driverId);
+    if (driverIdx !== -1) {
+      db.drivers[driverIdx].currentCashInHand =
+        (db.drivers[driverIdx].currentCashInHand || 0) - prevCollected;
+    }
+  }
+
+  return { success: true };
+}
+
 export function updateOrderStatus(id: string, status: Order['status']): Order | null {
   const db = ensureDbExists();
   const index = db.orders.findIndex(o => o.id === id || o.orderNumber === id);
   if (index === -1) return null;
 
-  const oldStatus = db.orders[index].status;
-  db.orders[index].status = status;
-  db.orders[index].updatedAt = new Date().toISOString();
+  const order = db.orders[index];
+  const oldStatus = order.status;
 
-  // If order was cancelled, restore inventory
-  if (status === 'cancelled' && oldStatus !== 'cancelled') {
-    for (const item of db.orders[index].items || []) {
-      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
-      if (prodIdx > -1) {
-        const prod = db.products[prodIdx];
-        const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
-        let restoredStock = 0;
-        if (item.saleType === 'wholesale') {
-          restoredStock = Number(item.quantity) || 1;
-        } else {
-          const qtyPieces = Number(item.quantity) || 1;
-          restoredStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
-        }
-        db.products[prodIdx].stock = Number(((db.products[prodIdx].stock || 0) + restoredStock).toFixed(2));
-      }
+  // الحماية ضد إعادة فتح الطلب الملغي أو الراجع (Terminal State Protection)
+  if (oldStatus === 'cancelled' || order.collectionStatus === 'returned') {
+    if (status !== 'cancelled') {
+      // محاولة إعادة فتح الطلب مرفوضة قطعاً
+      return null;
     }
-  } else if (oldStatus === 'cancelled' && status !== 'cancelled') {
-    // If uncancelled, re-deduct inventory
-    for (const item of db.orders[index].items || []) {
-      const prodIdx = db.products.findIndex(p => p.id === item.productId || (item.name && p.name === item.name));
-      if (prodIdx > -1) {
-        const prod = db.products[prodIdx];
-        const piecesPerCarton = prod.itemsPerWholesaleUnit || (prod.boxesPerCarton && prod.itemsPerBox ? prod.boxesPerCarton * prod.itemsPerBox : 1) || 1;
-        let deductedStock = 0;
-        if (item.saleType === 'wholesale') {
-          deductedStock = Number(item.quantity) || 1;
-        } else {
-          const qtyPieces = Number(item.quantity) || 1;
-          deductedStock = piecesPerCarton > 1 ? Number((qtyPieces / piecesPerCarton).toFixed(2)) : qtyPieces;
-        }
-        db.products[prodIdx].stock = Math.max(0, Number(((db.products[prodIdx].stock || 0) - deductedStock).toFixed(2)));
-      }
+    // إذا كان أصلاً cancelled وطلب cancelled مرة أخرى: no-op آمن
+    return order;
+  }
+
+  if (status === 'cancelled') {
+    const cancelRes = applyOrderCancellationOrReturn(order, db);
+    if (!cancelRes.success) {
+      return null;
     }
+  } else {
+    order.status = status;
+    order.updatedAt = new Date().toISOString();
   }
 
   saveDb(db);
-  return db.orders[index];
+  return order;
 }
 
 export function updateOrder(id: string, updates: Partial<Order>, adjustInventory: boolean = true): Order | null {
@@ -670,6 +743,27 @@ export function updateOrder(id: string, updates: Partial<Order>, adjustInventory
   if (index === -1) return null;
 
   const oldOrder = db.orders[index];
+
+  // الحماية ضد إعادة فتح أو تعديل الطلب الملغي أو الراجع (Terminal State Protection)
+  if (oldOrder.status === 'cancelled' || oldOrder.collectionStatus === 'returned') {
+    if (updates.status && updates.status !== 'cancelled') {
+      return null; // مرفوض إعادة فتح طلب منتهي
+    }
+    if (updates.collectionStatus && updates.collectionStatus !== 'returned') {
+      return null; // مرفوض إعادة تحصيل طلب راجع
+    }
+  }
+
+  if (updates.status === 'cancelled' && oldOrder.status !== 'cancelled') {
+    const cancelRes = applyOrderCancellationOrReturn(oldOrder, db, {
+      notes: updates.driverNotes || updates.notes,
+    });
+    if (!cancelRes.success) {
+      return null;
+    }
+    saveDb(db);
+    return db.orders[index];
+  }
 
   // If items are being updated and adjustInventory is true:
   if (adjustInventory && updates.items) {
@@ -726,13 +820,8 @@ export function deleteOrder(id: string, restoreInventory: boolean = true): boole
   if (index === -1) return false;
 
   const order = db.orders[index];
-  if (restoreInventory && order.items && order.status !== 'cancelled') {
-    order.items.forEach(it => {
-      const prodIdx = db.products.findIndex(p => p.id === it.productId);
-      if (prodIdx > -1) {
-        db.products[prodIdx].stock = (db.products[prodIdx].stock || 0) + it.quantity;
-      }
-    });
+  if (restoreInventory && order.items && !order.inventoryRestored && order.status !== 'cancelled') {
+    restoreOrderInventory(order, db);
   }
 
   db.orders.splice(index, 1);
@@ -3629,11 +3718,31 @@ export function updateDriverDeliveryCollection(
     return { success: false, error: 'لا يمكن تعديل المبلغ، لقد تمت تصفية العهدة لهذه الطلبية مع الإدارة مسبقاً.' };
   }
 
+  // الحماية ضد تعديل أو إعادة تحصيل الطلب الملغي أو الراجع (Terminal State Protection)
+  if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+    return { success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة تحصيلها (حالة نهائية).' };
+  }
+
+  // في حال تحويل الطلبية إلى راجعة (Returned Order)
+  if (data.collectionStatus === 'returned') {
+    applyOrderCancellationOrReturn(order, db, {
+      isReturn: true,
+      notes: data.notes,
+    });
+    saveDb(db);
+    const driverIdx = (db.drivers || []).findIndex((d) => d.id === driverId);
+    return {
+      success: true,
+      order,
+      driver: driverIdx !== -1 ? db.drivers![driverIdx] : undefined,
+    };
+  }
+
   const prevCollected = order.collectedAmount || 0;
   let newCollected = Number(data.collectedAmount) || 0;
   if (data.collectionStatus === 'collected_cash') {
     newCollected = order.total;
-  } else if (data.collectionStatus === 'debt_unpaid' || data.collectionStatus === 'returned') {
+  } else if (data.collectionStatus === 'debt_unpaid') {
     newCollected = 0;
   }
 
@@ -3645,22 +3754,19 @@ export function updateDriverDeliveryCollection(
   }
   order.updatedAt = new Date().toISOString();
 
-  // Recalculate driver's cash in hand based on all active unsettled orders
-  if (!db.drivers) db.drivers = [];
-  const driverIdx = db.drivers.findIndex((d) => d.id === driverId);
-  if (driverIdx !== -1) {
-    const driverActiveCash = (db.orders || [])
-      .filter((o) => o.driverId === driverId && !o.driverCashSettled && (o.collectedAmount || 0) > 0)
-      .reduce((sum, o) => sum + (o.collectedAmount || 0), 0);
-    
-    db.drivers[driverIdx].currentCashInHand = driverActiveCash;
+  // Update Driver Cash in hand based on collection delta
+  const driverIdx = (db.drivers || []).findIndex((d) => d.id === driverId);
+  const diff = newCollected - prevCollected;
+  if (diff !== 0 && driverIdx !== -1 && db.drivers) {
+    db.drivers[driverIdx].currentCashInHand =
+      (db.drivers[driverIdx].currentCashInHand || 0) + diff;
   }
 
   saveDb(db);
   return {
     success: true,
     order,
-    driver: driverIdx !== -1 ? db.drivers[driverIdx] : undefined,
+    driver: driverIdx !== -1 && db.drivers ? db.drivers[driverIdx] : undefined,
   };
 }
 
@@ -3683,7 +3789,7 @@ export function settleDriverCash(
 
   // Find all orders assigned to this driver with collected cash not yet settled
   const unsettledOrders = (db.orders || []).filter(
-    (o) => o.driverId === driverId && (o.collectedAmount || 0) > 0 && !o.driverCashSettled
+    (o) => o.driverId === driverId && (o.collectedAmount || 0) > 0 && !o.driverCashSettled && o.status !== 'cancelled' && o.collectionStatus !== 'returned'
   );
 
   let createdReceiptsCount = 0;
@@ -3761,6 +3867,18 @@ export function settleDriverCash(
 
   saveDb(db);
   return { driver: db.drivers[idx], settledAmount, createdReceiptsCount };
+}
+
+// سجل تصفيات السائقين (Driver Settlements Ledger - Phase 2B-1)
+export function getDriverSettlements(driverId?: string): DriverSettlement[] {
+  const db = ensureDbExists();
+  const settlements = db.driverSettlements || [];
+  if (driverId) {
+    return settlements
+      .filter((s) => s.driverId === driverId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+  return [...settlements].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // ==================== FLEET & VEHICLES MANAGEMENT FUNCTIONS ====================
@@ -3906,12 +4024,17 @@ export function completeDriverDelivery(
 
   const order = db.orders[orderIdx];
 
-  // If returned / cancelled
+  // الحماية ضد إعادة فتح أو تحصيل الطلب الملغي أو الراجع (Terminal State Protection)
+  if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+    return { success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن إعادة تسليمها أو تحصيلها (حالة نهائية).' };
+  }
+
+  // في حال تحويل الطلبية إلى راجعة (Returned Order)
   if (data.collectionStatus === 'returned') {
-    order.status = 'cancelled';
-    order.collectionStatus = 'returned';
-    order.driverNotes = data.notes || 'تم رفض الاستلام من الزبون / إرجاع الطلب';
-    order.updatedAt = new Date().toISOString();
+    applyOrderCancellationOrReturn(order, db, {
+      isReturn: true,
+      notes: data.notes || 'تم رفض الاستلام من الزبون / إرجاع الطلب',
+    });
     saveDb(db);
     return { success: true, order };
   }

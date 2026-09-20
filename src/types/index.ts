@@ -237,6 +237,27 @@ export interface Driver {
   createdAt: string;
 }
 
+export type DriverSettlementType = 'normal' | 'shortage' | 'overage' | 'shortage_repayment';
+export type DriverSettlementStatus = 'settled' | 'partial' | 'pending';
+
+export interface DriverSettlement {
+  id: string;
+  settlementNumber: string; // رقم التصفية الرسمي (مثال: SET-1001)
+  driverId: string;
+  driverName?: string;
+  driverPhone?: string;
+  expectedAmount: number; // المبلغ المحسوب دفترياً من الطلبيات غير المصفاة
+  actualAmount: number; // المبلغ النقدي الفعلي المستلم من السائق
+  variance: number; // actualAmount - expectedAmount (سالب = عجز shortage، موجب = زيادة overage، صفر = مطابق)
+  type: DriverSettlementType;
+  status: DriverSettlementStatus;
+  orderIds: string[]; // معرفات الطلبيات المشمولة في هذه التصفية
+  notes?: string;
+  createdBy?: string;
+  createdAt: string;
+  repaymentOfSettlementId?: string; // إذا كانت الحركة عبارة عن سداد عجز من تصفية سابقة
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -272,6 +293,9 @@ export interface Order {
   driverCashSettled?: boolean; // هل تم استلام العهدة وتصفيتها من قبل الإدارة وإنشاء سند قبض
   driverCashSettledAt?: string;
   paymentReceiptNumber?: string; // رقم سند القبض الذي تم إنشاؤه في حساب العميل
+  settlementId?: string; // معرف حركة التصفية الرسمية في سجل تصفيات السائقين
+  settlementNumber?: string; // رقم التصفية الرسمي (مثال: SET-1001)
+  inventoryRestored?: boolean; // حماية ضد مضاعفة إعادة المخزون للطلبات الراجعة
 
   createdAt: string;
   updatedAt: string;
@@ -511,8 +535,16 @@ export interface PaymentRecord {
   paymentMethod: 'cash' | 'zaincash' | 'qicard' | 'bank_transfer' | 'other';
   notes?: string;
   receivedBy?: string;
-  voucherType?: 'receipt' | 'disbursement';
+  voucherType?: 'receipt' | 'disbursement' | 'reversal';
   createdAt: string;
+
+  // حقول الإلغاء وعكس السندات (Voucher Reversals - Phase 2B-1)
+  isReversed?: boolean; // هل تم عكس هذا السند بسند معاكس
+  reversalVoucherId?: string; // معرف السند المعاكس (إذا كان هذا السند ملغي)
+  reversalOfId?: string; // معرف السند الأصلي (إذا كان هذا السند نفسه سند عكس)
+  reversalReason?: string; // سبب إلغاء/عكس السند
+  reversedAt?: string; // تاريخ ووقت العكس
+  reversedBy?: string; // المستخدم أو المسؤول الذي قام بالعكس
 }
 
 export type AccountCategory = 'customer' | 'supplier' | 'employee' | 'driver';

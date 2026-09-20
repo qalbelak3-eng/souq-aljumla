@@ -28,6 +28,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
     }
 
+    // الحماية ضد إعادة فتح أو تعديل الطلب الملغي أو الراجع (Terminal State Protection)
+    if ((prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') && status !== 'cancelled') {
+      return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
+    }
+
     let updated = null;
 
     if (driverId !== undefined || vehicleId !== undefined) {
@@ -41,6 +46,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     if (status !== undefined) {
+      // الحماية: منع الإلغاء العادي للطلبات ذات الحركة المالية (دفع أو تحصيل)
+      if (status === 'cancelled' && ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0)) {
+        return NextResponse.json({
+          success: false,
+          error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).'
+        }, { status: 400 });
+      }
+
       updated = updateOrderStatus(params.id, status);
       if (updated && (cancellationReason || driverNotes)) {
         const { updateOrder } = await import('@/lib/db');
@@ -111,6 +124,19 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const prevOrder = getOrderById(params.id);
     if (!prevOrder) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
+    // الحماية ضد إعادة فتح أو تعديل الطلب الملغي أو الراجع (Terminal State Protection)
+    if (prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') {
+      return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
+    }
+
+    // الحماية: منع الإلغاء العادي للطلبات ذات الحركة المالية (دفع أو تحصيل)
+    if (status === 'cancelled' && ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0)) {
+      return NextResponse.json({
+        success: false,
+        error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).'
+      }, { status: 400 });
     }
 
     const updated = updateOrder(params.id, {
