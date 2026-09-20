@@ -74,7 +74,7 @@ export default function TextProductShelf({ banner, allProducts = [], className =
   return (
     <div className={`my-3 sm:my-5 select-none ${className}`}>
       {/* 1. CLEAN SECTION HEADER (العنوان الكتابي وسهم الانتقال للقسم) */}
-      <div className="flex items-center justify-between mb-2 sm:mb-3 px-3 sm:px-4">
+      <div className="flex items-center justify-between mb-2 sm:mb-3 px-4 sm:px-6">
         <div className="flex items-center gap-2">
           <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
             {banner.title || banner.campaignProductsTitle || 'قسم مميز'}
@@ -99,9 +99,11 @@ export default function TextProductShelf({ banner, allProducts = [], className =
       {/* 2. HORIZONTAL PRODUCT STRIP (شريط المنتجات بنفس حجم ونمط حملات العروض ممتد لنهاية الشاشة) */}
       <div
         ref={scrollContainerRef}
-        className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full pr-4 sm:pr-6 pl-0"
+        className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-0.5 w-full"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
+        {/* بداية شريط المنتجات بمسافة 16px متناسقة مع حافة الصفحة في RTL */}
+        <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
         {products.map((product) => {
           const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
           const { price: currentPrice } = getProductPriceForUser(product, selectedType, user);
@@ -212,7 +214,8 @@ export default function TextProductShelf({ banner, allProducts = [], className =
             </div>
           );
         })}
-        <div className="w-2 sm:w-4 shrink-0" aria-hidden="true" />
+        {/* نهاية شريط المنتجات بمسافة متناسقة عند اكتمال التمرير */}
+        <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
       </div>
 
       {/* Buy Modal */}

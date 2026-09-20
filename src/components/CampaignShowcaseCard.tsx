@@ -105,9 +105,11 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
         <div className="relative -mt-[68px] sm:-mt-[105px] md:-mt-[160px] lg:-mt-[245px] z-10 w-full px-0">
           <div
             ref={scrollContainerRef}
-            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 w-full pr-4 sm:pr-6 pl-0"
+            className="flex items-stretch gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory pt-1 w-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
+            {/* بداية شريط المنتجات بمسافة 16px متناسقة مع حافة الصفحة في RTL */}
+            <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
             {products.map((product) => {
               const selectedType: SaleType = isApprovedMerchant ? 'wholesale' : 'retail';
               const { price: currentPrice } = getProductPriceForUser(product, selectedType, user);
@@ -218,7 +220,8 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
                 </div>
               );
             })}
-            <div className="w-2 sm:w-4 shrink-0" aria-hidden="true" />
+            {/* نهاية شريط المنتجات بمسافة متناسقة عند اكتمال التمرير */}
+            <div className="w-2 sm:w-3 shrink-0 pointer-events-none" aria-hidden="true" />
           </div>
         </div>
       )}
