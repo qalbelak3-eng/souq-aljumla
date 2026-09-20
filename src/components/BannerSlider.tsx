@@ -336,34 +336,36 @@ export default function BannerSlider({
       ? 'aspect-[1200/350]'
       : 'aspect-[16/9] max-h-[360px] sm:max-h-[420px]';
     return (
-      <div
-        className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 select-none ${aspectClass} ${className}`}
-        style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
-      >
-        <Link
-          href={singleBanner.linkUrl || '/products'}
-          className="block relative w-full h-full overflow-hidden"
+      <div className={isCompact ? "px-4 sm:px-6 lg:px-8 w-full" : "w-full"}>
+        <div
+          className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 select-none ${aspectClass} ${className}`}
+          style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
         >
-          <img
-            src={singleBanner.image}
-            alt={singleBanner.title || 'بنر إعلاني'}
-            className="w-full h-full object-contain object-center pointer-events-none"
-            draggable={false}
-          />
-        </Link>
+          <Link
+            href={singleBanner.linkUrl || '/products'}
+            className="block relative w-full h-full overflow-hidden"
+          >
+            <img
+              src={singleBanner.image}
+              alt={singleBanner.title || 'بنر إعلاني'}
+              className="w-full h-full object-cover object-center pointer-events-none"
+              draggable={false}
+            />
+          </Link>
+        </div>
       </div>
     );
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 1. COMPACT / SECONDARY PEEK CAROUSEL (وسط الشاشة مع ظهور طرف الإعلانين يميناً ويساراً)
+  // 1. COMPACT / SECONDARY PEEK CAROUSEL (Hungerstation Style Edge-to-Edge Peek)
   // ═══════════════════════════════════════════════════════════════════
   if (isCompact) {
-    // عرض الكرت 84% مع مسافة 2.5% ليتوسط الكرت النشط وتظهر أطراف الإعلانات المتجاورة
-    const cardWidthPercent = 84;
-    const gapPercent = 2.5;
-    const stepPercent = cardWidthPercent + gapPercent; // 86.5%
-    const centerOffset = (100 - cardWidthPercent) / 2; // 8% مسافة متساوية يميناً ويساراً
+    // عرض الكرت 86% مع مسافة 2% ليتوسط الكرت وتصل أطراف الإعلانات المتجاورة لحافة الشاشة
+    const cardWidthPercent = 86;
+    const gapPercent = 2;
+    const stepPercent = cardWidthPercent + gapPercent; // 88%
+    const centerOffset = (100 - cardWidthPercent) / 2; // 7% مسافة متساوية يميناً ويساراً
 
     const compactTransform = dragOffset !== 0
       ? `translateX(calc(${centerOffset}% - ${displayIndex * stepPercent}% + ${dragOffset}px))`
@@ -383,7 +385,7 @@ export default function BannerSlider({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y py-1 ${className}`}
+        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
       >
         {/* Track with live real-time finger tracking, centered peek effect & continuous infinite loop */}
         <div
@@ -399,7 +401,7 @@ export default function BannerSlider({
           {extendedBanners.map((banner, idx) => (
             <div
               key={`compact-banner-${banner.id}-${idx}`}
-              className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[1200/350] bg-white transition-transform active:scale-[0.99]"
+              className="w-[86%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[1200/350] bg-white transition-transform active:scale-[0.99]"
               style={{ backgroundColor: banner.bannerBgColor || '#ffffff' }}
             >
               <Link
@@ -422,26 +424,30 @@ export default function BannerSlider({
           ))}
         </div>
 
-        {/* Pagination Indicator Dots */}
-        <div className="flex items-center justify-center gap-1.5 pt-2">
-          {banners.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                goToSlide(idx);
-              }}
-              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                activeDotIndex === idx
-                  ? 'w-6 bg-brand-blue shadow-xs'
-                  : 'w-1.5 bg-slate-300 hover:bg-slate-400'
-              }`}
-              aria-label={`انتقال للبنر ${idx + 1}`}
-            />
-          ))}
-        </div>
+        {/* Hungerstation Style Pagination Capsule INSIDE Banner */}
+        {banners.length > 1 && (
+          <div className="absolute bottom-2.5 sm:bottom-3.5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+            <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.12)] border border-slate-200/80">
+              {banners.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    goToSlide(idx);
+                  }}
+                  className={`w-1.5 h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                    activeDotIndex === idx
+                      ? 'bg-slate-900 scale-125'
+                      : 'bg-slate-300 hover:bg-slate-400'
+                  }`}
+                  aria-label={`انتقال للبنر ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

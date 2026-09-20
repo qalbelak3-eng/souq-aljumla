@@ -447,7 +447,9 @@ function ProductsCatalog() {
 
           {/* Category Promotional Sliding Banner (e.g. Sprite or Drinks promotion) */}
           {selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
-            <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
+            <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+              <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
+            </div>
           )}
 
           {/* Category Showcase Campaigns (e.g. منتجاتنا الطازجة or special themed product carousel) */}
@@ -531,7 +533,9 @@ function ProductsCatalog() {
 
           {/* Category Promotional Sliding Banner if viewing category without company filter */}
           {!selectedCompany && selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
-            <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
+            <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+              <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
+            </div>
           )}
 
           {/* Products 2-Column Mobile Grid */}
