@@ -335,13 +335,9 @@ export default function BannerSlider({
     const aspectClass = isCompact
       ? 'aspect-[1200/350]'
       : 'aspect-[16/9] max-h-[360px] sm:max-h-[420px]';
-    // Compact banners are full-bleed (no container padding), so no rounded corners or border/shadow
-    const cardStyle = isCompact
-      ? 'relative w-full overflow-hidden select-none'
-      : 'relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 select-none';
     return (
       <div
-        className={`${cardStyle} ${aspectClass} ${className}`}
+        className={`relative w-full overflow-hidden rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 select-none ${aspectClass} ${className}`}
         style={{ backgroundColor: singleBanner.bannerBgColor || '#f8fafc' }}
       >
         <Link
@@ -351,7 +347,7 @@ export default function BannerSlider({
           <img
             src={singleBanner.image}
             alt={singleBanner.title || 'بنر إعلاني'}
-            className="w-full h-full object-cover object-center pointer-events-none"
+            className="w-full h-full object-contain object-center pointer-events-none"
             draggable={false}
           />
         </Link>
@@ -360,12 +356,18 @@ export default function BannerSlider({
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 1. COMPACT / SECONDARY SLIDER (ملء عرض الشاشة بالكامل بدون انقطاع)
+  // 1. COMPACT / SECONDARY PEEK CAROUSEL (وسط الشاشة مع ظهور طرف الإعلانين يميناً ويساراً)
   // ═══════════════════════════════════════════════════════════════════
   if (isCompact) {
+    // عرض الكرت 84% مع مسافة 2.5% ليتوسط الكرت النشط وتظهر أطراف الإعلانات المتجاورة
+    const cardWidthPercent = 84;
+    const gapPercent = 2.5;
+    const stepPercent = cardWidthPercent + gapPercent; // 86.5%
+    const centerOffset = (100 - cardWidthPercent) / 2; // 8% مسافة متساوية يميناً ويساراً
+
     const compactTransform = dragOffset !== 0
-      ? `translateX(calc(-${displayIndex * 100}% + ${dragOffset}px))`
-      : `translateX(-${displayIndex * 100}%)`;
+      ? `translateX(calc(${centerOffset}% - ${displayIndex * stepPercent}% + ${dragOffset}px))`
+      : `translateX(calc(${centerOffset}% - ${displayIndex * stepPercent}%))`;
 
     const compactTransition = isTransitioning && !isSwiping
       ? 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)'
@@ -381,22 +383,23 @@ export default function BannerSlider({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y ${className}`}
+        className={`relative w-full overflow-hidden select-none group cursor-grab active:cursor-grabbing touch-pan-y py-1 ${className}`}
       >
-        {/* Track with live real-time finger tracking & continuous infinite loop */}
+        {/* Track with live real-time finger tracking, centered peek effect & continuous infinite loop */}
         <div
           onTransitionEnd={handleTransitionEnd}
-          className="flex items-center will-change-transform w-full"
+          className="flex items-center will-change-transform"
           style={{
             transform: compactTransform,
             transition: compactTransition,
             direction: 'ltr',
+            gap: `${gapPercent}%`,
           }}
         >
           {extendedBanners.map((banner, idx) => (
             <div
               key={`compact-banner-${banner.id}-${idx}`}
-              className="w-full shrink-0 overflow-hidden aspect-[1200/350] bg-white transition-transform active:scale-[0.99]"
+              className="w-[84%] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_3px_14px_rgba(0,0,0,0.07)] border border-slate-100/90 aspect-[1200/350] bg-white transition-transform active:scale-[0.99]"
               style={{ backgroundColor: banner.bannerBgColor || '#ffffff' }}
             >
               <Link

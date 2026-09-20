@@ -410,11 +410,11 @@ function ProductsCatalog() {
   const currentCategoryObj = categories.find((c) => c.name === selectedCategory);
 
   return (
-    <div className="w-full py-3 space-y-0 select-none">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3 select-none">
       {isShowingCompanies ? (
         <div className="space-y-3">
           {/* Top Sticky Bar: Back Arrow + Category Title */}
-          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5 px-4 sm:px-6 lg:px-8">
+          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5">
             <div className="flex items-center justify-between">
               <button
                 onClick={handleBackToHome}
@@ -445,7 +445,7 @@ function ProductsCatalog() {
             </div>
           </div>
 
-          {/* Category Promotional Sliding Banner — full bleed, no horizontal padding */}
+          {/* Category Promotional Sliding Banner (e.g. Sprite or Drinks promotion) */}
           {selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
             <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
           )}
@@ -455,56 +455,54 @@ function ProductsCatalog() {
             <CampaignShowcaseCard key={camp.id} banner={camp} allProducts={products} className="mb-2" />
           ))}
 
-          {/* Subtitle + Grid: back inside padded container */}
-          <div className="px-4 sm:px-6 lg:px-8 space-y-3">
-            <p className="text-xs text-slate-500 font-bold text-center sm:text-right pt-0.5">
-              اختر الشركة لعرض منتجاتها ({filteredCompanies.length} شركة)
-            </p>
+          {/* Subtitle */}
+          <p className="text-xs text-slate-500 font-bold text-center sm:text-right pt-0.5">
+            اختر الشركة لعرض منتجاتها ({filteredCompanies.length} شركة)
+          </p>
 
-            {/* Grid of Companies with REAL Product Counts */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pb-12">
-              {filteredCompanies.map((company) => (
-                <div
-                  key={company.id}
-                  onClick={() => {
-                    setSelectedCompany(company.name);
-                    setSearchQuery('');
-                  }}
-                  className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 cursor-pointer flex flex-col group transform active:scale-98"
-                >
-                  {/* Company Logo / Illustration Banner */}
-                  <div className="bg-[#f0f7ff] aspect-[4/3] flex items-center justify-center p-3 relative group-hover:bg-blue-50/80 transition overflow-hidden">
-                    {company.logo ? (
-                      <img
-                        src={company.logo}
-                        alt={company.name}
-                        className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform"
-                      />
-                    ) : (
-                      <div className={'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-xs ' + (company.color || 'bg-white')}>
-                        <span>{company.icon || '🏢'}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Company Name & Accurate Products Count */}
-                  <div className="p-3 sm:p-4 text-center bg-white border-t border-slate-50 space-y-0.5">
-                    <h3 className="text-xs sm:text-sm font-black text-slate-900 line-clamp-1 group-hover:text-brand-blue transition">
-                      {company.name}
-                    </h3>
-                    <span className="text-[11px] text-slate-500 block font-mono font-bold">
-                      منتج {company.productsCount ?? 0}
-                    </span>
-                  </div>
+          {/* Grid of Companies with REAL Product Counts */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pb-12">
+            {filteredCompanies.map((company) => (
+              <div
+                key={company.id}
+                onClick={() => {
+                  setSelectedCompany(company.name);
+                  setSearchQuery('');
+                }}
+                className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 cursor-pointer flex flex-col group transform active:scale-98"
+              >
+                {/* Company Logo / Illustration Banner */}
+                <div className="bg-[#f0f7ff] aspect-[4/3] flex items-center justify-center p-3 relative group-hover:bg-blue-50/80 transition overflow-hidden">
+                  {company.logo ? (
+                    <img
+                      src={company.logo}
+                      alt={company.name}
+                      className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform"
+                    />
+                  ) : (
+                    <div className={'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-xs ' + (company.color || 'bg-white')}>
+                      <span>{company.icon || '🏢'}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+
+                {/* Company Name & Accurate Products Count */}
+                <div className="p-3 sm:p-4 text-center bg-white border-t border-slate-50 space-y-0.5">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 line-clamp-1 group-hover:text-brand-blue transition">
+                    {company.name}
+                  </h3>
+                  <span className="text-[11px] text-slate-500 block font-mono font-bold">
+                    منتج {company.productsCount ?? 0}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           {/* Top Sticky Bar: Back Arrow + Category — Company */}
-          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5 px-4 sm:px-6 lg:px-8">
+          <div className="sticky top-0 z-40 bg-white/90 backdrop-blur-md pt-[calc(env(safe-area-inset-top,0px)+4px)] pb-2 space-y-2.5">
             <div className="flex items-center justify-between">
               <button
                 onClick={selectedCompany ? handleBackToCompanies : handleBackToHome}
@@ -531,42 +529,40 @@ function ProductsCatalog() {
             </div>
           </div>
 
-          {/* Category Promotional Sliding Banner — full bleed, no horizontal padding */}
+          {/* Category Promotional Sliding Banner if viewing category without company filter */}
           {!selectedCompany && selectedCategory && selectedCategory !== 'الكل' && categoryBanners.length > 0 && (
             <BannerSlider position="category" category={selectedCategory} initialData={categoryBanners} className="mb-2" />
           )}
 
-          {/* Products Grid — back inside padded container */}
-          <div className="px-4 sm:px-6 lg:px-8">
-            {isLoading && products.length === 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-sm animate-pulse space-y-2">
-                    <div className="aspect-square bg-slate-100 rounded-2xl" />
-                    <div className="h-3 bg-slate-200 rounded w-3/4" />
-                    <div className="h-4 bg-slate-200 rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
-                <div className="text-4xl">📦</div>
-                <h3 className="text-sm font-black text-slate-800">لا توجد منتجات مسجلة في هذه الشركة حالياً</h3>
-                <button
-                  onClick={handleBackToCompanies}
-                  className="bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer"
-                >
-                  رجوع لقائمة الشركات
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 pb-12">
-                {filteredProducts.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Products 2-Column Mobile Grid */}
+          {isLoading && products.length === 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-sm animate-pulse space-y-2">
+                  <div className="aspect-square bg-slate-100 rounded-2xl" />
+                  <div className="h-3 bg-slate-200 rounded w-3/4" />
+                  <div className="h-4 bg-slate-200 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
+              <div className="text-4xl">📦</div>
+              <h3 className="text-sm font-black text-slate-800">لا توجد منتجات مسجلة في هذه الشركة حالياً</h3>
+              <button
+                onClick={handleBackToCompanies}
+                className="bg-brand-blue hover:bg-brand-blueDark text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer"
+              >
+                رجوع لقائمة الشركات
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 pb-12">
+              {filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
