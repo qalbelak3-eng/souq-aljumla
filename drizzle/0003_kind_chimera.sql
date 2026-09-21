@@ -1,0 +1,1 @@
+ALTER TABLE "vouchers" ADD CONSTRAINT "chk_reversal_voucher_cannot_be_reversed" CHECK (("vouchers"."voucher_type" != 'reversal') OR ("vouchers"."is_reversed" = FALSE AND "vouchers"."reversal_voucher_id" IS NULL));
