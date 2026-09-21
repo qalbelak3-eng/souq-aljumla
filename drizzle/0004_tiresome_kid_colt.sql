@@ -1,0 +1,17 @@
+ALTER TABLE "driver_settlements" DROP CONSTRAINT "chk_settlement_actual_non_negative";--> statement-breakpoint
+ALTER TABLE "order_items" DROP CONSTRAINT "order_items_order_id_orders_id_fk";
+--> statement-breakpoint
+ALTER TABLE "purchase_invoice_items" DROP CONSTRAINT "purchase_invoice_items_invoice_id_purchase_invoices_id_fk";
+--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "driver_settlements_repayment_of_id_driver_settlements_id_fk" FOREIGN KEY ("repayment_of_id") REFERENCES "public"."driver_settlements"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_invoice_items" ADD CONSTRAINT "purchase_invoice_items_invoice_id_purchase_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."purchase_invoices"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_settlements_repayment_of_id" ON "driver_settlements" USING btree ("repayment_of_id");--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "chk_product_packaging_math" CHECK ("products"."pieces_per_carton" = "products"."boxes_per_carton" * "products"."items_per_box");--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "chk_settlement_amounts_non_negative" CHECK ("driver_settlements"."expected_amount" >= 0 AND "driver_settlements"."actual_amount" >= 0 AND "driver_settlements"."shortage_amount" >= 0 AND "driver_settlements"."overage_amount" >= 0);--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "chk_settlement_variance_math" CHECK ("driver_settlements"."variance" = ("driver_settlements"."actual_amount" - "driver_settlements"."expected_amount"));--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "chk_settlement_shortage_overage_integrity" CHECK (("driver_settlements"."variance" = 0 AND "driver_settlements"."shortage_amount" = 0 AND "driver_settlements"."overage_amount" = 0) OR ("driver_settlements"."variance" < 0 AND "driver_settlements"."shortage_amount" = ("driver_settlements"."expected_amount" - "driver_settlements"."actual_amount") AND "driver_settlements"."overage_amount" = 0) OR ("driver_settlements"."variance" > 0 AND "driver_settlements"."overage_amount" = ("driver_settlements"."actual_amount" - "driver_settlements"."expected_amount") AND "driver_settlements"."shortage_amount" = 0));--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "chk_settlement_no_self_repayment" CHECK ("driver_settlements"."repayment_of_id" IS NULL OR "driver_settlements"."repayment_of_id" != "driver_settlements"."id");--> statement-breakpoint
+ALTER TABLE "driver_settlements" ADD CONSTRAINT "chk_settlement_repayment_type_consistency" CHECK (("driver_settlements"."type" = 'shortage_repayment' AND "driver_settlements"."repayment_of_id" IS NOT NULL) OR ("driver_settlements"."type" != 'shortage_repayment' AND "driver_settlements"."repayment_of_id" IS NULL));--> statement-breakpoint
+ALTER TABLE "inventory_movements" ALTER COLUMN "reference_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "inventory_movements" ADD CONSTRAINT "chk_inventory_reference_consistency" CHECK (("inventory_movements"."reference_type" IN ('order', 'purchase_invoice') AND "inventory_movements"."reference_id" IS NOT NULL) OR ("inventory_movements"."reference_type" = 'manual'));

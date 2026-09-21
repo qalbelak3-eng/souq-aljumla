@@ -14,7 +14,7 @@ export const inventoryMovements = pgTable('inventory_movements', {
   totalCost: numeric('total_cost', { precision: 14, scale: 2 }).notNull(),
   balanceAfterPieces: integer('balance_after_pieces').notNull(),
   referenceType: varchar('reference_type', { length: 30 }).notNull(), // 'order' | 'purchase_invoice' | 'manual'
-  referenceId: uuid('reference_id').notNull(),
+  referenceId: uuid('reference_id'), // Nullable for manual adjustments
   referenceNumber: varchar('reference_number', { length: 50 }),
   performedByStaffId: uuid('performed_by_staff_id')
     .references(() => staffProfiles.id, { onDelete: 'set null' }),
@@ -26,4 +26,5 @@ export const inventoryMovements = pgTable('inventory_movements', {
   index('idx_inventory_created_at').on(table.createdAt),
   check('chk_inventory_movement_type', sql`${table.movementType} IN ('purchase', 'sale', 'customer_return', 'order_cancellation', 'damage_spoilage', 'manual_adjustment')`),
   check('chk_inventory_reference_type', sql`${table.referenceType} IN ('order', 'purchase_invoice', 'manual')`),
+  check('chk_inventory_reference_consistency', sql`(${table.referenceType} IN ('order', 'purchase_invoice') AND ${table.referenceId} IS NOT NULL) OR (${table.referenceType} = 'manual')`),
 ]);

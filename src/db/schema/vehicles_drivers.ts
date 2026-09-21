@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { authIdentities, staffProfiles } from './auth';
 import { financialAccounts } from './accounts';
@@ -51,12 +51,18 @@ export const driverSettlements = pgTable('driver_settlements', {
   staffId: uuid('staff_id')
     .notNull()
     .references(() => staffProfiles.id, { onDelete: 'restrict' }),
-  repaymentOfId: uuid('repayment_of_id'),
+  repaymentOfId: uuid('repayment_of_id')
+    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_settlements_driver_id').on(table.driverId),
   index('idx_settlements_number').on(table.settlementNumber),
-  check('chk_settlement_actual_non_negative', sql`${table.actualAmount} >= 0`),
+  index('idx_settlements_repayment_of_id').on(table.repaymentOfId),
   check('chk_settlement_type', sql`${table.type} IN ('normal', 'shortage', 'overage', 'shortage_repayment')`),
+  check('chk_settlement_amounts_non_negative', sql`${table.expectedAmount} >= 0 AND ${table.actualAmount} >= 0 AND ${table.shortageAmount} >= 0 AND ${table.overageAmount} >= 0`),
+  check('chk_settlement_variance_math', sql`${table.variance} = (${table.actualAmount} - ${table.expectedAmount})`),
+  check('chk_settlement_shortage_overage_integrity', sql`(${table.variance} = 0 AND ${table.shortageAmount} = 0 AND ${table.overageAmount} = 0) OR (${table.variance} < 0 AND ${table.shortageAmount} = (${table.expectedAmount} - ${table.actualAmount}) AND ${table.overageAmount} = 0) OR (${table.variance} > 0 AND ${table.overageAmount} = (${table.actualAmount} - ${table.expectedAmount}) AND ${table.shortageAmount} = 0)`),
+  check('chk_settlement_no_self_repayment', sql`${table.repaymentOfId} IS NULL OR ${table.repaymentOfId} != ${table.id}`),
+  check('chk_settlement_repayment_type_consistency', sql`(${table.type} = 'shortage_repayment' AND ${table.repaymentOfId} IS NOT NULL) OR (${table.type} != 'shortage_repayment' AND ${table.repaymentOfId} IS NULL)`),
 ]);

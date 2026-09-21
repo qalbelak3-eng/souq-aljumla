@@ -90,6 +90,7 @@ export const products = pgTable('products', {
   check('chk_product_items_box', sql`${table.itemsPerBox} > 0`),
   check('chk_product_price_non_negative', sql`${table.price} >= 0`),
   check('chk_product_wholesale_price_non_negative', sql`${table.wholesalePrice} >= 0`),
+  check('chk_product_packaging_math', sql`${table.piecesPerCarton} = ${table.boxesPerCarton} * ${table.itemsPerBox}`),
 ]);
 
 export const productOffers = pgTable('product_offers', {

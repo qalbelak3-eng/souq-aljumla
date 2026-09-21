@@ -31,7 +31,7 @@ export const purchaseInvoiceItems = pgTable('purchase_invoice_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   invoiceId: uuid('invoice_id')
     .notNull()
-    .references(() => purchaseInvoices.id, { onDelete: 'cascade' }),
+    .references(() => purchaseInvoices.id, { onDelete: 'restrict' }),
   productId: uuid('product_id')
     .notNull()
     .references(() => products.id, { onDelete: 'restrict' }),
