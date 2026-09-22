@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCustomerStatement } from '@/lib/db';
+import { pgGetCustomerStatement } from '@/lib/postgres-accounting';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const statement = getCustomerStatement(identifier.trim(), startDate, endDate);
+    const statement = await pgGetCustomerStatement(identifier.trim(), startDate, endDate);
 
     if (!statement) {
       return NextResponse.json(

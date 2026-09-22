@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllCustomerAccounts, createAccountingAccount } from '@/lib/db';
+import { pgGetAccountSummaries, pgCreateAccountingAccount } from '@/lib/postgres-accounting';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية الاطلاع على دليل الحسابات' }, { status: 403 });
     }
 
-    const accounts = getAllCustomerAccounts();
+    const accounts = await pgGetAccountSummaries();
     const customerAccounts = accounts.filter(a => a.category !== 'supplier');
     const supplierAccounts = accounts.filter(a => a.category === 'supplier');
 
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       role: admin.role,
     };
 
-    const result = createAccountingAccount({
+    const result = await pgCreateAccountingAccount({
       category: selectedCategory,
       name,
       businessName,
@@ -112,13 +112,6 @@ export async function POST(request: Request) {
       openingBalance,
       operator,
     });
-
-    if (!result.success) {
-      return NextResponse.json(
-        { success: false, error: result.error || 'فشل إنشاء الحساب' },
-        { status: 400 }
-      );
-    }
 
     return NextResponse.json({
       success: true,

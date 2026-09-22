@@ -453,7 +453,16 @@ function AdminAccountingContent() {
 
   // Open Payment / Disbursement Modal for specific target
   const handleOpenPayment = (phone: string, name: string, balance: number, category?: string, businessName?: string, city?: string) => {
-    const mode = category === 'supplier' ? 'disbursement' : 'receipt';
+    const isSupplier = category === 'supplier';
+
+    // Signed balance:
+    // customer: + = owes us, - = we owe customer
+    // supplier: + = we owe supplier, - = supplier owes us
+    const mode =
+      isSupplier
+        ? (balance >= 0 ? 'disbursement' : 'receipt')
+        : (balance >= 0 ? 'receipt' : 'disbursement');
+
     setPaymentMode(mode);
     setPaymentTarget({ phone, name, businessName, balance, category, city });
     setPaymentAmount(Math.abs(balance) > 0 ? String(Math.abs(balance)) : '');
@@ -2286,7 +2295,25 @@ function AdminAccountingContent() {
                               category: acc.category,
                               city: acc.city,
                             });
-                            setPaymentAmount(Math.abs(acc.remainingBalance) > 0 ? String(Math.abs(acc.remainingBalance)) : '');
+                            const selectedBalance = Number(acc.remainingBalance) || 0;
+                            const selectedIsSupplier = acc.category === 'supplier';
+
+                            const balanceNeedsReceipt =
+                              selectedIsSupplier
+                                ? selectedBalance < 0
+                                : selectedBalance > 0;
+
+                            const voucherMatchesBalance =
+                              (paymentMode === 'receipt' && balanceNeedsReceipt) ||
+                              (paymentMode === 'disbursement' &&
+                                selectedBalance !== 0 &&
+                                !balanceNeedsReceipt);
+
+                            setPaymentAmount(
+                              voucherMatchesBalance
+                                ? String(Math.abs(selectedBalance))
+                                : ''
+                            );
                             setPaymentNotes('');
                             setPaymentSuccessMessage('');
                           }}
@@ -2439,51 +2466,101 @@ function AdminAccountingContent() {
 
                 {/* 3-BOX FINANCIAL BREAKDOWN & LIVE MATH */}
                 {(() => {
-                  const prevBalance = Math.abs(paymentTarget.balance);
-                  const paidNum = Number(paymentAmount) || 0;
-                  const newBalance = prevBalance - paidNum;
+                    const signedPrevBalance = Number(paymentTarget.balance) || 0;
+                    const prevBalance = Math.abs(signedPrevBalance);
+                    const paidNum = Number(paymentAmount) || 0;
 
-                  return (
-                    <div className="space-y-3">
-                      
-                      <div className="grid grid-cols-2 gap-2.5">
+                    // نحافظ على إشارة الرصيد الحقيقية بدلاً من تحويله دائماً إلى موجب
+                    const paymentEffect =
+                      paymentMode === 'receipt' ? -paidNum : paidNum;
+
+                    const newSignedBalance =
+                      signedPrevBalance + paymentEffect;
+
+                    const newBalance = Math.abs(newSignedBalance);
+                    const isSupplier = paymentTarget.category === 'supplier';
+
+                    /*
+                     * للزبون:
+                     * موجب = مطلوب لنا
+                     * سالب = دائن علينا
+                     *
+                     * للمجهز:
+                     * موجب = دائن علينا
+                     * سالب = مطلوب لنا
+                     */
+                    const prevOwedToUs =
+                      signedPrevBalance !== 0 &&
+                      (isSupplier
+                        ? signedPrevBalance < 0
+                        : signedPrevBalance > 0);
+
+                    const newOwedToUs =
+                      newSignedBalance !== 0 &&
+                      (isSupplier
+                        ? newSignedBalance < 0
+                        : newSignedBalance > 0);
+
+                    return (
+                      <div className="space-y-3">
                         
-                        {/* 1. المبلغ السابق */}
-                        <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-0.5">
-                          <span className="text-[10px] text-slate-500 font-bold block">
-                            {paymentMode === 'disbursement' || paymentTarget.category === 'supplier' ? 'المستحق السابق (دائن علينا):' : 'الرصيد السابق (مطلوب لنا):'}
-                          </span>
-                          <div className={`font-mono font-black text-sm ${paymentMode === 'disbursement' || paymentTarget.category === 'supplier' ? 'text-purple-800' : 'text-[#ef533a]'}`}>
-                            {prevBalance.toLocaleString()} <span className="text-[10px] font-sans font-bold">د.ع</span>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          
+                          {/* 1. المبلغ السابق */}
+                          <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-0.5">
+                            <span className="text-[10px] text-slate-500 font-bold block">
+                              {signedPrevBalance === 0
+                                ? 'الرصيد السابق:'
+                                : prevOwedToUs
+                                  ? 'الرصيد السابق (مطلوب لنا):'
+                                  : 'الرصيد السابق (دائن علينا):'}
+                            </span>
+
+                            <div className={`font-mono font-black text-sm ${
+                              signedPrevBalance === 0
+                                ? 'text-emerald-700'
+                                : prevOwedToUs
+                                  ? 'text-[#ef533a]'
+                                  : 'text-purple-800'
+                            }`}>
+                              {prevBalance.toLocaleString()}
+                              <span className="text-[10px] font-sans font-bold"> د.ع</span>
+                            </div>
                           </div>
+
+                          {/* 2. الرصيد بعد السند */}
+                          <div className={`p-2.5 rounded-2xl border transition-all space-y-0.5 ${
+                            newSignedBalance === 0
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                              : newOwedToUs
+                                ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                : 'bg-sky-50 border-sky-300 text-sky-900'
+                          }`}>
+                            <span className="text-[10px] font-bold block opacity-80">
+                              الرصيد بعد السند:
+                            </span>
+
+                            <div className="font-mono font-black text-sm">
+                              {newSignedBalance === 0 ? (
+                                <span className="text-emerald-700 font-sans text-xs flex items-center gap-1 font-black">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>خالص ومسدد (0)</span>
+                                </span>
+                              ) : (
+                                <span>
+                                  {newBalance.toLocaleString()}
+                                  <span className="text-[9px] font-sans font-bold">
+                                    {' '}د.ع {newOwedToUs
+                                      ? '(مطلوب لنا)'
+                                      : '(دائن علينا)'}
+                                  </span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
                         </div>
 
-                        {/* 2. المبلغ الحالي بعد السند (Live Calculated) */}
-                        <div className={`p-2.5 rounded-2xl border transition-all space-y-0.5 ${
-                          newBalance === 0
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                            : newBalance < 0
-                            ? 'bg-sky-50 border-sky-300 text-sky-900'
-                            : 'bg-amber-50 border-amber-300 text-amber-900'
-                        }`}>
-                          <span className="text-[10px] font-bold block opacity-80">
-                            المبلغ المتبقي بعد السند:
-                          </span>
-                          <div className="font-mono font-black text-sm">
-                            {newBalance === 0 ? (
-                              <span className="text-emerald-700 font-sans text-xs flex items-center gap-1 font-black">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>خالص ومسدد (0)</span>
-                              </span>
-                            ) : newBalance < 0 ? (
-                              <span>+{Math.abs(newBalance).toLocaleString()} <span className="text-[9px] font-sans">د.ع (فائض)</span></span>
-                            ) : (
-                              <span>{newBalance.toLocaleString()} <span className="text-[10px] font-sans font-bold">د.ع</span></span>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
 
                       {/* Success Feedback Alert */}
                       {paymentSuccessMessage && (
@@ -2504,7 +2581,11 @@ function AdminAccountingContent() {
                             </label>
 
                             {/* Quick Shortcuts */}
-                            {prevBalance > 0 && (
+                            {prevBalance > 0 &&
+                              (
+                                (paymentMode === 'receipt' && prevOwedToUs) ||
+                                (paymentMode === 'disbursement' && !prevOwedToUs)
+                              ) && (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
