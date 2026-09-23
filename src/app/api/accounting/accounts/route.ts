@@ -72,6 +72,7 @@ export async function POST(request: Request) {
       fixedDiscountPercent,
       notes,
       openingBalance,
+      openingBalanceType,
     } = body;
 
     if (!name || !name.trim()) {
@@ -91,12 +92,28 @@ export async function POST(request: Request) {
     const validCategories = ['customer', 'supplier', 'employee', 'driver'];
     const selectedCategory = validCategories.includes(category) ? category : 'customer';
 
-    // اشتقاق هوية المنفذ حصراً من جلسة السيرفر
+    // اشتقاق هوية المنفذ حصراً من جلسة السيرفر وتجاهل أي هوية واردة في Body
     const operator = {
       name: admin.name,
       username: admin.username,
       role: admin.role,
     };
+
+    let initialBalanceAmount = 0;
+    let initialBalanceType: 'debit' | 'credit' =
+      selectedCategory === 'supplier' ? 'credit' : 'debit';
+
+    if (typeof openingBalance === 'object' && openingBalance !== null) {
+      initialBalanceAmount = Number(openingBalance.amount) || 0;
+      if (openingBalance.type === 'credit' || openingBalance.type === 'debit') {
+        initialBalanceType = openingBalance.type;
+      }
+    } else if (openingBalance !== undefined) {
+      initialBalanceAmount = Number(openingBalance) || 0;
+      if (openingBalanceType === 'credit' || openingBalanceType === 'debit') {
+        initialBalanceType = openingBalanceType;
+      }
+    }
 
     const result = await pgCreateAccountingAccount({
       category: selectedCategory,
@@ -109,7 +126,8 @@ export async function POST(request: Request) {
       pricingTier,
       fixedDiscountPercent: fixedDiscountPercent ? Number(fixedDiscountPercent) : undefined,
       notes,
-      openingBalance,
+      openingBalance: initialBalanceAmount,
+      openingBalanceType: initialBalanceType,
       operator,
     });
 
@@ -117,6 +135,7 @@ export async function POST(request: Request) {
       success: true,
       user: result.user,
       openingBalance: result.openingBalance,
+      openingBalanceType: result.openingBalanceType,
       message: 'تم إضافة الحساب بنجاح',
     });
   } catch (error: any) {

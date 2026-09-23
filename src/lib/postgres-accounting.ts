@@ -156,14 +156,41 @@ export async function pgCreateAccountingAccount(data: {
       });
     }
 
+    const effectiveBalanceType =
+      data.openingBalanceType ||
+      (account.category === 'supplier' ? 'credit' : 'debit');
+
     if (openingBalance > 0) {
       await tx.insert(accountOpeningBalances).values({
         accountId: account.id,
-        type: data.openingBalanceType || 'debit',
+        type: effectiveBalanceType,
         amount: String(openingBalance),
         notes: 'رصيد افتتاحي',
       });
     }
+
+    const staffId = await pgResolveStaffId(tx, data.operator);
+
+    const { auditLogs } = await import('@/db/schema');
+
+    await tx.insert(auditLogs).values({
+      actionType: 'financial_account_created',
+      actionLabel: 'إنشاء حساب مالي',
+      category: 'accounting',
+      categoryLabel: 'دليل الحسابات',
+      staffId,
+      operatorSnapshot: data.operator || null,
+      targetType: 'financial_account',
+      targetId: account.id,
+      targetReferenceNumber: account.accountCode,
+      financialImpact: {
+        category: account.category,
+        openingBalance,
+        openingBalanceType: openingBalance > 0 ? effectiveBalanceType : null,
+      },
+      details: `إنشاء حساب ${account.category === 'supplier' ? 'مجهز' : 'زبون'}: ${account.name}${openingBalance > 0 ? ` برصيد افتتاحي ${openingBalance} د.ع (${effectiveBalanceType === 'credit' ? 'دائن' : 'مدين'})` : ''}`,
+      severity: 'info',
+    });
 
     return {
       success: true as const,
@@ -173,7 +200,7 @@ export async function pgCreateAccountingAccount(data: {
       },
       openingBalance,
       openingBalanceType:
-        openingBalance > 0 ? data.openingBalanceType || 'debit' : null,
+        openingBalance > 0 ? effectiveBalanceType : null,
     };
   });
 }
@@ -790,8 +817,13 @@ function accountTypeLabel(category: string): string {
 function openingSignedAmount(
   type: string | null | undefined,
   amount: unknown,
+  category?: string,
 ): number {
   const value = toNumber(amount);
+  const isSupplier = category === 'supplier';
+  if (isSupplier) {
+    return type === 'debit' ? -value : value;
+  }
   return type === 'credit' ? -value : value;
 }
 
@@ -854,7 +886,7 @@ export async function pgGetAccountSummaries() {
       .limit(1);
 
     let totalInvoiced = opening
-      ? openingSignedAmount(opening.type, opening.amount)
+      ? openingSignedAmount(opening.type, opening.amount, account.category)
       : 0;
 
     let totalPaid = 0;
@@ -1010,7 +1042,11 @@ export async function pgGetCustomerStatement(
   }> = [];
 
   if (opening && toNumber(opening.amount) > 0) {
-    const signed = openingSignedAmount(opening.type, opening.amount);
+    const signed = openingSignedAmount(
+      opening.type,
+      opening.amount,
+      account.category,
+    );
 
     allTransactions.push({
       id: opening.id,

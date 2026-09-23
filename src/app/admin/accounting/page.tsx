@@ -752,6 +752,11 @@ function AdminAccountingContent() {
       return;
     }
     setOpeningBalanceDate(getTodayStr());
+    if (newAccCategory === 'supplier') {
+      setOpeningBalanceType('credit');
+    } else {
+      setOpeningBalanceType('debit');
+    }
     setIsOpeningBalanceModalOpen(true);
   };
 
@@ -772,13 +777,8 @@ function AdminAccountingContent() {
         pricingTier: newAccPricingTier,
         fixedDiscountPercent: newAccFixedDiscount ? Number(newAccFixedDiscount) : undefined,
         notes: newAccNotes.trim() || undefined,
-        openingBalance: hasBalance ? {
-          type: openingBalanceType,
-          amount: numBal,
-          date: openingBalanceDate || getTodayStr(),
-          notes: openingBalanceNotes.trim() || undefined,
-        } : undefined,
-        operator: currentOperator || { name: 'المحاسب', username: 'accountant' },
+        openingBalance: hasBalance ? numBal : 0,
+        openingBalanceType: hasBalance && (openingBalanceType === 'credit' || openingBalanceType === 'debit') ? openingBalanceType : (newAccCategory === 'supplier' ? 'credit' : 'debit'),
       };
 
       const res = await fetch('/api/accounting/accounts', {
