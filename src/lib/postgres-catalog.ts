@@ -548,39 +548,43 @@ export async function pgCreateProduct(productData: Partial<Product> & { name: st
   // 1. Resolve Category ID
   let categoryId: string | null = null;
   const rawCat = (productData.category || '').trim();
-  if (rawCat) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCat);
-    if (isUuid) {
-      const rows = await sql`SELECT id FROM categories WHERE id = ${rawCat} LIMIT 1;`;
-      if (rows.length > 0) categoryId = String(rows[0].id);
-    }
-    if (!categoryId) {
-      const rows = await sql`SELECT id FROM categories WHERE name = ${rawCat} OR slug = ${rawCat.toLowerCase()} LIMIT 1;`;
-      if (rows.length > 0) categoryId = String(rows[0].id);
-    }
+  if (!rawCat) {
+    throw new Error('القسم مطلوب');
   }
 
-  // Fallback to first available category if not specified or not found
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCat);
+  if (isUuid) {
+    const rows = await sql`SELECT id FROM categories WHERE id = ${rawCat} LIMIT 1;`;
+    if (rows.length > 0) categoryId = String(rows[0].id);
+  }
   if (!categoryId) {
-    const [firstCat] = await sql`SELECT id FROM categories ORDER BY order_index ASC LIMIT 1;`;
-    if (!firstCat) {
-      throw new Error('لا توجد أقسام في قاعدة البيانات لربط المنتج بها');
-    }
-    categoryId = String(firstCat.id);
+    const rows = await sql`SELECT id FROM categories WHERE name = ${rawCat} OR slug = ${rawCat.toLowerCase()} LIMIT 1;`;
+    if (rows.length > 0) categoryId = String(rows[0].id);
+  }
+
+  if (!categoryId) {
+    throw new Error('القسم المحدد غير موجود');
   }
 
   // 2. Resolve Company ID (Optional)
   let companyId: string | null = null;
-  const rawComp = (productData.company || '').trim();
+  const rawComp = productData.company !== undefined && productData.company !== null
+    ? String(productData.company).trim()
+    : '';
+
   if (rawComp) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawComp);
-    if (isUuid) {
+    const isCompUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawComp);
+    if (isCompUuid) {
       const rows = await sql`SELECT id FROM companies WHERE id = ${rawComp} LIMIT 1;`;
       if (rows.length > 0) companyId = String(rows[0].id);
     }
     if (!companyId) {
       const rows = await sql`SELECT id FROM companies WHERE name = ${rawComp} LIMIT 1;`;
       if (rows.length > 0) companyId = String(rows[0].id);
+    }
+
+    if (!companyId) {
+      throw new Error('الشركة المحددة غير موجودة');
     }
   }
 
@@ -762,9 +766,12 @@ export async function pgUpdateProduct(
   const productId = existing.id;
 
   // 1. Resolve Category ID if changed
-  let categoryId = undefined;
+  let categoryId: string | undefined = undefined;
   if (updates.category !== undefined) {
-    const rawCat = updates.category.trim();
+    const rawCat = (updates.category || '').trim();
+    if (!rawCat) {
+      throw new Error('القسم مطلوب');
+    }
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCat);
     if (isUuid) {
       const rows = await sql`SELECT id FROM categories WHERE id = ${rawCat} LIMIT 1;`;
@@ -774,24 +781,32 @@ export async function pgUpdateProduct(
       const rows = await sql`SELECT id FROM categories WHERE name = ${rawCat} OR slug = ${rawCat.toLowerCase()} LIMIT 1;`;
       if (rows.length > 0) categoryId = String(rows[0].id);
     }
+
+    if (!categoryId) {
+      throw new Error('القسم المحدد غير موجود');
+    }
   }
 
   // 2. Resolve Company ID if changed
   let companyId: string | null | undefined = undefined;
   if (updates.company !== undefined) {
-    const rawComp = updates.company?.trim();
-    if (!rawComp) {
+    if (updates.company === null || (typeof updates.company === 'string' && updates.company.trim() === '')) {
+      // Deliberately removing company
       companyId = null;
     } else {
+      const rawComp = String(updates.company).trim();
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawComp);
       if (isUuid) {
         const rows = await sql`SELECT id FROM companies WHERE id = ${rawComp} LIMIT 1;`;
         if (rows.length > 0) companyId = String(rows[0].id);
       }
-      if (companyId === undefined) {
+      if (!companyId) {
         const rows = await sql`SELECT id FROM companies WHERE name = ${rawComp} LIMIT 1;`;
         if (rows.length > 0) companyId = String(rows[0].id);
-        else companyId = null;
+      }
+
+      if (!companyId) {
+        throw new Error('الشركة المحددة غير موجودة');
       }
     }
   }
@@ -808,9 +823,9 @@ export async function pgUpdateProduct(
   let newCurrentStockPieces: number | undefined = undefined;
   if (updates.stock !== undefined) {
     newCurrentStockPieces = Math.max(0, Math.round(Number(updates.stock) * newPiecesPerCarton));
-  } else if (updates.boxesPerCarton !== undefined || updates.itemsPerBox !== undefined) {
-    newCurrentStockPieces = Math.max(0, Math.round(existing.stock * newPiecesPerCarton));
   }
+  // CRITICAL: If updates.stock === undefined, newCurrentStockPieces remains undefined,
+  // meaning existing current_stock_pieces in PostgreSQL is preserved untouched.
 
   // 4. Cost prices recalculation
   const costPrice = updates.costPrice !== undefined ? Number(updates.costPrice) : existing.costPrice;

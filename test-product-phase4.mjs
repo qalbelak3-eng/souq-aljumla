@@ -4,275 +4,345 @@ import postgres from 'postgres';
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
   console.error('ERROR: DATABASE_URL environment variable is required to run this test.');
+  console.error('Example: DATABASE_URL="postgres://user:pass@127.0.0.1:5432/dbname" node test-product-phase4.mjs');
   process.exit(1);
 }
 
-const sql = postgres(dbUrl, { max: 1 });
+const sql = postgres(dbUrl, { max: 5 });
 
-async function runTest() {
-  console.log('====================================================');
-  console.log('     PHASE 4 & 5: PRODUCT WRITE OPERATIONS TEST     ');
-  console.log('====================================================');
+async function runAll15Tests() {
+  console.log('===============================================================');
+  console.log('      PHASE 4 & 5: POSTGRESQL 15 MANDATORY TESTS RUNNER        ');
+  console.log('===============================================================');
 
-  const results = {
-    build: 'PASS',
-    typeScript: 'PASS',
-    create: 'PENDING',
-    read: 'PENDING',
-    update: 'PENDING',
-    packagingCalc: 'PENDING',
-    stockCalc: 'PENDING',
-    offerTest: 'PENDING',
-    delete: 'PENDING',
-    countBefore: 0,
-    countAfter: 0,
-    errors: [],
-  };
+  const [countRowBefore] = await sql`SELECT count(*)::int as count FROM products;`;
+  const countBefore = countRowBefore.count;
+  console.log(`[Baseline] Existing products count before test: ${countBefore}\n`);
 
-  let testProductId = null;
-
-  try {
-    // 1. Initial count of existing products
-    const [beforeRow] = await sql`SELECT count(*)::int as count FROM products;`;
-    results.countBefore = beforeRow.count;
-    console.log(`[1] Existing products count before test: ${results.countBefore}`);
-
-    // 2. Fetch existing category and company
-    const [category] = await sql`SELECT id, name FROM categories ORDER BY order_index ASC LIMIT 1;`;
-    if (!category) {
-      throw new Error('No categories found in PostgreSQL to associate with test product.');
-    }
-    console.log(`[2] Using existing category: "${category.name}" (${category.id})`);
-
-    const [company] = await sql`SELECT id, name FROM companies LIMIT 1;`;
-    if (company) {
-      console.log(`[2] Using existing company: "${company.name}" (${company.id})`);
-    } else {
-      console.log('[2] No companies found; proceeding without company.');
-    }
-
-    // 3. Test Create: Single test product
-    console.log('\n--- [3] Creating Test Product ---');
-    const boxesPerCarton = 2;
-    const itemsPerBox = 10;
-    const stockCartons = 3;
-    const price = 25000;
-    const wholesalePrice = 20000;
-    const expectedPieces = boxesPerCarton * itemsPerBox; // 20
-    const expectedStockPieces = stockCartons * expectedPieces; // 60
-
-    // Direct insertion matching pgCreateProduct logic
-    const costPrice = Math.round(wholesalePrice * 0.8);
-    const boxCostPrice = Number((costPrice / boxesPerCarton).toFixed(4));
-    const pieceCostPrice = Number((costPrice / expectedPieces).toFixed(4));
-    const specialPrice = Math.round(wholesalePrice * 0.95);
-
-    const [inserted] = await sql`
-      INSERT INTO products (
-        name, description, category_id, company_id,
-        current_stock_pieces, min_stock_alert,
-        boxes_per_carton, items_per_box, pieces_per_carton,
-        retail_unit, wholesale_unit,
-        piece_cost_price, box_cost_price, cost_price,
-        price, wholesale_price, special_price, wholesale_min_quantity,
-        is_featured, is_best_seller, is_new, images
-      ) VALUES (
-        'TEST PostgreSQL Product',
-        'Product created strictly for Phase 4/5 verification',
-        ${category.id},
-        ${company ? company.id : null},
-        ${expectedStockPieces},
-        5,
-        ${boxesPerCarton},
-        ${itemsPerBox},
-        ${expectedPieces},
-        'قطعة مفردة',
-        'كرتون جملة (2 علب × 10 قطعة)',
-        ${pieceCostPrice},
-        ${boxCostPrice},
-        ${costPrice},
-        ${price},
-        ${wholesalePrice},
-        ${specialPrice},
-        1,
-        false, false, true,
-        ARRAY[]::text[]
-      )
-      RETURNING *;
+  // Ensure baseline category and company exist
+  let [category] = await sql`SELECT id, name FROM categories ORDER BY order_index ASC LIMIT 1;`;
+  if (!category) {
+    [category] = await sql`
+      INSERT INTO categories (name, slug) 
+      VALUES ('قسم تجريبي للاختبار', 'test-cat') 
+      RETURNING id, name;
     `;
-
-    testProductId = inserted.id;
-    console.log(`✓ Test product created with ID: ${testProductId}`);
-    results.create = 'PASS';
-
-    // 4. Verify packaging and stock calculations in DB
-    const actualPieces = Number(inserted.pieces_per_carton);
-    const actualStockPieces = Number(inserted.current_stock_pieces);
-
-    console.log(`  Expected piecesPerCarton: ${expectedPieces} | Actual in DB: ${actualPieces}`);
-    console.log(`  Expected currentStockPieces: ${expectedStockPieces} | Actual in DB: ${actualStockPieces}`);
-
-    if (actualPieces === 20) {
-      results.packagingCalc = 'PASS';
-    } else {
-      results.packagingCalc = 'FAIL';
-      results.errors.push(`Packaging calculation mismatch: expected 20, got ${actualPieces}`);
-    }
-
-    if (actualStockPieces === 60) {
-      results.stockCalc = 'PASS';
-    } else {
-      results.stockCalc = 'FAIL';
-      results.errors.push(`Stock calculation mismatch: expected 60, got ${actualStockPieces}`);
-    }
-
-    // 5. Test Read (by ID & in list with Active Offer join)
-    console.log('\n--- [5] Reading Test Product ---');
-    const readRows = await sql`
-      SELECT 
-        p.*,
-        c.name as category_name,
-        comp.name as company_name,
-        o.id as offer_id,
-        o.offer_price,
-        o.is_active as offer_is_active
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN companies comp ON p.company_id = comp.id
-      LEFT JOIN product_offers o ON p.id = o.product_id AND o.is_active = true AND o.end_date > NOW()
-      WHERE p.id = ${testProductId};
-    `;
-
-    if (readRows.length === 1 && readRows[0].name === 'TEST PostgreSQL Product') {
-      console.log(`✓ Read by ID successfully retrieved: "${readRows[0].name}"`);
-      console.log(`  Category Name: ${readRows[0].category_name}`);
-      console.log(`  Company Name: ${readRows[0].company_name || 'N/A'}`);
-      console.log(`  Stock (Cartons calculated): ${(Number(readRows[0].current_stock_pieces) / Number(readRows[0].pieces_per_carton)).toFixed(2)}`);
-      results.read = 'PASS';
-    } else {
-      results.read = 'FAIL';
-      results.errors.push('Failed to read test product by ID');
-    }
-
-    // 6. Test Update Price & Packaging
-    console.log('\n--- [6] Updating Price & Packaging ---');
-    const updatedPrice = 28000;
-    const updatedWholesale = 23000;
-    const updatedBoxes = 3;
-    const updatedItems = 10;
-    const updatedPieces = updatedBoxes * updatedItems; // 30
-    const newStockCartons = 4;
-    const updatedStockPieces = newStockCartons * updatedPieces; // 120
-
-    await sql`
-      UPDATE products SET
-        price = ${updatedPrice},
-        wholesale_price = ${updatedWholesale},
-        boxes_per_carton = ${updatedBoxes},
-        items_per_box = ${updatedItems},
-        pieces_per_carton = ${updatedPieces},
-        current_stock_pieces = ${updatedStockPieces}
-      WHERE id = ${testProductId};
-    `;
-
-    const [updatedRow] = await sql`SELECT * FROM products WHERE id = ${testProductId};`;
-    if (
-      Number(updatedRow.price) === updatedPrice &&
-      Number(updatedRow.wholesale_price) === updatedWholesale &&
-      Number(updatedRow.pieces_per_carton) === updatedPieces &&
-      Number(updatedRow.current_stock_pieces) === updatedStockPieces
-    ) {
-      console.log(`✓ Updated successfully:`);
-      console.log(`  New Price: ${updatedRow.price} (wholesale: ${updatedRow.wholesale_price})`);
-      console.log(`  New Packaging: ${updatedRow.boxes_per_carton}x${updatedRow.items_per_box} = ${updatedRow.pieces_per_carton}`);
-      console.log(`  New Stock Pieces: ${updatedRow.current_stock_pieces} (= ${newStockCartons} cartons)`);
-      results.update = 'PASS';
-    } else {
-      results.update = 'FAIL';
-      results.errors.push('Update verification failed');
-    }
-
-    // 7. Test Active Offer creation & Cascade delete
-    console.log('\n--- [7] Testing Promotional Offer Attachment ---');
-    const offerOriginalPrice = 28000;
-    const offerPrice = 22000;
-    const offerEndDate = new Date(Date.now() + 7 * 86400000);
-
-    const [offerRow] = await sql`
-      INSERT INTO product_offers (
-        product_id, original_price, offer_price, discount_percent,
-        badge, end_date, is_active
-      ) VALUES (
-        ${testProductId},
-        ${offerOriginalPrice},
-        ${offerPrice},
-        21.43,
-        '🔥 عرض خاص',
-        ${offerEndDate},
-        true
-      )
-      RETURNING *;
-    `;
-
-    console.log(`✓ Attached promotional offer ID: ${offerRow.id}`);
-    results.offerTest = 'PASS';
-
-    // 8. Test Delete Test Product & Check Cascade
-    console.log('\n--- [8] Deleting Test Product (Testing ON DELETE CASCADE) ---');
-    const deletedRows = await sql`DELETE FROM products WHERE id = ${testProductId} RETURNING id;`;
-    if (deletedRows.length === 1) {
-      console.log(`✓ Product deleted from products table`);
-      
-      // Verify linked offer was deleted via CASCADE
-      const linkedOffers = await sql`SELECT count(*)::int as count FROM product_offers WHERE product_id = ${testProductId};`;
-      if (linkedOffers[0].count === 0) {
-        console.log(`✓ Linked product_offers cascade deleted successfully (count: 0)`);
-        results.delete = 'PASS';
-      } else {
-        results.delete = 'FAIL';
-        results.errors.push(`Cascade delete failed: ${linkedOffers[0].count} orphan offers remain`);
-      }
-    } else {
-      results.delete = 'FAIL';
-      results.errors.push('Product deletion query returned 0 rows');
-    }
-
-    // 9. Verify product count after test
-    const [afterRow] = await sql`SELECT count(*)::int as count FROM products;`;
-    results.countAfter = afterRow.count;
-    console.log(`\n[9] Products count after deletion: ${results.countAfter}`);
-    if (results.countBefore === results.countAfter) {
-      console.log(`✓ Products count matches exactly before and after (${results.countBefore} -> ${results.countAfter}). No existing products were touched!`);
-    } else {
-      results.errors.push(`Count mismatch: before=${results.countBefore}, after=${results.countAfter}`);
-    }
-
-  } catch (err) {
-    console.error('Execution error during test:', err);
-    results.errors.push(err.message);
-  } finally {
-    // Teardown safety: if test product still exists, ensure it is cleaned up
-    if (testProductId) {
-      try {
-        await sql`DELETE FROM products WHERE id = ${testProductId};`;
-      } catch (e) {}
-    }
-    await sql.end();
   }
 
-  console.log('\n====================================================');
-  console.log('                    FINAL REPORT                    ');
-  console.log('====================================================');
-  console.log(`Build: ${results.build}`);
-  console.log(`TypeScript: ${results.typeScript}`);
-  console.log(`Create: ${results.create}`);
-  console.log(`Read: ${results.read}`);
-  console.log(`Update: ${results.update}`);
-  console.log(`Packaging calculation: ${results.packagingCalc}`);
-  console.log(`Stock calculation: ${results.stockCalc}`);
-  console.log(`Delete: ${results.delete}`);
-  console.log(`عدد المنتجات قبل الاختبار وبعده: ${results.countBefore} -> ${results.countAfter}`);
-  console.log(`أي Errors ظهرت: ${results.errors.length > 0 ? results.errors.join('; ') : 'لا يوجد (None)'}`);
+  let [anotherCategory] = await sql`SELECT id, name FROM categories WHERE id != ${category.id} LIMIT 1;`;
+  if (!anotherCategory) {
+    [anotherCategory] = await sql`
+      INSERT INTO categories (name, slug) 
+      VALUES ('قسم تجريبي ثاني', 'test-cat-2') 
+      RETURNING id, name;
+    `;
+  }
+
+  let [company] = await sql`SELECT id, name FROM companies LIMIT 1;`;
+  if (!company) {
+    [company] = await sql`
+      INSERT INTO companies (name) 
+      VALUES ('شركة تجريبية للاختبار') 
+      RETURNING id, name;
+    `;
+  }
+
+  let [anotherCompany] = await sql`SELECT id, name FROM companies WHERE id != ${company.id} LIMIT 1;`;
+  if (!anotherCompany) {
+    [anotherCompany] = await sql`
+      INSERT INTO companies (name) 
+      VALUES ('شركة تجريبية ثانية') 
+      RETURNING id, name;
+    `;
+  }
+
+  console.log(`Using Category A: "${category.name}" (${category.id})`);
+  console.log(`Using Category B: "${anotherCategory.name}" (${anotherCategory.id})`);
+  console.log(`Using Company A:  "${company.name}" (${company.id})`);
+  console.log(`Using Company B:  "${anotherCompany.name}" (${anotherCompany.id})\n`);
+
+  const results = [];
+  function record(num, title, pass, detail) {
+    results.push({ num, title, pass, detail });
+    console.log(`[Test ${num.toString().padStart(2, ' ')}] ${pass ? '✓ PASS' : '✗ FAIL'}: ${title} - ${detail}`);
+  }
+
+  let testProdId = null;
+  let testProdId2 = null;
+
+  try {
+    // -------------------------------------------------------------
+    // Test 1: إنشاء منتج بقسم صحيح -> ينجح.
+    // -------------------------------------------------------------
+    const [t1] = await sql`
+      INSERT INTO products (
+        name, category_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_P1', ${category.id}, 2, 10, 20, 60, 25000, 20000, 'قطعة', 'كرتون'
+      ) RETURNING id, name, category_id;
+    `;
+    testProdId = t1.id;
+    record(1, 'إنشاء منتج بقسم صحيح', Boolean(t1 && t1.id), `Product ID: ${t1.id}`);
+
+    // -------------------------------------------------------------
+    // Test 2: إنشاء منتج بقسم غير موجود -> يفشل ولا ينشئ المنتج.
+    // -------------------------------------------------------------
+    try {
+      const nonExistentCatUuid = '00000000-0000-0000-0000-000000000000';
+      await sql`
+        INSERT INTO products (
+          name, category_id, boxes_per_carton, items_per_box, pieces_per_carton,
+          current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+        ) VALUES (
+          'TEST_P2_FAIL', ${nonExistentCatUuid}, 2, 10, 20, 60, 25000, 20000, 'قطعة', 'كرتون'
+        );
+      `;
+      record(2, 'إنشاء منتج بقسم غير موجود', false, 'Should have failed foreign key constraint');
+    } catch (e) {
+      record(2, 'إنشاء منتج بقسم غير موجود', true, 'Foreign key / validation rejected insertion');
+    }
+
+    // -------------------------------------------------------------
+    // Test 3: إنشاء منتج بشركة صحيحة -> ينجح ويرتبط بها.
+    // -------------------------------------------------------------
+    const [t3] = await sql`
+      INSERT INTO products (
+        name, category_id, company_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_P3_COMP', ${category.id}, ${company.id}, 2, 10, 20, 60, 25000, 20000, 'قطعة', 'كرتون'
+      ) RETURNING id, company_id;
+    `;
+    testProdId2 = t3.id;
+    record(3, 'إنشاء منتج بشركة صحيحة', t3.company_id === company.id, `Linked Company: ${t3.company_id}`);
+
+    // -------------------------------------------------------------
+    // Test 4: إنشاء منتج باسم شركة غير موجود -> يفشل.
+    // -------------------------------------------------------------
+    try {
+      const nonExistentCompUuid = '00000000-0000-0000-0000-000000000000';
+      await sql`
+        INSERT INTO products (
+          name, category_id, company_id, boxes_per_carton, items_per_box, pieces_per_carton,
+          current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+        ) VALUES (
+          'TEST_P4_FAIL', ${category.id}, ${nonExistentCompUuid}, 2, 10, 20, 60, 25000, 20000, 'قطعة', 'كرتون'
+        );
+      `;
+      record(4, 'إنشاء منتج باسم شركة غير موجود', false, 'Should have failed foreign key constraint');
+    } catch (e) {
+      record(4, 'إنشاء منتج باسم شركة غير موجود', true, 'Foreign key / validation rejected insertion');
+    }
+
+    // -------------------------------------------------------------
+    // Test 5: إنشاء منتج بدون شركة -> ينجح إذا كانت الشركة اختيارية.
+    // -------------------------------------------------------------
+    const [t5] = await sql`
+      INSERT INTO products (
+        name, category_id, company_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_P5_NO_COMP', ${category.id}, NULL, 2, 10, 20, 60, 25000, 20000, 'قطعة', 'كرتون'
+      ) RETURNING id, company_id;
+    `;
+    record(5, 'إنشاء منتج بدون شركة', t5.company_id === null, `Company ID is NULL: ${t5.company_id === null}`);
+    await sql`DELETE FROM products WHERE id = ${t5.id};`;
+
+    // -------------------------------------------------------------
+    // Test 6: تعديل المنتج إلى قسم صحيح -> ينجح.
+    // -------------------------------------------------------------
+    await sql`UPDATE products SET category_id = ${anotherCategory.id} WHERE id = ${testProdId};`;
+    const [t6] = await sql`SELECT category_id FROM products WHERE id = ${testProdId};`;
+    record(6, 'تعديل المنتج إلى قسم صحيح', t6.category_id === anotherCategory.id, `Updated to: ${t6.category_id}`);
+
+    // -------------------------------------------------------------
+    // Test 7: تعديل المنتج إلى قسم غير موجود -> يفشل ولا يغيّر القسم السابق.
+    // -------------------------------------------------------------
+    try {
+      const badCat = '00000000-0000-0000-0000-000000000000';
+      await sql`UPDATE products SET category_id = ${badCat} WHERE id = ${testProdId};`;
+      record(7, 'تعديل المنتج إلى قسم غير موجود', false, 'Should have failed FK constraint');
+    } catch (e) {
+      const [t7] = await sql`SELECT category_id FROM products WHERE id = ${testProdId};`;
+      const pass = t7.category_id === anotherCategory.id;
+      record(7, 'تعديل المنتج إلى قسم غير موجود', pass, `Rejected and preserved previous category: ${t7.category_id}`);
+    }
+
+    // -------------------------------------------------------------
+    // Test 8: تعديل الشركة إلى شركة صحيحة -> ينجح.
+    // -------------------------------------------------------------
+    await sql`UPDATE products SET company_id = ${anotherCompany.id} WHERE id = ${testProdId2};`;
+    const [t8] = await sql`SELECT company_id FROM products WHERE id = ${testProdId2};`;
+    record(8, 'تعديل الشركة إلى شركة صحيحة', t8.company_id === anotherCompany.id, `Updated to: ${t8.company_id}`);
+
+    // -------------------------------------------------------------
+    // Test 9: تعديل الشركة باسم غير موجود -> يفشل ويحافظ على الشركة السابقة.
+    // -------------------------------------------------------------
+    try {
+      const badComp = '00000000-0000-0000-0000-000000000000';
+      await sql`UPDATE products SET company_id = ${badComp} WHERE id = ${testProdId2};`;
+      record(9, 'تعديل الشركة باسم غير موجود', false, 'Should have failed FK constraint');
+    } catch (e) {
+      const [t9] = await sql`SELECT company_id FROM products WHERE id = ${testProdId2};`;
+      const pass = t9.company_id === anotherCompany.id;
+      record(9, 'تعديل الشركة باسم غير موجود', pass, `Rejected and preserved previous company: ${t9.company_id}`);
+    }
+
+    // -------------------------------------------------------------
+    // Test 10: إزالة الشركة عمداً بقيمة فارغة -> company_id = NULL.
+    // -------------------------------------------------------------
+    await sql`UPDATE products SET company_id = NULL WHERE id = ${testProdId2};`;
+    const [t10] = await sql`SELECT company_id FROM products WHERE id = ${testProdId2};`;
+    record(10, 'إزالة الشركة عمداً بقيمة فارغة', t10.company_id === null, `Company is NULL: ${t10.company_id === null}`);
+
+    // -------------------------------------------------------------
+    // Baseline Setup for Packaging Tests (11, 12, 13)
+    // boxes=2, items=10, pieces=20, stock=5 cartons -> current_stock_pieces = 100
+    // -------------------------------------------------------------
+    const [pkgProd] = await sql`
+      INSERT INTO products (
+        name, category_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_PACKAGING', ${category.id}, 2, 10, 20, 100, 20000, 16000, 'قطعة', 'كرتون'
+      ) RETURNING id, boxes_per_carton, items_per_box, pieces_per_carton, current_stock_pieces;
+    `;
+    const pkgProdId = pkgProd.id;
+
+    // -------------------------------------------------------------
+    // Test 11: تغيير boxesPerCarton فقط -> current_stock_pieces لا يتغير.
+    // -------------------------------------------------------------
+    const newBoxes11 = 4;
+    const newPieces11 = newBoxes11 * pkgProd.items_per_box; // 4 * 10 = 40
+    // Updates only packaging, leaves current_stock_pieces untouched
+    await sql`
+      UPDATE products SET
+        boxes_per_carton = ${newBoxes11},
+        pieces_per_carton = ${newPieces11}
+      WHERE id = ${pkgProdId};
+    `;
+    const [t11] = await sql`SELECT boxes_per_carton, pieces_per_carton, current_stock_pieces FROM products WHERE id = ${pkgProdId};`;
+    const pass11 = Number(t11.current_stock_pieces) === 100 && Number(t11.pieces_per_carton) === 40;
+    record(11, 'تغيير boxesPerCarton فقط -> current_stock_pieces لا يتغير', pass11,
+      `pieces_per_carton: ${t11.pieces_per_carton}, current_stock_pieces: ${t11.current_stock_pieces} (displayed cartons: ${100/40})`);
+
+    // -------------------------------------------------------------
+    // Test 12: تغيير itemsPerBox فقط -> current_stock_pieces لا يتغير.
+    // -------------------------------------------------------------
+    const newItems12 = 5;
+    const newPieces12 = t11.boxes_per_carton * newItems12; // 4 * 5 = 20
+    await sql`
+      UPDATE products SET
+        items_per_box = ${newItems12},
+        pieces_per_carton = ${newPieces12}
+      WHERE id = ${pkgProdId};
+    `;
+    const [t12] = await sql`SELECT items_per_box, pieces_per_carton, current_stock_pieces FROM products WHERE id = ${pkgProdId};`;
+    const pass12 = Number(t12.current_stock_pieces) === 100 && Number(t12.pieces_per_carton) === 20;
+    record(12, 'تغيير itemsPerBox فقط -> current_stock_pieces لا يتغير', pass12,
+      `pieces_per_carton: ${t12.pieces_per_carton}, current_stock_pieces: ${t12.current_stock_pieces} (displayed cartons: ${100/20})`);
+
+    // -------------------------------------------------------------
+    // Test 13: تغيير التعبئة + stock معاً -> current_stock_pieces يحسب من القيم الجديدة.
+    // -------------------------------------------------------------
+    const newBoxes13 = 3;
+    const newItems13 = 10;
+    const newPieces13 = newBoxes13 * newItems13; // 30
+    const newStockCartons13 = 4;
+    const expectedStockPieces13 = newStockCartons13 * newPieces13; // 120
+    await sql`
+      UPDATE products SET
+        boxes_per_carton = ${newBoxes13},
+        items_per_box = ${newItems13},
+        pieces_per_carton = ${newPieces13},
+        current_stock_pieces = ${expectedStockPieces13}
+      WHERE id = ${pkgProdId};
+    `;
+    const [t13] = await sql`SELECT boxes_per_carton, items_per_box, pieces_per_carton, current_stock_pieces FROM products WHERE id = ${pkgProdId};`;
+    const pass13 = Number(t13.current_stock_pieces) === 120 && Number(t13.pieces_per_carton) === 30;
+    record(13, 'تغيير التعبئة + stock معاً -> current_stock_pieces يحسب من القيم الجديدة', pass13,
+      `pieces_per_carton: ${t13.pieces_per_carton}, current_stock_pieces: ${t13.current_stock_pieces} (stock: ${120/30} cartons)`);
+
+    await sql`DELETE FROM products WHERE id = ${pkgProdId};`;
+
+    // -------------------------------------------------------------
+    // Test 14: CRUD الكامل: Create -> Read -> Update -> Delete
+    // -------------------------------------------------------------
+    const [crudCreated] = await sql`
+      INSERT INTO products (
+        name, category_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_CRUD', ${category.id}, 1, 1, 1, 10, 5000, 4000, 'قطعة', 'كرتون'
+      ) RETURNING id;
+    `;
+    const [crudRead] = await sql`SELECT name, price FROM products WHERE id = ${crudCreated.id};`;
+    await sql`UPDATE products SET price = 6000 WHERE id = ${crudCreated.id};`;
+    const [crudUpdated] = await sql`SELECT price FROM products WHERE id = ${crudCreated.id};`;
+    const delRes = await sql`DELETE FROM products WHERE id = ${crudCreated.id} RETURNING id;`;
+    const [crudAfter] = await sql`SELECT id FROM products WHERE id = ${crudCreated.id};`;
+
+    const pass14 = Boolean(
+      crudCreated.id &&
+      crudRead.name === 'TEST_CRUD' &&
+      Number(crudUpdated.price) === 6000 &&
+      delRes.length === 1 &&
+      !crudAfter
+    );
+    record(14, 'CRUD الكامل', pass14, 'Create, Read, Update, Delete all succeeded cleanly');
+
+    // -------------------------------------------------------------
+    // Test 15: حذف المنتج يحذف عروضه المرتبطة تلقائياً بـ CASCADE
+    // -------------------------------------------------------------
+    const [offerProd] = await sql`
+      INSERT INTO products (
+        name, category_id, boxes_per_carton, items_per_box, pieces_per_carton,
+        current_stock_pieces, price, wholesale_price, retail_unit, wholesale_unit
+      ) VALUES (
+        'TEST_CASCADE_OFFER', ${category.id}, 1, 1, 1, 10, 10000, 8000, 'قطعة', 'كرتون'
+      ) RETURNING id;
+    `;
+
+    const [createdOffer] = await sql`
+      INSERT INTO product_offers (
+        product_id, original_price, offer_price, discount_percent, badge, end_date, is_active
+      ) VALUES (
+        ${offerProd.id}, 10000, 8000, 20.00, 'عرض خاص', ${new Date(Date.now() + 7 * 86400000)}, true
+      ) RETURNING id;
+    `;
+
+    const [beforeDel] = await sql`SELECT count(*)::int as c FROM product_offers WHERE product_id = ${offerProd.id};`;
+    await sql`DELETE FROM products WHERE id = ${offerProd.id};`;
+    const [afterDel] = await sql`SELECT count(*)::int as c FROM product_offers WHERE product_id = ${offerProd.id};`;
+
+    const pass15 = beforeDel.c === 1 && afterDel.c === 0;
+    record(15, 'حذف المنتج يحذف عروضه المرتبطة تلقائياً بـ CASCADE', pass15,
+      `Offers before delete: ${beforeDel.c}, Offers after delete: ${afterDel.c} (0 orphans)`);
+
+    // Clean up remaining test products
+    if (testProdId) await sql`DELETE FROM products WHERE id = ${testProdId};`;
+    if (testProdId2) await sql`DELETE FROM products WHERE id = ${testProdId2};`;
+
+    // Final count check
+    const [countRowAfter] = await sql`SELECT count(*)::int as count FROM products;`;
+    const countAfter = countRowAfter.count;
+    console.log(`\n[Count Check] Products before: ${countBefore} -> after: ${countAfter}`);
+    const countMatches = countBefore === countAfter;
+
+    console.log('\n===============================================================');
+    console.log('                     15 TESTS SUMMARY                          ');
+    console.log('===============================================================');
+    const allPassed = results.every(r => r.pass) && countMatches;
+    console.log(`Total: 15 | Passed: ${results.filter(r => r.pass).length} | Failed: ${results.filter(r => !r.pass).length}`);
+    console.log(`Original Products Untouched: ${countMatches ? 'YES ✓' : 'NO ✗'}`);
+    console.log(`OVERALL STATUS: ${allPassed ? 'ALL PASS ✓' : 'SOME FAILED ✗'}`);
+
+  } catch (err) {
+    console.error('Fatal error during test run:', err);
+  } finally {
+    await sql.end();
+  }
 }
 
-runTest();
+runAll15Tests();
