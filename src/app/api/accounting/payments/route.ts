@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { addPayment, getPayments, getCustomerStatement, reversePayment } from '@/lib/db';
+import {
+  pgAddPayment,
+  pgGetPayments,
+  pgGetCustomerStatement,
+  pgReversePayment,
+} from '@/lib/postgres-accounting';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +22,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const phone = searchParams.get('phone') || undefined;
-    const payments = getPayments(phone);
+    const payments = await pgGetPayments(phone);
     return NextResponse.json({ success: true, payments });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -54,21 +59,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'معرف السند المراد عكسه مطلوب' }, { status: 400 });
       }
 
-      const res = reversePayment(paymentId, reason, operator);
+      const res = await pgReversePayment(paymentId, reason, operator);
 
       if (!res.success) {
         return NextResponse.json({ success: false, error: res.error }, { status: 400 });
       }
 
-      const updatedStatement = res.original?.customerPhone
-        ? getCustomerStatement(res.original.customerPhone)
+      const updatedStatement = res.originalPayment?.customerPhone
+        ? await pgGetCustomerStatement(res.originalPayment.customerPhone)
         : null;
 
       return NextResponse.json({
         success: true,
-        message: `تم إصدار سند العكس (#${res.reversal?.receiptNumber}) بنجاح!`,
-        reversal: res.reversal,
-        original: res.original,
+        message: `تم إصدار سند العكس (#${res.reversalPayment.receiptNumber}) بنجاح!`,
+        reversal: res.reversalPayment,
+        original: res.originalPayment,
         statement: updatedStatement,
       }, { status: 201 });
     }
@@ -96,7 +101,7 @@ export async function POST(request: Request) {
     }
 
     const isDisb = voucherType === 'disbursement';
-    const payment = addPayment({
+    const payment = await pgAddPayment({
       customerPhone,
       customerName,
       amount: numAmount,
@@ -116,7 +121,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const updatedStatement = getCustomerStatement(customerPhone);
+    let updatedStatement = null;
+
+    try {
+      updatedStatement = await pgGetCustomerStatement(customerPhone);
+    } catch (statementError: any) {
+      console.error('STATEMENT AFTER PAYMENT FAILED:', statementError);
+    }
 
     return NextResponse.json({
       success: true,

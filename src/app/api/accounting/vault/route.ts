@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getCashVaultSummary, getCashVaultMovements, addCashVaultMovement } from '@/lib/db';
+import {
+  pgGetCashVaultSummary,
+  pgGetCashVaultMovements,
+  pgAddCashVaultMovement,
+} from '@/lib/postgres-accounting';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +19,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية الاطلاع على الصندوق 181' }, { status: 403 });
     }
 
-    const summary = getCashVaultSummary();
-    const movements = getCashVaultMovements();
+    const summary = await pgGetCashVaultSummary();
+    const movements = await pgGetCashVaultMovements();
     return NextResponse.json({ success: true, summary, movements });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     // اشتقاق هوية المنفذ حصراً من جلسة السيرفر
-    const movement = addCashVaultMovement({
+    const movement = await pgAddCashVaultMovement({
       type: type || 'inflow',
       category: category || (type === 'inflow' ? 'deposit_adjustment' : 'expense'),
       categoryLabel: categoryLabel || (type === 'inflow' ? 'إيداع نقدي' : 'مصروفات نقدية'),
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const summary = getCashVaultSummary();
+    const summary = await pgGetCashVaultSummary();
     return NextResponse.json({
       success: true,
       message: 'تم تسجيل حركة الصندوق وتوثيقها في سجل الرقابة بنجاح ✓',
