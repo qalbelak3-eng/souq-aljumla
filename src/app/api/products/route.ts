@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { getDomainDataSource } from '@/db/client';
 import { getProducts, createProduct, getCategories } from '@/lib/db';
+import { pgGetProducts, pgCreateProduct, pgGetCategories } from '@/lib/postgres-catalog';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,8 +13,13 @@ export async function GET(request: Request) {
     const query = searchParams.get('query') || undefined;
     const featured = searchParams.get('featured') === 'true';
 
-    const products = getProducts({ category, query, featured });
-    const categories = getCategories();
+    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
+    const products = usePg
+      ? await pgGetProducts({ category, query, featured })
+      : getProducts({ category, query, featured });
+    const categories = usePg
+      ? await pgGetCategories()
+      : getCategories();
 
     return NextResponse.json({ success: true, products, categories });
   } catch (error: any) {
@@ -23,9 +30,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const newProduct = createProduct(body);
+    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
+    const newProduct = usePg
+      ? await pgCreateProduct(body)
+      : createProduct(body);
     return NextResponse.json({ success: true, product: newProduct }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }
 }
+
