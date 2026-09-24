@@ -1,197 +1,266 @@
 import { NextResponse } from 'next/server';
-import { getOrders, completeDriverDelivery, startDriverDelivery, getDriverById, getOrderById, getDriverRatings } from '@/lib/db';
+import { getAuthenticatedDriver } from '@/lib/auth';
+import {
+  pgGetDriverOrders,
+  pgStartDriverDelivery,
+  pgNotifyDriverArrived,
+  pgDeliverDriverOrder,
+  pgUpdateDriverDeliveryCollection,
+  pgFailDriverDelivery,
+  pgReturnDriverOrder,
+} from '@/lib/postgres-delivery';
+import { pgGetDriverById } from '@/lib/postgres-drivers';
+import { getDb } from '@/db/client';
+import { driverRatings } from '@/db/schema';
+import { desc, eq } from 'drizzle-orm';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const driverId = searchParams.get('driverId');
-
-    if (!driverId) {
-      return NextResponse.json({ success: false, error: 'معرف السائق مطلوب' }, { status: 400 });
-    }
-
-    const driver = getDriverById(driverId);
+    // 1. Authenticate driver Server-Side via signed token/cookie and PostgreSQL active state
+    const driver = await getAuthenticatedDriver(req);
     if (!driver) {
-      return NextResponse.json({ success: false, error: 'السائق غير موجود' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بالوصول (جلسة السائق غير مسجلة أو معطلة)' },
+        { status: 401 }
+      );
     }
 
-    const allOrders = getOrders();
-    const driverOrders = allOrders.filter((o) => o.driverId === driverId);
+    // 2. Object-level isolation: If driverId is sent in query, it MUST match the authenticated driver!
+    const { searchParams } = new URL(req.url);
+    const queryDriverId = searchParams.get('driverId');
+    if (queryDriverId && queryDriverId !== driver.id) {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بالوصول إلى طلبات سائق آخر' },
+        { status: 403 }
+      );
+    }
 
-    // Active orders to be delivered
-    const activeOrders = driverOrders.filter(
-      (o) => o.status === 'pending' || o.status === 'processing' || o.status === 'shipped'
-    );
+    // 3. Fetch orders from PostgreSQL
+    const { activeOrders, historyOrders } = await pgGetDriverOrders(driver.id);
 
-    // Completed or Returned orders
-    const historyOrders = driverOrders.filter(
-      (o) => o.status === 'delivered' || o.status === 'cancelled'
-    );
+    // 4. Fetch driver profile with fresh cash in hand calculation
+    const driverProfile = await pgGetDriverById(driver.id);
 
-    const ratings = getDriverRatings(driverId);
+    // 5. Fetch driver ratings from PostgreSQL
+    const db = getDb();
+    const ratings = await db
+      .select()
+      .from(driverRatings)
+      .where(eq(driverRatings.driverId, driver.id))
+      .orderBy(desc(driverRatings.createdAt))
+      .limit(20);
 
     return NextResponse.json({
       success: true,
-      driver: {
-        id: driver.id,
-        name: driver.name,
-        phone: driver.phone,
-        vehicleInfo: driver.vehicleInfo,
-        currentCashInHand: driver.currentCashInHand || 0,
-        averageRating: driver.averageRating,
-        ratingsCount: driver.ratingsCount,
-        ratingTierLabel: driver.ratingTierLabel,
-      },
+      driver: driverProfile
+        ? {
+            id: driverProfile.id,
+            name: driverProfile.name,
+            phone: driverProfile.phone,
+            vehicleInfo: driverProfile.vehicleInfo,
+            currentCashInHand: driverProfile.currentCashInHand || 0,
+            activeDeliveries: driverProfile.activeDeliveries,
+            completedDeliveries: driverProfile.completedDeliveries,
+            totalDeliveredRevenue: driverProfile.totalDeliveredRevenue,
+          }
+        : driver,
       ratings,
-      activeOrders: activeOrders.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ),
-      historyOrders: historyOrders.sort(
-        (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-      ),
+      activeOrders,
+      historyOrders,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching driver orders:', error);
-    return NextResponse.json({ success: false, error: 'حدث خطأ أثناء جلب طلبيات السائق' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || 'حدث خطأ أثناء جلب طلبيات السائق' },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
+    // 1. Authenticate driver Server-Side
+    const driver = await getAuthenticatedDriver(req);
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بالوصول (جلسة السائق غير مسجلة أو معطلة)' },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
-    const { action, orderId, driverId, collectionStatus, collectedAmount, notes } = body;
+    const { action, orderId, driverId: bodyDriverId, collectionStatus, collectedAmount, reason, notes } = body;
 
-    if (!orderId || !driverId) {
-      return NextResponse.json({ success: false, error: 'بيانات العملية غير مكتملة' }, { status: 400 });
+    if (!orderId) {
+      return NextResponse.json({ success: false, error: 'معرف الطلب مطلوب' }, { status: 400 });
     }
 
-    // Action 1: Driver leaves warehouse / out for delivery (خرج مع المندوب للتوصيل)
+    // 2. Object-level isolation: Cannot execute operations on behalf of another driver
+    if (bodyDriverId && bodyDriverId !== driver.id) {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بتنفيذ عمليات نيابة عن سائق آخر' },
+        { status: 403 }
+      );
+    }
+
+    const driverOp = {
+      id: driver.id,
+      name: driver.name,
+      phone: driver.phone,
+    };
+
+    // Action A: Start Delivery (خرج للتوصيل / Out for Delivery)
     if (action === 'start_delivery') {
-      const result = startDriverDelivery(orderId, driverId);
-      if (!result.success) {
-        return NextResponse.json({ success: false, error: result.error || 'فشلت عملية التحديث' }, { status: 400 });
-      }
+      const order = await pgStartDriverDelivery(driver.id, orderId, driverOp);
 
-      const driver = getDriverById(driverId);
-
-      // إرسال تنبيه فوري للزبون: طلبيتك خرجت مع المندوب 🚚
-      if (result.order) {
-        try {
-          await sendDirectCustomerAlert({
-            userId: result.order.customer.userId,
-            phone: result.order.customer.phone,
-            title: '🚚 طلبيتك في الطريق إليك الآن!',
-            body: `مرحباً ${result.order.customer.name}، طلبيتك #${result.order.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
-            url: `/order-success/${result.order.id}`,
-          });
-        } catch (e) {}
-      }
-
-      return NextResponse.json({
-        success: true,
-        order: result.order,
-        message: 'تم تحديث حالة الطلبية: خرج مع المندوب للتوصيل 🚚',
-      });
-    }
-
-    // Action 2: Driver arrived at customer location (إشعار فوري بأن المندوب وصل)
-    if (action === 'notify_arrived') {
-      const order = getOrderById(orderId);
-      if (!order) {
-        return NextResponse.json({ success: false, error: 'الطلبية غير موجودة' }, { status: 404 });
-      }
-
-      // حفظ وقت وصول المندوب في الطلبية لتلتقطه صفحة التتبع الحية فوراً
-      const { updateOrder } = await import('@/lib/db');
-      updateOrder(orderId, { driverArrivedAt: new Date().toISOString() }, false);
-
-      // إرسال تنبيه Push لحظي لهاتف الزبون
+      // Send Push notification to customer
       try {
         await sendDirectCustomerAlert({
           userId: order.customer.userId,
           phone: order.customer.phone,
-          title: '🛵 المندوب وصل إلى موقعك الآن!',
-          body: `مرحباً ${order.customer.name}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+          title: '🚚 طلبيتك في الطريق إليك الآن!',
+          body: `مرحباً ${order.customer.name}، طلبيتك #${order.orderNumber} خرجت مع مندوب التوصيل وهي في الطريق إلى موقعك 🚀.`,
           url: `/order-success/${order.id}`,
         });
       } catch (e) {}
 
       return NextResponse.json({
         success: true,
-        message: 'تم إرسال إشعار وصول المندوب لهاتف الزبون بنجاح 🔔🛵',
+        order,
+        message: 'تم تحديث حالة الطلبية: خرج مع المندوب للتوصيل 🚚',
       });
     }
 
-    // Action 2.5: Driver updates collection amount before admin cash settlement (تعديل المبلغ قبل التصفية)
-    if (action === 'update_collection') {
-      const { updateDriverDeliveryCollection } = await import('@/lib/db');
-      const result = updateDriverDeliveryCollection(orderId, driverId, {
-        collectionStatus,
-        collectedAmount: Number(collectedAmount) || 0,
-        notes,
-      });
+    // Action B: Notify Arrived (المندوب وصل لموقع الزبون)
+    if (action === 'notify_arrived') {
+      const result = await pgNotifyDriverArrived(driver.id, orderId, driverOp);
 
-      if (!result.success) {
-        return NextResponse.json({ success: false, error: result.error || 'فشلت عملية تعديل المبلغ' }, { status: 400 });
-      }
+      // Send Push notification to customer
+      try {
+        const { pgGetOrderById } = await import('@/lib/postgres-orders');
+        const order = await pgGetOrderById(orderId);
+        if (order) {
+          await sendDirectCustomerAlert({
+            userId: order.customer.userId,
+            phone: order.customer.phone,
+            title: '🛵 المندوب وصل إلى موقعك الآن!',
+            body: `مرحباً ${order.customer.name}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+            url: `/order-success/${order.id}`,
+          });
+        }
+      } catch (e) {}
 
       return NextResponse.json({
         success: true,
-        order: result.order,
-        driver: result.driver,
+        arrivedAt: result.arrivedAt,
+        message: 'تم تسجيل وصول المندوب وإشعار الزبون بنجاح 🔔🛵',
+      });
+    }
+
+    // Action C: Update Collection Amount before Settlement (تعديل مبلغ التحصيل قبل التصفية)
+    if (action === 'update_collection') {
+      const order = await pgUpdateDriverDeliveryCollection(driver.id, orderId, driverOp, {
+        collectionStatus,
+        collectedAmount,
+        notes,
+      });
+
+      const updatedDriver = await pgGetDriverById(driver.id);
+
+      return NextResponse.json({
+        success: true,
+        order,
+        driver: updatedDriver,
         message: 'تم تعديل مبلغ التحصيل وإعادة احتساب العهدة بنجاح 💵✓',
       });
     }
 
-    // Action 3: Driver completes delivery with cash / debt / partial / return
-    if (!collectionStatus) {
-      return NextResponse.json({ success: false, error: 'يرجى تحديد حالة التحصيل المالي' }, { status: 400 });
+    // Action D: Failed Delivery Attempt (تعذر تسليم الطلبية)
+    if (action === 'fail_delivery') {
+      if (!reason) {
+        return NextResponse.json(
+          { success: false, error: 'يرجى تحديد سبب تعذر التسليم (customer_refused, customer_unreachable, wrong_address, customer_requested_reschedule, other)' },
+          { status: 400 }
+        );
+      }
+
+      const order = await pgFailDriverDelivery(driver.id, orderId, driverOp, {
+        reason,
+        notes,
+      });
+
+      return NextResponse.json({
+        success: true,
+        order,
+        message: 'تم تسجيل تعذر التسليم بنجاح مع إبقاء الطلبية بانتظار إعادة الجدولة',
+      });
     }
 
-    const result = completeDriverDelivery(orderId, driverId, {
-      collectionStatus,
-      collectedAmount: Number(collectedAmount) || 0,
+    // Action E: Return Order to Warehouse (إرجاع الطلبية للمستودع واسترجاع المخزون)
+    if (action === 'return_delivery' || action === 'return_order') {
+      const order = await pgReturnDriverOrder(driver.id, orderId, driverOp, {
+        reason: notes || reason || 'إرجاع من السائق للمستودع',
+      });
+
+      // Send Push notification to customer
+      try {
+        await sendDirectCustomerAlert({
+          userId: order.customer.userId,
+          phone: order.customer.phone,
+          title: '📦 تم إرجاع الطلبية',
+          body: `مرحباً ${order.customer.name}، تم تسجيل إرجاع طلبيتك #${order.orderNumber}. ملاحظات: ${notes || 'تم الإرجاع للمستودع'}`,
+          url: `/order-success/${order.id}`,
+        });
+      } catch (e) {}
+
+      return NextResponse.json({
+        success: true,
+        order,
+        message: 'تم تسجيل إرجاع الطلبية للمستودع واسترجاع المخزون بنجاح 📦',
+      });
+    }
+
+    // Action F: Complete Delivery & Cash Collection (تسليم الطلبية وتحصيل المبلغ)
+    // Supports explicit action 'complete_delivery' / 'deliver' or fallback when collectionStatus is provided
+    const order = await pgDeliverDriverOrder(driver.id, orderId, driverOp, {
+      collectionStatus: collectionStatus || 'collected_cash',
+      collectedAmount,
       notes,
     });
 
-    if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error || 'فشلت عملية تحديث الطلبية' }, { status: 400 });
-    }
+    // Send Push notification to customer
+    try {
+      await sendDirectCustomerAlert({
+        userId: order.customer.userId,
+        phone: order.customer.phone,
+        title: '🎉 تم تسليم طلبيتك بنجاح!',
+        body: `مرحباً ${order.customer.name}، تم تسليم طلبيتك #${order.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
+        url: `/order-success/${order.id}`,
+      });
+    } catch (e) {}
 
-    // إرسال تنبيه فوري للزبون: تم تسليم الطلبية بنجاح 🎉
-    if (result.order) {
-      try {
-        if (collectionStatus === 'returned') {
-          await sendDirectCustomerAlert({
-            userId: result.order.customer.userId,
-            phone: result.order.customer.phone,
-            title: '📦 تم إرجاع الطلبية',
-            body: `مرحباً ${result.order.customer.name}، تم تسجيل إرجاع طلبيتك #${result.order.orderNumber}. ملاحظة المندوب: ${notes || 'تم الإرجاع'}`,
-            url: `/order-success/${result.order.id}`,
-          });
-        } else {
-          await sendDirectCustomerAlert({
-            userId: result.order.customer.userId,
-            phone: result.order.customer.phone,
-            title: '🎉 تم تسليم طلبيتك بنجاح!',
-            body: `مرحباً ${result.order.customer.name}، تم استلام وتسليم طلبيتك #${result.order.orderNumber} بنجاح. شكراً لتسوقك من سوق الجملة 🛍️`,
-            url: `/order-success/${result.order.id}`,
-          });
-        }
-      } catch (e) {}
-    }
-
-    const updatedDriver = getDriverById(driverId);
+    const updatedDriver = await pgGetDriverById(driver.id);
 
     return NextResponse.json({
       success: true,
-      order: result.order,
+      order,
       driver: updatedDriver,
-      message: 'تم إتمام عملية التسليم وتحديث حساب السائق والمخزن بنجاح 🚚🎉',
+      message: 'تم إتمام عملية التسليم وتحديث عهدة السائق بنجاح 🚚🎉',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in driver orders route:', error);
-    return NextResponse.json({ success: false, error: 'حدث خطأ أثناء تحديث الطلبية' }, { status: 500 });
+    const message = error.message || 'حدث خطأ أثناء معالجة طلب السائق';
+    const status = message.includes('غير مسند')
+      ? 403
+      : message.includes('غير موجود')
+      ? 404
+      : message.includes('لا تسمح') || message.includes('ملغاة') || message.includes('بالفعل')
+      ? 400
+      : 500;
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }

@@ -56,7 +56,7 @@ function normalizePhone(value?: string | null): string {
   return String(value || '').replace(/\D/g, '');
 }
 
-function toNumber(value: unknown): number {
+export function toNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
@@ -65,11 +65,11 @@ function generateAccountCode(): string {
   return `ACC-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
-function isUuid(value?: string | null): boolean {
+export function isUuid(value?: string | null): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
-async function resolveStaffId(tx: any, operator?: PgOperator): Promise<string | null> {
+export async function resolveStaffId(tx: any, operator?: PgOperator): Promise<string | null> {
   const username = String(operator?.username || '').trim();
   if (!username) return null;
 
@@ -82,7 +82,7 @@ async function resolveStaffId(tx: any, operator?: PgOperator): Promise<string | 
   return rows[0]?.id || null;
 }
 
-function formatOrderRecord(
+export function formatOrderRecord(
   orderRow: any,
   itemsRows: any[],
   driverRow?: any,

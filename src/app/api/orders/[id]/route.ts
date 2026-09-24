@@ -99,6 +99,21 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     let updated = null;
 
+    if (driverId !== undefined) {
+      const { pgAssignOrderDriver } = await import('@/lib/postgres-delivery');
+      updated = await pgAssignOrderDriver({
+        orderId: params.id,
+        driverId,
+        vehicleId,
+        adminOperator: {
+          userId: admin.id,
+          username: admin.username,
+          role: admin.role,
+          name: admin.name,
+        },
+      });
+    }
+
     if (status === 'cancelled') {
       // Financial Protection against cancelling with collected/paid money
       if ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0) {
@@ -119,7 +134,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       });
     } else if (driverNotes !== undefined) {
       updated = await pgUpdateOrder(params.id, { driverNotes }, { adjustInventory: false, operator });
-    } else {
+    } else if (!updated) {
       updated = prevOrder;
     }
 
