@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getOrders, createOrder, getSettings, getUsers, getProducts, validateCoupon } from '@/lib/db';
+import { getSettings, getUsers, validateCoupon } from '@/lib/db';
+import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
+import { pgGetProducts } from '@/lib/postgres-catalog';
 import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+import { getAuthenticatedAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,29 +13,18 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const phone = searchParams.get('phone');
-    const email = searchParams.get('email');
-    const limit = searchParams.get('limit');
+    const userId = searchParams.get('userId') || undefined;
+    const phone = searchParams.get('phone') || undefined;
+    const email = searchParams.get('email') || undefined;
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Number(limitParam) : undefined;
 
-    let orders = getOrders();
-
-    if (userId || phone || email) {
-      const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
-      orders = orders.filter((o) => {
-        if (userId && o.customer?.userId === userId) return true;
-        if (cleanPhone && o.customer?.phone && o.customer.phone.replace(/\D/g, '') === cleanPhone) return true;
-        if (email && o.customer?.email && o.customer.email.toLowerCase() === email.toLowerCase()) return true;
-        return false;
-      });
-    }
-
-    if (limit) {
-      const numLimit = Number(limit);
-      if (!isNaN(numLimit) && numLimit > 0) {
-        orders = orders.slice(0, numLimit);
-      }
-    }
+    const orders = await pgGetOrders({
+      userId,
+      phone,
+      email,
+      limit,
+    });
 
     return NextResponse.json({ success: true, orders });
   } catch (error: any) {
@@ -43,7 +35,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { customer, items, deliveryFee, discount, couponCode, usedCashbackDiscount, paymentMethod, notes } = body;
+    const {
+      customer,
+      items,
+      deliveryFee,
+      discount,
+      couponCode,
+      usedCashbackDiscount,
+      paymentMethod,
+      notes,
+      accountId,
+    } = body;
 
     if (!customer || !customer.name || !customer.phone || !customer.city || !customer.address) {
       return NextResponse.json({ success: false, error: 'يرجى إكمال جميع بيانات العميل المطلوبة' }, { status: 400 });
@@ -78,24 +80,24 @@ export async function POST(request: Request) {
 
     // Server-side recalculation of each item price based on verified product catalog
     const settings = getSettings();
-    const allProducts = getProducts();
+    const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
     const verifiedItems = items.map((item: any) => {
       const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id);
       const qty = Math.max(1, Number(item.quantity) || 1);
-      const saleType = item.saleType === 'wholesale' ? 'wholesale' : 'retail';
+      const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
 
       let officialPrice = Number(item.price);
       if (prod) {
-        const pricingRes = getProductPriceForUser(prod, saleType, existingUser);
+        const pricingRes = getProductPriceForUser(prod, saleType as any, existingUser);
         officialPrice = pricingRes.price;
       }
 
       const itemTotal = officialPrice * qty;
       calculatedSubtotal += itemTotal;
 
-      const cashbackRate = prod ? getProductCashbackRate(prod, existingUser, settings, saleType) : 0;
+      const cashbackRate = prod ? getProductCashbackRate(prod, existingUser, settings, saleType as any) : 0;
       const earnedCashback = cashbackRate * qty;
 
       return {
@@ -106,11 +108,15 @@ export async function POST(request: Request) {
         price: officialPrice,
         quantity: qty,
         saleType,
-        unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : 'مفرد'),
-        image: (prod?.images?.[0] && !prod.images[0].startsWith('data:image/')) ? prod.images[0] : (item.image && !item.image.startsWith('data:image/')) ? item.image : '',
-        costPrice: prod?.costPrice,
+        unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : saleType === 'box' ? 'علبة' : 'مفرد'),
+        image: (prod?.images?.[0] && !prod.images[0].startsWith('data:image/'))
+          ? prod.images[0]
+          : (item.image && !item.image.startsWith('data:image/'))
+          ? item.image
+          : '',
+        costPrice: prod?.pieceCostPrice || prod?.costPrice,
         cashbackPerUnit: cashbackRate,
-        earnedCashback: earnedCashback,
+        earnedCashback,
       };
     });
 
@@ -146,7 +152,13 @@ export async function POST(request: Request) {
     // Calculate final trusted total
     const finalTotal = Math.max(0, calculatedSubtotal + verifiedDeliveryFee - verifiedDiscount - verifiedCashbackDiscount);
 
-    const newOrder = createOrder({
+    // Session-derived operator for audit trail
+    const admin = getAuthenticatedAdmin(request);
+    const operator = admin
+      ? { name: admin.name, username: admin.username, role: admin.role }
+      : { name: customer.name, username: customer.phone, role: 'customer' };
+
+    const newOrder = await pgCreateOrder({
       customer,
       items: verifiedItems,
       subtotal: calculatedSubtotal,
@@ -158,10 +170,12 @@ export async function POST(request: Request) {
       notes: notes || '',
       paymentMethod: paymentMethod || 'cod',
       status: 'pending',
-      whatsappSent: false,
+      accountId,
+      createAccountIfMissing: true,
+      operator,
     });
 
-    // إرسال تنبيه فوري لهاتف الزبون: تم استلام الطلبية بنجاح 📋
+    // Send push alert to customer phone
     try {
       await sendDirectCustomerAlert({
         userId: customer.userId,

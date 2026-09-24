@@ -1,21 +1,32 @@
 import { NextResponse } from 'next/server';
-import { getOrderById, updateOrderStatus, updateOrder, deleteOrder, getSettings, assignDriverToOrder } from '@/lib/db';
+import { getSettings } from '@/lib/db';
+import {
+  pgGetOrderById,
+  pgUpdateOrderStatus,
+  pgUpdateOrder,
+  pgCancelOrder,
+} from '@/lib/postgres-orders';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+import { getAuthenticatedAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const order = getOrderById(params.id);
-  if (!order) {
-    return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+  try {
+    const order = await pgGetOrderById(params.id);
+    if (!order) {
+      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
+    const settings = getSettings();
+    const whatsappUrl = generateWhatsAppLink(order, settings);
+
+    return NextResponse.json({ success: true, order, whatsappUrl });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
-
-  const settings = getSettings();
-  const whatsappUrl = generateWhatsAppLink(order, settings);
-
-  return NextResponse.json({ success: true, order, whatsappUrl });
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
@@ -23,57 +34,53 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const body = await request.json();
     const { status, driverId, vehicleId, cancellationReason, driverNotes } = body;
 
-    const prevOrder = getOrderById(params.id);
+    const prevOrder = await pgGetOrderById(params.id);
     if (!prevOrder) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
     }
 
-    // الحماية ضد إعادة فتح أو تعديل الطلب الملغي أو الراجع (Terminal State Protection)
+    // Terminal State Protection
     if ((prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') && status !== 'cancelled') {
       return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
     }
 
+    const admin = getAuthenticatedAdmin(request);
+    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
+
     let updated = null;
 
-    if (driverId !== undefined || vehicleId !== undefined) {
-      const targetDriverId = driverId !== undefined ? driverId : (prevOrder.driverId || '');
-      updated = assignDriverToOrder(params.id, targetDriverId, vehicleId);
-      
-      // إذا تم تعيين سائق وكانت حالة الطلبية قيد الانتظار، يتم تحويلها تلقائياً إلى قيد التجهيز
-      if (updated && targetDriverId && targetDriverId !== 'none' && updated.status === 'pending') {
-        updated = updateOrderStatus(params.id, 'processing') || updated;
-      }
-    }
-
-    if (status !== undefined) {
-      // الحماية: منع الإلغاء العادي للطلبات ذات الحركة المالية (دفع أو تحصيل)
-      if (status === 'cancelled' && ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0)) {
+    if (status === 'cancelled') {
+      // Financial Protection against cancelling with collected/paid money
+      if ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0) {
         return NextResponse.json({
           success: false,
-          error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).'
+          error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).',
         }, { status: 400 });
       }
 
-      updated = updateOrderStatus(params.id, status);
-      if (updated && (cancellationReason || driverNotes)) {
-        const { updateOrder } = await import('@/lib/db');
-        updated = updateOrder(params.id, {
-          driverNotes: driverNotes || cancellationReason || 'تم الإلغاء بناءً على رغبة الزبون'
-        }, false) || updated;
-      }
+      updated = await pgCancelOrder(params.id, {
+        reason: cancellationReason || driverNotes,
+        operator,
+      });
+    } else if (status !== undefined) {
+      updated = await pgUpdateOrderStatus(params.id, status, {
+        driverNotes: driverNotes || cancellationReason,
+        operator,
+      });
+    } else if (driverNotes !== undefined) {
+      updated = await pgUpdateOrder(params.id, { driverNotes }, { adjustInventory: false, operator });
+    } else {
+      updated = prevOrder;
     }
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'فشل تحديث الطلب' }, { status: 400 });
     }
 
-    // إرسال تنبيه فوري لهاتف الزبون بناءً على تغير حالة الطلبية 🔔
+    // Push notifications for customer on status changes
     try {
       const effectiveStatus = updated.status;
-      const isNewDriverAssigned = driverId !== undefined && driverId !== '' && driverId !== 'none' && driverId !== prevOrder.driverId;
-      const isStatusChangedToProcessing = (status === 'processing' || effectiveStatus === 'processing') && prevOrder.status !== 'processing';
-
-      if (isStatusChangedToProcessing || (isNewDriverAssigned && prevOrder.status !== 'processing' && prevOrder.status !== 'shipped' && prevOrder.status !== 'delivered')) {
+      if (status === 'processing' || (effectiveStatus === 'processing' && prevOrder.status !== 'processing')) {
         await sendDirectCustomerAlert({
           userId: updated.customer.userId,
           phone: updated.customer.phone,
@@ -121,17 +128,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const { items, deliveryFee, discount, notes, status, customer, paymentMethod } = body;
 
-    const prevOrder = getOrderById(params.id);
+    const prevOrder = await pgGetOrderById(params.id);
     if (!prevOrder) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
     }
 
-    // الحماية ضد إعادة فتح أو تعديل الطلب الملغي أو الراجع (Terminal State Protection)
+    // Terminal State Protection
     if (prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') {
       return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
     }
 
-    // الحماية: منع الإلغاء العادي للطلبات ذات الحركة المالية (دفع أو تحصيل)
+    // Financial Protection
     if (status === 'cancelled' && ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0)) {
       return NextResponse.json({
         success: false,
@@ -139,21 +146,28 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }, { status: 400 });
     }
 
-    const updated = updateOrder(params.id, {
-      items,
-      deliveryFee: deliveryFee !== undefined ? Number(deliveryFee) : undefined,
-      discount: discount !== undefined ? Number(discount) : undefined,
-      notes,
-      status,
-      customer,
-      paymentMethod,
-    }, true);
+    const admin = getAuthenticatedAdmin(request);
+    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
+
+    const updated = await pgUpdateOrder(
+      params.id,
+      {
+        items,
+        deliveryFee: deliveryFee !== undefined ? Number(deliveryFee) : undefined,
+        discount: discount !== undefined ? Number(discount) : undefined,
+        notes,
+        status,
+        customer,
+        paymentMethod,
+      },
+      { adjustInventory: true, operator }
+    );
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
     }
 
-    // إرسال تنبيه فوري للزبون إذا تم تغيير الحالة أثناء تعديل الفاتورة
+    // Push alerts on status change
     if (status && status !== prevOrder.status) {
       try {
         if (status === 'processing') {
@@ -186,10 +200,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }
     }
 
-    if (!updated) {
-      return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
-    }
-
     return NextResponse.json({
       success: true,
       message: 'تم تعديل الفاتورة وتحديث المخزون وحساب العميل بنجاح!',
@@ -202,10 +212,19 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const success = deleteOrder(params.id, true);
-    if (!success) {
+    const admin = getAuthenticatedAdmin(request);
+    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
+
+    const prevOrder = await pgGetOrderById(params.id);
+    if (!prevOrder) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود أو تعذر حذفه' }, { status: 404 });
     }
+
+    // Logical cancellation: DB trigger trg_prevent_order_delete forbids physical DELETE
+    await pgCancelOrder(params.id, {
+      reason: 'تم إلغاء الفاتورة من لوحة التحكم (إلغاء منطقي واسترجاع المخزون)',
+      operator,
+    });
 
     return NextResponse.json({
       success: true,
