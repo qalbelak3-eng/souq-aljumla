@@ -139,25 +139,30 @@ export async function POST(req: Request) {
     if (action === 'notify_arrived') {
       const result = await pgNotifyDriverArrived(driver.id, orderId, driverOp);
 
-      // Send Push notification to customer
-      try {
-        const { pgGetOrderById } = await import('@/lib/postgres-orders');
-        const order = await pgGetOrderById(orderId);
-        if (order) {
-          await sendDirectCustomerAlert({
-            userId: order.customer.userId,
-            phone: order.customer.phone,
-            title: '🛵 المندوب وصل إلى موقعك الآن!',
-            body: `مرحباً ${order.customer.name}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
-            url: `/order-success/${order.id}`,
-          });
-        }
-      } catch (e) {}
+      // Send Push notification to customer only on first arrival registration
+      if (!result.alreadyArrived) {
+        try {
+          const { pgGetOrderById } = await import('@/lib/postgres-orders');
+          const order = await pgGetOrderById(orderId);
+          if (order) {
+            await sendDirectCustomerAlert({
+              userId: order.customer.userId,
+              phone: order.customer.phone,
+              title: '🛵 المندوب وصل إلى موقعك الآن!',
+              body: `مرحباً ${order.customer.name}، مندوب سوق الجملة وصل بانتظارك في الخارج لتسليم طلبيتك #${order.orderNumber}.`,
+              url: `/order-success/${order.id}`,
+            });
+          }
+        } catch (e) {}
+      }
 
       return NextResponse.json({
         success: true,
         arrivedAt: result.arrivedAt,
-        message: 'تم تسجيل وصول المندوب وإشعار الزبون بنجاح 🔔🛵',
+        alreadyArrived: result.alreadyArrived || false,
+        message: result.alreadyArrived
+          ? 'تم التحقق من وصول المندوب مسبقاً'
+          : 'تم تسجيل وصول المندوب وإشعار الزبون بنجاح 🔔🛵',
       });
     }
 

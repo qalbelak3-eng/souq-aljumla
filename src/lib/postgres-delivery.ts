@@ -522,7 +522,7 @@ export async function pgNotifyDriverArrived(
   driverId: string,
   orderId: string,
   driverOperator: DriverOperatorInfo
-): Promise<{ success: boolean; arrivedAt: string }> {
+): Promise<{ success: boolean; arrivedAt: string; alreadyArrived?: boolean }> {
   const db = getDb();
   const trimmed = String(orderId || '').trim();
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
@@ -548,11 +548,37 @@ export async function pgNotifyDriverArrived(
       throw new Error('هذا الطلب غير مسند إليك');
     }
 
+    // Status validations
+    if (order.status === 'pending' || order.status === 'processing') {
+      throw new Error(`لا يمكن تسجيل وصول المندوب قبل بدء التوصيل وخروج الطلبية (حالة الطلب: ${order.status})`);
+    }
+
+    if (order.status === 'delivered') {
+      throw new Error('لا يمكن تسجيل وصول المندوب لطلبية تم تسليمها بالفعل');
+    }
+
+    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+      throw new Error('لا يمكن تسجيل وصول المندوب لطلبية ملغاة أو راجعة');
+    }
+
+    if (order.status !== 'shipped') {
+      throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح بتسجيل الوصول`);
+    }
+
+    // Idempotency: If driverArrivedAt is already recorded, return existing timestamp without modifying updatedAt or creating audit logs
+    if (order.driverArrivedAt) {
+      return {
+        success: true,
+        arrivedAt: order.driverArrivedAt.toISOString(),
+        alreadyArrived: true,
+      };
+    }
+
     const arrivedAt = new Date();
     await tx
       .update(orders)
       .set({
-        driverArrivedAt: order.driverArrivedAt || arrivedAt,
+        driverArrivedAt: arrivedAt,
         updatedAt: arrivedAt,
       })
       .where(eq(orders.id, order.id));
@@ -570,7 +596,7 @@ export async function pgNotifyDriverArrived(
       severity: 'info',
     });
 
-    return { success: true, arrivedAt: arrivedAt.toISOString() };
+    return { success: true, arrivedAt: arrivedAt.toISOString(), alreadyArrived: false };
   });
 }
 
@@ -897,55 +923,29 @@ export async function pgReturnDriverOrder(
   driverId: string,
   orderId: string,
   driverOperator: DriverOperatorInfo,
-  options?: { reason?: string }
+  options?: { reason?: string; tx?: any }
 ): Promise<Order> {
-  const db = getDb();
   const trimmed = String(orderId || '').trim();
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
-  // Verify object-level authorization first with lock
-  const checkTx = await db.transaction(async (tx) => {
-    const conditions = [eq(orders.orderNumber, trimmed)];
-    if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
+  const executeReturn = async (tx: any) => {
+    return await pgCancelOrder(trimmed, {
+      isReturn: true,
+      reason: options?.reason || 'إرجاع البضاعة إلى المستودع من قبل السائق',
+      driverId,
+      operator: {
+        role: 'driver',
+        name: driverOperator.name,
+        username: driverOperator.phone,
+      },
+      tx,
+    });
+  };
 
-    const orderRows = await tx
-      .select()
-      .from(orders)
-      .where(or(...conditions))
-      .for('update');
-
-    if (orderRows.length === 0) {
-      throw new Error('الطلب غير موجود');
-    }
-
-    const order = orderRows[0];
-
-    // Object-Level Authorization
-    if (!order.driverId || order.driverId !== driverId) {
-      throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إرجاعه');
-    }
-
-    if (order.status === 'delivered' && toNumber(order.collectedAmount) > 0) {
-      throw new Error('لا يمكن إرجاع طلبية تم تسليمها وتحصيل أموالها نقدياً بدون تسوية واسترداد مالي');
-    }
-
-    return order;
-  });
-
-  // Delegate directly to pgCancelOrder (Single Source of Truth)
-  // This guarantees:
-  // 1. Only restored once via `inventory_restored` flag
-  // 2. Logged in `inventory_movements` as 'customer_return'
-  // 3. Status set to 'cancelled' and collectionStatus set to 'returned'
-  const returnedOrder = await pgCancelOrder(checkTx.id, {
-    isReturn: true,
-    reason: options?.reason || 'إرجاع البضاعة إلى المستودع من قبل السائق',
-    operator: {
-      role: 'driver',
-      name: driverOperator.name,
-      username: driverOperator.phone,
-    },
-  });
-
-  return returnedOrder;
+  if (options?.tx) {
+    return await executeReturn(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeReturn);
+  }
 }

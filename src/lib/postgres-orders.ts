@@ -588,13 +588,18 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 
 export async function pgCancelOrder(
   idOrOrderNumber: string,
-  options?: { reason?: string; isReturn?: boolean; operator?: PgOperator }
+  options?: {
+    reason?: string;
+    isReturn?: boolean;
+    operator?: PgOperator;
+    tx?: any;
+    driverId?: string;
+  }
 ): Promise<Order> {
-  const db = getDb();
   const trimmed = String(idOrOrderNumber || '').trim();
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
-  return db.transaction(async (tx) => {
+  const execute = async (tx: any) => {
     const conditions = [eq(orders.orderNumber, trimmed)];
     if (isUuid(trimmed)) {
       conditions.push(eq(orders.id, trimmed));
@@ -612,12 +617,40 @@ export async function pgCancelOrder(
 
     const order = orderRows[0];
 
+    // Object-Level Authorization if driverId is specified
+    if (options?.driverId) {
+      if (!order.driverId || order.driverId !== options.driverId) {
+        throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إرجاعه');
+      }
+    }
+
+    // Protection: Prevent cancelling or returning orders that are already delivered
+    if (order.status === 'delivered') {
+      throw new Error('الطلب تم تسليمه بالفعل ولا يمكن إرجاعه أو إلغاؤه');
+    }
+
     // Protection: Prevent cancelling orders with recorded payment / collection without formal reversal
     const paid = toNumber(order.collectedAmount);
     if (paid > 0) {
       throw new Error(
         'لا يمكن إلغاء الطلبية لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). تتطلب العملية تسوية واسترداد مالي (Financial Reversal / Refund Workflow).'
       );
+    }
+
+    // Idempotency: If already returned, return current state without re-restoring inventory or creating duplicate audit logs
+    if (options?.isReturn && order.collectionStatus === 'returned') {
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+
+      const [account] = await tx
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, order.accountId))
+        .limit(1);
+
+      return formatOrderRecord(order, items, undefined, undefined, account);
     }
 
     const staffId = await resolveStaffId(tx, options?.operator);
@@ -705,7 +738,14 @@ export async function pgCancelOrder(
       .limit(1);
 
     return formatOrderRecord(updatedOrder, items, undefined, undefined, account);
-  });
+  };
+
+  if (options?.tx) {
+    return await execute(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(execute);
+  }
 }
 
 /* =========================================================

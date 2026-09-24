@@ -331,6 +331,30 @@ async function runDriversPhase2Tests() {
   assert(assignAudit !== undefined, 'order_assigned_to_driver audit log row exists in PostgreSQL');
   assert(assignAudit.operator_snapshot.username === 'admin', 'Actor identity strictly recorded from admin session');
 
+  // 1.5.1 Validate pgNotifyDriverArrived rejection when order is processing
+  let arriveProcessingCaught = false;
+  try {
+    await pgNotifyDriverArrived(driverA.id, order1.id, { id: driverA.id, name: driverA.name, phone: driverA.phone });
+  } catch (err) {
+    arriveProcessingCaught = true;
+    assert(err.message.includes('قبل بدء التوصيل وخروج الطلبية'), 'Rejects arrival notification when order is processing');
+    assert(err.message.includes('حالة الطلب: processing'), 'Explicitly notes processing status in error message');
+  }
+  assert(arriveProcessingCaught, 'Arrival notification cleanly rejected for processing order');
+
+  // 1.5.2 Validate pgNotifyDriverArrived rejection when order is pending
+  await sql`UPDATE orders SET status = 'pending' WHERE id = ${order1.id}`;
+  let arrivePendingCaught = false;
+  try {
+    await pgNotifyDriverArrived(driverA.id, order1.id, { id: driverA.id, name: driverA.name, phone: driverA.phone });
+  } catch (err) {
+    arrivePendingCaught = true;
+    assert(err.message.includes('قبل بدء التوصيل وخروج الطلبية'), 'Rejects arrival notification when order is pending');
+    assert(err.message.includes('حالة الطلب: pending'), 'Explicitly notes pending status in error message');
+  }
+  assert(arrivePendingCaught, 'Arrival notification cleanly rejected for pending order');
+  await sql`UPDATE orders SET status = 'processing' WHERE id = ${order1.id}`;
+
   // 1.6 Re-assign from Driver A to Driver B while in processing
   const reassignReq = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
     method: 'PATCH',
@@ -452,6 +476,52 @@ async function runDriversPhase2Tests() {
   }
   assert(shippedReassignCaught, 'Reassignment of shipped order safely blocked');
 
+  // 3.6 Driver A registers arrival at customer location (Order is shipped)
+  const arriveReq = new Request('http://localhost:3000/api/driver/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: driverACookie },
+    body: JSON.stringify({ action: 'notify_arrived', orderId: order1.id }),
+  });
+  const arriveRes = await postDriverOrders(arriveReq);
+  const arriveData = await arriveRes.json();
+  assert(arriveRes.status === 200 && arriveData.success === true, 'Driver A successfully registered arrival (HTTP 200)');
+  assert(arriveData.arrivedAt !== undefined, 'Arrival timestamp returned');
+  assert(arriveData.alreadyArrived === false, 'First arrival registration has alreadyArrived: false');
+
+  // Verify driver_arrived_at and audit log in PostgreSQL
+  const [orderAfterArrive] = await sql`SELECT driver_arrived_at, updated_at FROM orders WHERE id = ${order1.id}`;
+  assert(orderAfterArrive.driver_arrived_at !== null, 'driver_arrived_at column populated in PostgreSQL');
+
+  const [arriveAudit] = await sql`
+    SELECT * FROM audit_logs
+    WHERE target_id = ${order1.id} AND action_type = 'delivery_arrived'
+  `;
+  assert(arriveAudit !== undefined, 'delivery_arrived audit log created in PostgreSQL');
+
+  // 3.7 Idempotency: Duplicate arrival registration must NOT create a new audit log or alter updated_at
+  const repeatArriveReq = new Request('http://localhost:3000/api/driver/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: driverACookie },
+    body: JSON.stringify({ action: 'notify_arrived', orderId: order1.id }),
+  });
+  const repeatArriveRes = await postDriverOrders(repeatArriveReq);
+  const repeatArriveData = await repeatArriveRes.json();
+  assert(repeatArriveRes.status === 200 && repeatArriveData.success === true, 'Duplicate arrival registration succeeds idempotently');
+  assert(repeatArriveData.alreadyArrived === true, 'Duplicate arrival has alreadyArrived: true');
+  assert(repeatArriveData.arrivedAt === arriveData.arrivedAt, 'Returns exact same arrivedAt timestamp');
+
+  const arriveAuditCount = await sql`
+    SELECT count(*) FROM audit_logs
+    WHERE target_id = ${order1.id} AND action_type = 'delivery_arrived'
+  `;
+  assert(parseInt(arriveAuditCount[0].count, 10) === 1, 'Exactly ONE delivery_arrived audit log exists (no duplicate audit logs)');
+
+  const [orderAfterRepeatArrive] = await sql`SELECT updated_at FROM orders WHERE id = ${order1.id}`;
+  assert(
+    new Date(orderAfterRepeatArrive.updated_at).getTime() === new Date(orderAfterArrive.updated_at).getTime(),
+    'updated_at was NOT modified on duplicate arrival registration'
+  );
+
   // =========================================================
   // Test 4: Deliver & Cash Collection (Idempotent)
   // =========================================================
@@ -521,6 +591,16 @@ async function runDriversPhase2Tests() {
     assert(err.message.includes('تم تسليمه بالفعل'), 'Blocked restarting delivered order');
   }
   assert(restartDeliveredCaught, 'Restarting delivered order cleanly prevented');
+
+  // 4.5 Arrival notification rejected for delivered order
+  let arriveDeliveredCaught = false;
+  try {
+    await pgNotifyDriverArrived(driverA.id, order1.id, { id: driverA.id, name: driverA.name, phone: driverA.phone });
+  } catch (err) {
+    arriveDeliveredCaught = true;
+    assert(err.message.includes('تم تسليمها بالفعل'), 'Rejects arrival notification for delivered order');
+  }
+  assert(arriveDeliveredCaught, 'Arrival notification cleanly rejected for delivered order');
 
   // =========================================================
   // Test 5: Scenario 2 — Failed Delivery & Return to Warehouse
@@ -661,6 +741,16 @@ async function runDriversPhase2Tests() {
   `;
   assert(parseInt(returnMoveCount[0].count, 10) === 1, 'Exactly 1 return movement exists in inventory_movements (no duplicate movements)');
 
+  // 5.8 Arrival notification rejected for cancelled / returned order
+  let arriveReturnedCaught = false;
+  try {
+    await pgNotifyDriverArrived(driverA.id, order2.id, { id: driverA.id, name: driverA.name, phone: driverA.phone });
+  } catch (err) {
+    arriveReturnedCaught = true;
+    assert(err.message.includes('ملغاة أو راجعة'), 'Rejects arrival notification for cancelled/returned order');
+  }
+  assert(arriveReturnedCaught, 'Arrival notification cleanly rejected for returned order');
+
   // =========================================================
   // Test 6: Concurrency & Race Conditions Protection
   // =========================================================
@@ -726,6 +816,136 @@ async function runDriversPhase2Tests() {
     'Driver A final cash in hand is exactly 60,000 IQD (no double-crediting in race condition)'
   );
 
+  // 6.3 Concurrency Test: Deliver x Return on the same order (Order 5)
+  console.log('\n--- 6.3 Concurrency Test: Deliver x Return on the same order ---');
+  const order5 = await pgCreateOrder({
+    customer: {
+      name: 'سوبرماركت النور',
+      phone: '07701112233',
+      city: 'بغداد',
+      address: 'حي اليرموك',
+      isGuest: false,
+      userId: custAccount.id,
+    },
+    items: [
+      {
+        productId: prodA.id,
+        name: 'عصير راني برتقال حبيبات كرتون 24',
+        price: 20000,
+        quantity: 1,
+        saleType: 'wholesale',
+        unitLabel: 'كرتون 24 قطعة',
+        image: '',
+      },
+    ],
+    paymentMethod: 'cod',
+    accountId: custAccount.id,
+  });
+
+  await pgAssignOrderDriver({
+    orderId: order5.id,
+    driverId: driverA.id,
+    adminOperator,
+  });
+  await pgStartDriverDelivery(driverA.id, order5.id, driverOpA);
+
+  const [stockBefore5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
+  const stockBeforeNum5 = parseInt(stockBefore5.current_stock_pieces, 10);
+
+  // Fire Deliver and Return concurrently
+  const [raceDeliverRes, raceReturnRes] = await Promise.allSettled([
+    pgDeliverDriverOrder(driverA.id, order5.id, driverOpA, { collectionStatus: 'collected_cash' }),
+    pgReturnDriverOrder(driverA.id, order5.id, driverOpA, { reason: 'إرجاع متزامن في السباق' }),
+  ]);
+
+  const fulfilledCount5 = [raceDeliverRes, raceReturnRes].filter((r) => r.status === 'fulfilled').length;
+  const rejectedCount5 = [raceDeliverRes, raceReturnRes].filter((r) => r.status === 'rejected').length;
+
+  assert(fulfilledCount5 === 1, 'Deliver x Return race: Exactly ONE operation succeeded');
+  assert(rejectedCount5 === 1, 'Deliver x Return race: Exactly ONE operation was rejected');
+
+  const [finalOrder5] = await sql`SELECT status, collection_status, inventory_restored FROM orders WHERE id = ${order5.id}`;
+  const [stockAfter5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
+  const stockAfterNum5 = parseInt(stockAfter5.current_stock_pieces, 10);
+
+  if (raceDeliverRes.status === 'fulfilled') {
+    assert(finalOrder5.status === 'delivered', 'Deliver won: Final status is delivered');
+    assert(stockAfterNum5 === stockBeforeNum5, 'Deliver won: Stock was NOT restored after delivery');
+    assert(
+      raceReturnRes.reason.message.includes('تم تسليمه بالفعل'),
+      'Deliver won: Return rejected with explicit delivered error'
+    );
+  } else {
+    assert(finalOrder5.status === 'cancelled' && finalOrder5.collection_status === 'returned', 'Return won: Final status is returned');
+    assert(stockAfterNum5 === stockBeforeNum5 + 24, 'Return won: Stock was restored exactly once');
+    assert(
+      raceDeliverRes.reason.message.includes('ملغى أو راجع'),
+      'Return won: Deliver rejected with explicit returned error'
+    );
+  }
+
+  // 6.4 Concurrency Test: Return x Return on the same order (Order 6)
+  console.log('\n--- 6.4 Concurrency Test: Return x Return on the same order ---');
+  const order6 = await pgCreateOrder({
+    customer: {
+      name: 'سوبرماركت النور',
+      phone: '07701112233',
+      city: 'بغداد',
+      address: 'الدورة',
+      isGuest: false,
+      userId: custAccount.id,
+    },
+    items: [
+      {
+        productId: prodA.id,
+        name: 'عصير راني برتقال حبيبات كرتون 24',
+        price: 20000,
+        quantity: 1,
+        saleType: 'wholesale',
+        unitLabel: 'كرتون 24 قطعة',
+        image: '',
+      },
+    ],
+    paymentMethod: 'cod',
+    accountId: custAccount.id,
+  });
+
+  await pgAssignOrderDriver({
+    orderId: order6.id,
+    driverId: driverA.id,
+    adminOperator,
+  });
+  await pgStartDriverDelivery(driverA.id, order6.id, driverOpA);
+
+  const [stockBefore6] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
+  const stockBeforeNum6 = parseInt(stockBefore6.current_stock_pieces, 10);
+
+  // Fire two Return operations concurrently
+  await Promise.allSettled([
+    pgReturnDriverOrder(driverA.id, order6.id, driverOpA, { reason: 'إرجاع متزامن 1' }),
+    pgReturnDriverOrder(driverA.id, order6.id, driverOpA, { reason: 'إرجاع متزامن 2' }),
+  ]);
+
+  const [stockAfter6] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
+  const stockAfterNum6 = parseInt(stockAfter6.current_stock_pieces, 10);
+
+  assert(
+    stockAfterNum6 === stockBeforeNum6 + 24,
+    `Return x Return race: Stock restored exactly once (${stockBeforeNum6} -> ${stockAfterNum6})`
+  );
+
+  const [returnMoveCount6] = await sql`
+    SELECT count(*) FROM inventory_movements
+    WHERE reference_id = ${order6.id} AND movement_type = 'customer_return'
+  `;
+  assert(parseInt(returnMoveCount6.count, 10) === 1, 'Return x Return race: Exactly 1 customer_return inventory movement recorded');
+
+  const [returnAuditCount6] = await sql`
+    SELECT count(*) FROM audit_logs
+    WHERE target_id = ${order6.id} AND action_type = 'order_cancelled'
+  `;
+  assert(parseInt(returnAuditCount6.count, 10) === 1, 'Return x Return race: Exactly 1 order_cancelled audit log recorded');
+
   // =========================================================
   // Test 7: Authentication & Session Dropping Edge Cases
   // =========================================================
@@ -785,9 +1005,10 @@ async function runDriversPhase2Tests() {
   });
   const adminDriverOrdersRes = await getAdminDriverOrders(adminDriverOrdersReq, { params: { id: driverA.id } });
   const adminDriverOrdersData = await adminDriverOrdersRes.json();
-  assert(adminDriverOrdersRes.status === 200 && adminDriverOrdersData.success === true, 'Admin driver orders API returns HTTP 200');
-  assert(adminDriverOrdersData.stats.totalDelivered === 2, 'Admin stats totalDelivered matches (2 delivered)');
-  assert(adminDriverOrdersData.stats.currentCashInHand === 60000, 'Admin stats cash in hand matches 60,000 IQD');
+  const expectedDelivered = finalOrder5.status === 'delivered' ? 3 : 2;
+  const expectedCash = finalOrder5.status === 'delivered' ? 80000 : 60000;
+  assert(adminDriverOrdersData.stats.totalDelivered === expectedDelivered, `Admin stats totalDelivered matches (${expectedDelivered} delivered)`);
+  assert(adminDriverOrdersData.stats.currentCashInHand === expectedCash, `Admin stats cash in hand matches ${expectedCash} IQD`);
 
   console.log('\n===============================================================');
   console.log(` ALL TESTS COMPLETED: ${passed} PASSED, ${failed} FAILED `);
