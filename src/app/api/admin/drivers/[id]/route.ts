@@ -71,7 +71,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   } catch (error: any) {
     console.error('Error updating driver:', error);
     const message = error.message || 'حدث خطأ أثناء تحديث بيانات السائق';
-    const status = message.includes('مسجل مسبقاً') ? 400 : 500;
+    const status = (message.includes('مسجل مسبقاً') || message.includes('المركبة المحددة') || message.includes('كلمة المرور') || message.includes('كلمة مرور')) ? 400 : 500;
     return NextResponse.json({ success: false, error: message }, { status });
   }
 }

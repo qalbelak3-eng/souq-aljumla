@@ -47,10 +47,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'يرجى إدخال اسم السائق ورقم الهاتف' }, { status: 400 });
     }
 
+    if (!password || typeof password !== 'string' || password.trim().length < 6) {
+      return NextResponse.json(
+        { success: false, error: 'كلمة مرور السائق مطلوبة ويجب ألا تقل عن 6 أحرف' },
+        { status: 400 }
+      );
+    }
+
     const newDriver = await pgCreateDriver({
       name,
       phone,
-      password: password || '123',
+      password: password.trim(),
       vehicleInfo: vehicleInfo || '',
       defaultVehicleId,
       notes: notes || '',
@@ -65,7 +72,7 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Error creating driver:', error);
     const message = error.message || 'حدث خطأ أثناء إضافة السائق';
-    const status = message.includes('مسجل مسبقاً') ? 400 : 500;
+    const status = (message.includes('مسجل مسبقاً') || message.includes('المركبة المحددة') || message.includes('كلمة المرور') || message.includes('كلمة مرور')) ? 400 : 500;
     return NextResponse.json({ success: false, error: message }, { status });
   }
 }

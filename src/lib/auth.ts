@@ -496,10 +496,17 @@ export async function getAuthenticatedDriver(request: Request): Promise<Authenti
   if (!payload || !payload.driverId) return null;
 
   // Server-side PostgreSQL verification:
-  // Must verify that driverId still points to an existing and active driver in PostgreSQL!
+  // Must verify that:
+  // 1. drivers.is_active = true
+  // 2. auth_identities.is_active = true
+  // 3. The linked identity matches driver.authIdentityId
   const { pgGetDriverById } = await import('@/lib/postgres-drivers');
   const driver = await pgGetDriverById(payload.driverId);
-  if (!driver || !driver.isActive) {
+  if (!driver || !driver.isActive || !driver.authIdentityIsActive) {
+    return null;
+  }
+
+  if (payload.authIdentityId && payload.authIdentityId !== driver.authIdentityId) {
     return null;
   }
 

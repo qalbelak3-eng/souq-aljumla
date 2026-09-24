@@ -182,8 +182,71 @@ async function runDriversPhase1Tests() {
   const vehiclesList = await pgGetVehicles();
   assert(vehiclesList.some((v) => v.id === v1.id), 'V1 found in pgGetVehicles list');
 
+  // 1.5 Create an inactive vehicle for validation testing
+  const vDisabled = await pgCreateVehicle({
+    name: 'شاحنة معطلة للصيانة',
+    plateNumber: `99900-${Date.now().toString().slice(-4)}`,
+    isActive: false,
+  });
+  assert(vDisabled.isActive === false, 'Inactive vehicle created successfully');
+
   // --- Test 2: Atomic Driver Creation (auth_identities + financial_accounts + drivers) ---
   console.log('\n--- Test 2: Atomic Driver Creation in PostgreSQL ---');
+
+  // 2.0 Vehicle validation on create
+  let nonExistentVehCaught = false;
+  try {
+    await pgCreateDriver({
+      name: 'سائق مركبة وهمية',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: 'StrongPass123!',
+      defaultVehicleId: '00000000-0000-0000-0000-000000000000',
+    });
+  } catch (err) {
+    nonExistentVehCaught = true;
+    assert(err.message === 'المركبة المحددة غير موجودة', 'pgCreateDriver rejects non-existent defaultVehicleId with exact message');
+  }
+  assert(nonExistentVehCaught, 'pgCreateDriver rejected non-existent defaultVehicleId');
+
+  let inactiveVehCaught = false;
+  try {
+    await pgCreateDriver({
+      name: 'سائق مركبة معطلة',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: 'StrongPass123!',
+      defaultVehicleId: vDisabled.id,
+    });
+  } catch (err) {
+    inactiveVehCaught = true;
+    assert(err.message === 'المركبة المحددة معطلة ولا يمكن إسنادها', 'pgCreateDriver rejects inactive defaultVehicleId with exact message');
+  }
+  assert(inactiveVehCaught, 'pgCreateDriver rejected inactive defaultVehicleId');
+
+  // 2.0.1 Password validation on create (no default '123' allowed)
+  let noPassCaught = false;
+  try {
+    await pgCreateDriver({
+      name: 'سائق بدون باسورد',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+    });
+  } catch (err) {
+    noPassCaught = true;
+    assert(err.message.includes('لا تقل عن 6 أحرف'), 'pgCreateDriver requires explicit password >= 6 chars');
+  }
+  assert(noPassCaught, 'pgCreateDriver rejected driver without password');
+
+  let shortPassCaught = false;
+  try {
+    await pgCreateDriver({
+      name: 'سائق باسورد قصير',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: '123',
+    });
+  } catch (err) {
+    shortPassCaught = true;
+    assert(err.message.includes('لا تقل عن 6 أحرف'), 'pgCreateDriver rejects password < 6 chars');
+  }
+  assert(shortPassCaught, 'pgCreateDriver rejected short password');
   const driverPhone1 = '0770' + Math.floor(1000000 + Math.random() * 9000000);
   const driver1 = await pgCreateDriver({
     name: 'أحمد سائق الكرادة',
@@ -314,6 +377,38 @@ async function runDriversPhase1Tests() {
   // Re-activate driver for subsequent tests
   await pgUpdateDriver(driver1.id, { isActive: true });
 
+  // 5.4 Deactivate auth_identities ONLY while driver remains active (drivers.is_active = true)
+  console.log('5.4 Testing session failure when auth_identities.is_active = false while drivers.is_active = true');
+  await sql`UPDATE auth_identities SET is_active = false WHERE id = ${driver1.authIdentityId}`;
+
+  // Verify drivers.is_active is still true in db
+  const [driverCheck] = await sql`SELECT is_active FROM drivers WHERE id = ${driver1.id}`;
+  assert(driverCheck.is_active === true, 'drivers table is_active is still true');
+
+  // Verify that old session token now fails server-side verification!
+  const authDisabledSessionReq = new Request('http://localhost:3000/api/driver/orders', {
+    headers: { Authorization: `Bearer ${validDriverToken}` },
+  });
+  const authDisabledResult = await getAuthenticatedDriver(authDisabledSessionReq);
+  assert(
+    authDisabledResult === null,
+    'Session strictly fails when auth_identities.is_active = false even if drivers.is_active = true!'
+  );
+
+  // Also verify login fails
+  const authDisabledLoginReq = new Request('http://localhost:3000/api/driver/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: driverPhone1, password: 'DriverPass123!' }),
+  });
+  const authDisabledLoginRes = await postDriverAuth(authDisabledLoginReq);
+  assert(authDisabledLoginRes.status === 403, 'Login rejected with 403 when auth_identities.is_active = false');
+
+  // Restore auth_identities.is_active = true
+  await sql`UPDATE auth_identities SET is_active = true WHERE id = ${driver1.authIdentityId}`;
+  const restoredAuthResult = await getAuthenticatedDriver(authDisabledSessionReq);
+  assert(restoredAuthResult !== null, 'Session succeeds again after auth_identities restored to active');
+
   // --- Test 6: Driver Session Isolation (Driver A cannot impersonate Driver B) ---
   console.log('\n--- Test 6: Driver Session Isolation ---');
   const driverPhone2 = '0770' + Math.floor(1000000 + Math.random() * 9000000);
@@ -407,6 +502,63 @@ async function runDriversPhase1Tests() {
   assert(authorizedPostRes.status === 200 && authorizedPostData.success === true, 'Admin successfully added driver via API (HTTP 200)');
   assert(authorizedPostData.driver.name === 'سائق مضاف عبر لوحة الإدارة', 'Driver created via API matches input');
 
+  // 7.5.1 POST /api/admin/drivers password validation tests
+  const postNoPassReq = new Request('http://localhost:3000/api/admin/drivers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      name: 'سائق بدون باسورد عبر API',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+    }),
+  });
+  const postNoPassRes = await postAdminDrivers(postNoPassReq);
+  const postNoPassData = await postNoPassRes.json();
+  assert(postNoPassRes.status === 400, 'POST /api/admin/drivers without password returns HTTP 400');
+  assert(postNoPassData.error.includes('6 أحرف'), 'Password requirement message returned');
+
+  const postShortPassReq = new Request('http://localhost:3000/api/admin/drivers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      name: 'سائق باسورد قصير عبر API',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: '123',
+    }),
+  });
+  const postShortPassRes = await postAdminDrivers(postShortPassReq);
+  assert(postShortPassRes.status === 400, 'POST /api/admin/drivers with password < 6 chars returns HTTP 400');
+
+  // 7.5.2 POST /api/admin/drivers vehicle validation tests
+  const postBadVehReq = new Request('http://localhost:3000/api/admin/drivers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      name: 'سائق مركبة وهمية عبر API',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: 'AdminAdded123!',
+      defaultVehicleId: '00000000-0000-0000-0000-000000000000',
+    }),
+  });
+  const postBadVehRes = await postAdminDrivers(postBadVehReq);
+  const postBadVehData = await postBadVehRes.json();
+  assert(postBadVehRes.status === 400, 'POST /api/admin/drivers with non-existent vehicle returns HTTP 400');
+  assert(postBadVehData.error === 'المركبة المحددة غير موجودة', 'Returns exact vehicle non-existent error');
+
+  const postInactiveVehReq = new Request('http://localhost:3000/api/admin/drivers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      name: 'سائق مركبة معطلة عبر API',
+      phone: '0770' + Math.floor(1000000 + Math.random() * 9000000),
+      password: 'AdminAdded123!',
+      defaultVehicleId: vDisabled.id,
+    }),
+  });
+  const postInactiveVehRes = await postAdminDrivers(postInactiveVehReq);
+  const postInactiveVehData = await postInactiveVehRes.json();
+  assert(postInactiveVehRes.status === 400, 'POST /api/admin/drivers with inactive vehicle returns HTTP 400');
+  assert(postInactiveVehData.error === 'المركبة المحددة معطلة ولا يمكن إسنادها', 'Returns exact inactive vehicle error');
+
   // 7.6 PUT /api/admin/drivers/[id] with authorized admin -> 200
   const putDriverReq = new Request(`http://localhost:3000/api/admin/drivers/${driver1.id}`, {
     method: 'PUT',
@@ -423,6 +575,50 @@ async function runDriversPhase1Tests() {
   const putDriverData = await putDriverRes.json();
   assert(putDriverRes.status === 200 && putDriverData.success === true, 'Admin successfully updated driver via API');
   assert(putDriverData.driver.name === 'أحمد سائق الكرادة المحدث', 'Driver name updated in response');
+
+  // 7.6.1 PUT /api/admin/drivers/[id] vehicle validation
+  const putBadVehReq = new Request(`http://localhost:3000/api/admin/drivers/${driver1.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      defaultVehicleId: '00000000-0000-0000-0000-000000000000',
+    }),
+  });
+  const putBadVehRes = await putAdminDriverId(putBadVehReq, { params: { id: driver1.id } });
+  const putBadVehData = await putBadVehRes.json();
+  assert(putBadVehRes.status === 400, 'PUT /api/admin/drivers/[id] with non-existent vehicle returns HTTP 400');
+  assert(putBadVehData.error === 'المركبة المحددة غير موجودة', 'Exact non-existent vehicle error returned');
+
+  const putInactiveVehReq = new Request(`http://localhost:3000/api/admin/drivers/${driver1.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      defaultVehicleId: vDisabled.id,
+    }),
+  });
+  const putInactiveVehRes = await putAdminDriverId(putInactiveVehReq, { params: { id: driver1.id } });
+  const putInactiveVehData = await putInactiveVehRes.json();
+  assert(putInactiveVehRes.status === 400, 'PUT /api/admin/drivers/[id] with inactive vehicle returns HTTP 400');
+  assert(putInactiveVehData.error === 'المركبة المحددة معطلة ولا يمكن إسنادها', 'Exact inactive vehicle error returned');
+
+  // Direct pgUpdateDriver vehicle checks
+  let pgUpdateBadVehCaught = false;
+  try {
+    await pgUpdateDriver(driver1.id, { defaultVehicleId: '00000000-0000-0000-0000-000000000000' });
+  } catch (err) {
+    pgUpdateBadVehCaught = true;
+    assert(err.message === 'المركبة المحددة غير موجودة', 'pgUpdateDriver throws exact non-existent vehicle message');
+  }
+  assert(pgUpdateBadVehCaught, 'pgUpdateDriver rejects non-existent vehicle');
+
+  let pgUpdateInactiveVehCaught = false;
+  try {
+    await pgUpdateDriver(driver1.id, { defaultVehicleId: vDisabled.id });
+  } catch (err) {
+    pgUpdateInactiveVehCaught = true;
+    assert(err.message === 'المركبة المحددة معطلة ولا يمكن إسنادها', 'pgUpdateDriver throws exact inactive vehicle message');
+  }
+  assert(pgUpdateInactiveVehCaught, 'pgUpdateDriver rejects inactive vehicle');
 
   // 7.7 GET /api/admin/vehicles permissions
   const noSessionVehReq = new Request('http://localhost:3000/api/admin/vehicles');

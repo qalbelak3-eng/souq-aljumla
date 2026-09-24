@@ -18,6 +18,7 @@ import { Driver, Vehicle } from '@/types';
 
 export interface DriverWithStats extends Driver {
   authIdentityId: string;
+  authIdentityIsActive?: boolean;
   financialAccountId: string;
   activeDeliveries: number;
   completedDeliveries: number;
@@ -303,7 +304,11 @@ export async function pgCreateDriver(input: CreateDriverInput): Promise<DriverWi
     throw new Error('يرجى إدخال اسم السائق ورقم هاتف عراقي صحيح');
   }
 
-  const plainPassword = input.password?.trim() || '123';
+  if (!input.password || typeof input.password !== 'string' || input.password.trim().length < 6) {
+    throw new Error('يرجى إدخال كلمة مرور صريحة وآمنة للسائق لا تقل عن 6 أحرف');
+  }
+
+  const plainPassword = input.password.trim();
   const hashedPassword = hashPassword(plainPassword);
 
   return await db.transaction(async (tx) => {
@@ -354,13 +359,24 @@ export async function pgCreateDriver(input: CreateDriverInput): Promise<DriverWi
 
     // 4. Validate defaultVehicleId if provided
     let validVehicleId: string | null = null;
-    if (input.defaultVehicleId && input.defaultVehicleId !== 'none') {
+    if (
+      input.defaultVehicleId !== undefined &&
+      input.defaultVehicleId !== null &&
+      input.defaultVehicleId !== '' &&
+      input.defaultVehicleId !== 'none'
+    ) {
       const [veh] = await tx
-        .select({ id: vehicles.id })
+        .select({ id: vehicles.id, isActive: vehicles.isActive })
         .from(vehicles)
         .where(eq(vehicles.id, input.defaultVehicleId))
         .limit(1);
-      if (veh) validVehicleId = veh.id;
+      if (!veh) {
+        throw new Error('المركبة المحددة غير موجودة');
+      }
+      if (!veh.isActive) {
+        throw new Error('المركبة المحددة معطلة ولا يمكن إسنادها');
+      }
+      validVehicleId = veh.id;
     }
 
     // 5. Insert into drivers
@@ -488,14 +504,16 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
     .select({
       driver: drivers,
       vehicle: vehicles,
+      auth: authIdentities,
     })
     .from(drivers)
+    .innerJoin(authIdentities, eq(drivers.authIdentityId, authIdentities.id))
     .leftJoin(vehicles, eq(drivers.defaultVehicleId, vehicles.id))
     .where(eq(drivers.id, id))
     .limit(1);
 
   if (rows.length === 0) return null;
-  const { driver, vehicle } = rows[0];
+  const { driver, vehicle, auth } = rows[0];
 
   // Compute order statistics
   const driverOrders = await db
@@ -535,6 +553,7 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
   return {
     id: driver.id,
     authIdentityId: driver.authIdentityId,
+    authIdentityIsActive: auth.isActive,
     financialAccountId: driver.financialAccountId,
     name: driver.name,
     phone: driver.phone,
@@ -653,7 +672,10 @@ export async function pgUpdateDriver(id: string, updates: UpdateDriverInput): Pr
       }
     }
 
-    if (updates.password && updates.password.trim().length > 0) {
+    if (updates.password !== undefined) {
+      if (typeof updates.password !== 'string' || updates.password.trim().length < 6) {
+        throw new Error('كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف');
+      }
       const newHash = hashPassword(updates.password.trim());
       await tx
         .update(authIdentities)
@@ -666,13 +688,17 @@ export async function pgUpdateDriver(id: string, updates: UpdateDriverInput): Pr
         driverUpdates.defaultVehicleId = null;
       } else {
         const [veh] = await tx
-          .select({ id: vehicles.id })
+          .select({ id: vehicles.id, isActive: vehicles.isActive })
           .from(vehicles)
           .where(eq(vehicles.id, updates.defaultVehicleId))
           .limit(1);
-        if (veh) {
-          driverUpdates.defaultVehicleId = veh.id;
+        if (!veh) {
+          throw new Error('المركبة المحددة غير موجودة');
         }
+        if (!veh.isActive) {
+          throw new Error('المركبة المحددة معطلة ولا يمكن إسنادها');
+        }
+        driverUpdates.defaultVehicleId = veh.id;
       }
     }
 
