@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import {
   drivers,
@@ -6,6 +6,7 @@ import {
   authIdentities,
   financialAccounts,
   orders,
+  driverSettlements,
   nextAccountCodeSql,
 } from '@/db/schema';
 import { normalizeIraqiPhone } from '@/db/phone';
@@ -444,16 +445,35 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
       collectionStatus: orders.collectionStatus,
       collectedAmount: orders.collectedAmount,
       total: orders.total,
-      driverCashSettled: orders.driverCashSettled,
     })
     .from(orders)
     .where(inArray(orders.driverId, driverIds));
 
-  const statsMap = new Map<string, { active: number; completed: number; revenue: number; cashInHand: number }>();
+  // Query active settlements per driver from PostgreSQL driver_settlements table
+  const activeSettlements = await db
+    .select({
+      driverId: driverSettlements.driverId,
+      actualAmount: driverSettlements.actualAmount,
+    })
+    .from(driverSettlements)
+    .where(
+      and(
+        inArray(driverSettlements.driverId, driverIds),
+        eq(driverSettlements.isReversed, false),
+        ne(driverSettlements.type, 'reversal')
+      )
+    );
+
+  const settledMap = new Map<string, number>();
+  for (const s of activeSettlements) {
+    settledMap.set(s.driverId, (settledMap.get(s.driverId) || 0) + Number(s.actualAmount || 0));
+  }
+
+  const statsMap = new Map<string, { active: number; completed: number; revenue: number; collectedCash: number }>();
 
   for (const o of driverOrders) {
     if (!o.driverId) continue;
-    const curr = statsMap.get(o.driverId) || { active: 0, completed: 0, revenue: 0, cashInHand: 0 };
+    const curr = statsMap.get(o.driverId) || { active: 0, completed: 0, revenue: 0, collectedCash: 0 };
     if (o.status === 'processing' || o.status === 'shipped') {
       curr.active += 1;
     } else if (o.status === 'delivered') {
@@ -461,21 +481,22 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
       curr.revenue += Number(o.total) || 0;
     }
 
-    // Cash in hand is unsettled collected cash from non-cancelled, non-returned orders
     if (
-      !o.driverCashSettled &&
       o.status !== 'cancelled' &&
       o.collectionStatus !== 'returned' &&
       Number(o.collectedAmount) > 0
     ) {
-      curr.cashInHand += Number(o.collectedAmount) || 0;
+      curr.collectedCash += Number(o.collectedAmount) || 0;
     }
 
     statsMap.set(o.driverId, curr);
   }
 
   return rows.map(({ driver, vehicle }) => {
-    const s = statsMap.get(driver.id) || { active: 0, completed: 0, revenue: 0, cashInHand: 0 };
+    const s = statsMap.get(driver.id) || { active: 0, completed: 0, revenue: 0, collectedCash: 0 };
+    const totalSettled = settledMap.get(driver.id) || 0;
+    const cashInHand = Math.max(0, s.collectedCash - totalSettled);
+
     return {
       id: driver.id,
       authIdentityId: driver.authIdentityId,
@@ -486,7 +507,7 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
       vehicleInfo: vehicle ? `${vehicle.name} (${vehicle.plateNumber})` : undefined,
       isActive: driver.isActive,
       notes: driver.notes || undefined,
-      currentCashInHand: s.cashInHand,
+      currentCashInHand: cashInHand,
       activeDeliveries: s.active,
       completedDeliveries: s.completed,
       totalDeliveredRevenue: s.revenue,
@@ -522,15 +543,28 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
       collectionStatus: orders.collectionStatus,
       collectedAmount: orders.collectedAmount,
       total: orders.total,
-      driverCashSettled: orders.driverCashSettled,
     })
     .from(orders)
     .where(eq(orders.driverId, id));
 
+  // Query active settlements
+  const activeSettlements = await db
+    .select({ actualAmount: driverSettlements.actualAmount })
+    .from(driverSettlements)
+    .where(
+      and(
+        eq(driverSettlements.driverId, id),
+        eq(driverSettlements.isReversed, false),
+        ne(driverSettlements.type, 'reversal')
+      )
+    );
+
+  const totalSettled = activeSettlements.reduce((sum, s) => sum + Number(s.actualAmount || 0), 0);
+
   let active = 0;
   let completed = 0;
   let revenue = 0;
-  let cashInHand = 0;
+  let totalCollected = 0;
 
   for (const o of driverOrders) {
     if (o.status === 'processing' || o.status === 'shipped') {
@@ -541,14 +575,15 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
     }
 
     if (
-      !o.driverCashSettled &&
       o.status !== 'cancelled' &&
       o.collectionStatus !== 'returned' &&
       Number(o.collectedAmount) > 0
     ) {
-      cashInHand += Number(o.collectedAmount) || 0;
+      totalCollected += Number(o.collectedAmount) || 0;
     }
   }
+
+  const cashInHand = Math.max(0, totalCollected - totalSettled);
 
   return {
     id: driver.id,

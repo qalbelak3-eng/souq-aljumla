@@ -42,6 +42,7 @@ export const orders = pgTable('orders', {
   collectedAmount: numeric('collected_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   remainingDebtAmount: numeric('remaining_debt_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   driverCashSettled: boolean('driver_cash_settled').default(false).notNull(),
+  settledAmount: numeric('settled_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   settlementId: uuid('settlement_id')
     .references(() => driverSettlements.id, { onDelete: 'set null' }),
   inventoryRestored: boolean('inventory_restored').default(false).notNull(),
@@ -63,6 +64,7 @@ export const orders = pgTable('orders', {
   check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),
+  check('chk_order_settled_amount_non_negative', sql`${table.settledAmount} >= 0`),
 ]);
 
 export const orderItems = pgTable('order_items', {
@@ -101,9 +103,11 @@ export const settlementOrders = pgTable('settlement_orders', {
     .references(() => driverSettlements.id, { onDelete: 'cascade' }),
   orderId: uuid('order_id')
     .notNull()
-    .unique() // Enforces that an order can only be in one settlement
     .references(() => orders.id, { onDelete: 'restrict' }),
+  allocatedAmount: numeric('allocated_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.settlementId, table.orderId] }),
   index('idx_settlement_orders_order_id').on(table.orderId),
+  check('chk_settlement_order_allocated_positive', sql`${table.allocatedAmount} > 0`),
 ]);

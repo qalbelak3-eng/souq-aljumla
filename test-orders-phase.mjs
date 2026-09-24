@@ -46,6 +46,7 @@ async function setup() {
     'drizzle/0003_kind_chimera.sql',
     'drizzle/0004_tiresome_kid_colt.sql',
     'drizzle/0005_audit_hardening_triggers.sql',
+    'drizzle/0006_driver_settlement_lifecycle.sql',
   ];
 
   for (const m of migrations) {

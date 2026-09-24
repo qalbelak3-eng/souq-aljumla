@@ -1,60 +1,125 @@
 import { NextResponse } from 'next/server';
-import { settleDriverCash } from '@/lib/db';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import {
+  pgGetDriverCustody,
+  pgCreateDriverSettlement,
+} from '@/lib/postgres-settlements';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+/**
+ * GET /api/admin/drivers/[id]/settle
+ * جلب تفاصيل العهدة النقدية للسائق والطلبات غير المصفاة وتاريخ التسويات
+ */
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
     const admin = getAuthenticatedAdmin(req);
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' },
+        { status: 401 }
+      );
     }
+
     if (!hasPermission(admin, 'drivers') && !hasPermission(admin, 'accounting')) {
-      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية تصفية عهدة السائقين' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'ليس لديك صلاحية استعراض عهدة السائقين المالية' },
+        { status: 403 }
+      );
     }
 
-    let customAmount: number | undefined;
-    let notes: string | undefined;
-    let orderAdjustments: Record<string, { collectedAmount: number; collectionStatus?: any }> | undefined;
-
-    try {
-      const body = await req.json();
-      if (body.customAmount !== undefined && body.customAmount !== '') {
-        customAmount = Number(body.customAmount);
-      }
-      if (body.notes) {
-        notes = body.notes;
-      }
-      if (body.orderAdjustments) {
-        orderAdjustments = body.orderAdjustments;
-      }
-    } catch (e) {
-      // Body might be empty
+    const custody = await pgGetDriverCustody(params.id);
+    if (!custody) {
+      return NextResponse.json(
+        { success: false, error: 'السائق المحدد غير موجود' },
+        { status: 404 }
+      );
     }
-
-    const { driver, settledAmount, createdReceiptsCount } = settleDriverCash(params.id, {
-      customAmount,
-      notes,
-      orderAdjustments,
-    });
-
-    if (!driver) {
-      return NextResponse.json({ success: false, error: 'السائق غير موجود' }, { status: 404 });
-    }
-
-    const receiptsText = createdReceiptsCount > 0 ? ` وتم إنشاء (${createdReceiptsCount}) سند قبض وخصمها من حسابات الزبائن والتجار` : '';
 
     return NextResponse.json({
       success: true,
-      driver,
-      settledAmount,
-      createdReceiptsCount,
-      message: `تم تصفية واستلام العهدة النقدية بمبلغ (${settledAmount.toLocaleString()} د.ع) بنجاح${receiptsText}! ✅`,
+      custody,
     });
-  } catch (error) {
-    console.error('Error settling driver cash:', error);
-    return NextResponse.json({ success: false, error: 'حدث خطأ أثناء تصفية العهدة النقدية' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Error fetching driver custody:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'حدث خطأ أثناء جلب عهدة السائق' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST /api/admin/drivers/[id]/settle
+ * تسجيل تسوية نقدية (كاملة أو جزئية) داخل معاملة ذرية وتوزيعها FIFO
+ */
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  try {
+    // 1. Authenticate admin Server-Side
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Strict permission check
+    if (!hasPermission(admin, 'drivers') && !hasPermission(admin, 'accounting')) {
+      return NextResponse.json(
+        { success: false, error: 'ليس لديك صلاحية تصفية واستلام العهدة النقدية للسائقين' },
+        { status: 403 }
+      );
+    }
+
+    // 3. Extract amount and notes (Never trust operator/staff identity from body!)
+    const body = await req.json().catch(() => ({}));
+    const rawAmount = body.amount !== undefined ? body.amount : body.customAmount;
+    const amount = Number(rawAmount);
+
+    if (isNaN(amount) || amount <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'مبلغ التسوية يجب أن يكون رقماً موجباً أكبر من صفر' },
+        { status: 400 }
+      );
+    }
+
+    const adminOperator = {
+      userId: admin.id,
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    };
+
+    // 4. Execute atomic settlement in PostgreSQL
+    const result = await pgCreateDriverSettlement(
+      params.id,
+      {
+        amount,
+        notes: body.notes,
+      },
+      adminOperator
+    );
+
+    return NextResponse.json({
+      success: true,
+      settlement: result.settlement,
+      balanceBefore: result.balanceBefore,
+      balanceAfter: result.balanceAfter,
+      allocations: result.allocations,
+      message: `تم تسجيل التسوية واستلام مبلغ (${amount.toLocaleString()} د.ع) بنجاح برقم ${result.settlement.settlementNumber}! ✅`,
+    });
+  } catch (error: any) {
+    console.error('Error creating driver settlement:', error);
+    const message = error.message || 'حدث خطأ أثناء تسجيل التسوية النقدية';
+    const status = message.includes('أكبر من العهدة') || message.includes('غير موجود') || message.includes('موجباً')
+      ? 400
+      : 500;
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status }
+    );
   }
 }

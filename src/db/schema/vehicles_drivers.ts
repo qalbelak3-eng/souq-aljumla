@@ -46,23 +46,41 @@ export const driverSettlements = pgTable('driver_settlements', {
   variance: numeric('variance', { precision: 14, scale: 2 }).notNull(), // actualAmount - expectedAmount
   shortageAmount: numeric('shortage_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   overageAmount: numeric('overage_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
-  type: varchar('type', { length: 30 }).notNull(), // 'normal' | 'shortage' | 'overage' | 'shortage_repayment'
-  status: varchar('status', { length: 20 }).default('settled').notNull(), // 'settled' | 'partial' | 'pending'
+  type: varchar('type', { length: 30 }).notNull(), // 'normal' | 'shortage' | 'overage' | 'shortage_repayment' | 'reversal'
+  status: varchar('status', { length: 20 }).default('settled').notNull(), // 'settled' | 'partial' | 'pending' | 'reversed'
   staffId: uuid('staff_id')
     .notNull()
     .references(() => staffProfiles.id, { onDelete: 'restrict' }),
   repaymentOfId: uuid('repayment_of_id')
     .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
+  
+  // Reversal tracking fields
+  isReversed: boolean('is_reversed').default(false).notNull(),
+  reversalSettlementId: uuid('reversal_settlement_id')
+    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
+  reversalOfId: uuid('reversal_of_id')
+    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
+  reversalReason: text('reversal_reason'),
+  reversedAt: timestamp('reversed_at', { withTimezone: true }),
+  reversedByStaffId: uuid('reversed_by_staff_id')
+    .references(() => staffProfiles.id, { onDelete: 'set null' }),
+
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_settlements_driver_id').on(table.driverId),
   index('idx_settlements_number').on(table.settlementNumber),
   index('idx_settlements_repayment_of_id').on(table.repaymentOfId),
-  check('chk_settlement_type', sql`${table.type} IN ('normal', 'shortage', 'overage', 'shortage_repayment')`),
+  index('idx_settlements_reversal_settlement_id').on(table.reversalSettlementId),
+  index('idx_settlements_reversal_of_id').on(table.reversalOfId),
+  check('chk_settlement_type', sql`${table.type} IN ('normal', 'shortage', 'overage', 'shortage_repayment', 'reversal')`),
   check('chk_settlement_amounts_non_negative', sql`${table.expectedAmount} >= 0 AND ${table.actualAmount} >= 0 AND ${table.shortageAmount} >= 0 AND ${table.overageAmount} >= 0`),
   check('chk_settlement_variance_math', sql`${table.variance} = (${table.actualAmount} - ${table.expectedAmount})`),
   check('chk_settlement_shortage_overage_integrity', sql`(${table.variance} = 0 AND ${table.shortageAmount} = 0 AND ${table.overageAmount} = 0) OR (${table.variance} < 0 AND ${table.shortageAmount} = (${table.expectedAmount} - ${table.actualAmount}) AND ${table.overageAmount} = 0) OR (${table.variance} > 0 AND ${table.overageAmount} = (${table.actualAmount} - ${table.expectedAmount}) AND ${table.shortageAmount} = 0)`),
   check('chk_settlement_no_self_repayment', sql`${table.repaymentOfId} IS NULL OR ${table.repaymentOfId} != ${table.id}`),
   check('chk_settlement_repayment_type_consistency', sql`(${table.type} = 'shortage_repayment' AND ${table.repaymentOfId} IS NOT NULL) OR (${table.type} != 'shortage_repayment' AND ${table.repaymentOfId} IS NULL)`),
+  check('chk_settlement_no_self_reversal', sql`${table.reversalSettlementId} IS NULL OR ${table.reversalSettlementId} != ${table.id}`),
+  check('chk_settlement_no_self_reversal_of', sql`${table.reversalOfId} IS NULL OR ${table.reversalOfId} != ${table.id}`),
+  check('chk_settlement_reversal_consistency', sql`(${table.isReversed} = FALSE) OR (${table.isReversed} = TRUE AND ${table.reversalSettlementId} IS NOT NULL)`),
+  check('chk_settlement_reversal_type_consistency', sql`(${table.type} != 'reversal') OR (${table.type} = 'reversal' AND ${table.reversalOfId} IS NOT NULL)`),
 ]);

@@ -237,8 +237,14 @@ export interface Driver {
   createdAt: string;
 }
 
-export type DriverSettlementType = 'normal' | 'shortage' | 'overage' | 'shortage_repayment';
-export type DriverSettlementStatus = 'settled' | 'partial' | 'pending';
+export type DriverSettlementType = 'normal' | 'shortage' | 'overage' | 'shortage_repayment' | 'reversal';
+export type DriverSettlementStatus = 'settled' | 'partial' | 'pending' | 'reversed';
+
+export interface DriverSettlementAllocation {
+  orderId: string;
+  orderNumber: string;
+  allocatedAmount: number;
+}
 
 export interface DriverSettlement {
   id: string;
@@ -248,14 +254,23 @@ export interface DriverSettlement {
   driverPhone?: string;
   expectedAmount: number; // المبلغ المحسوب دفترياً من الطلبيات غير المصفاة
   actualAmount: number; // المبلغ النقدي الفعلي المستلم من السائق
-  variance: number; // actualAmount - expectedAmount (سالب = عجز shortage، موجب = زيادة overage، صفر = مطابق)
+  variance: number; // actualAmount - expectedAmount
   type: DriverSettlementType;
   status: DriverSettlementStatus;
   orderIds: string[]; // معرفات الطلبيات المشمولة في هذه التصفية
+  allocations?: DriverSettlementAllocation[];
   notes?: string;
   createdBy?: string;
+  staffName?: string;
+  staffUsername?: string;
   createdAt: string;
-  repaymentOfSettlementId?: string; // إذا كانت الحركة عبارة عن سداد عجز من تصفية سابقة
+  repaymentOfSettlementId?: string;
+  isReversed?: boolean;
+  reversalSettlementId?: string;
+  reversalOfId?: string;
+  reversalReason?: string;
+  reversedAt?: string;
+  reversedByStaffId?: string;
 }
 
 export interface Order {
@@ -287,10 +302,11 @@ export interface Order {
   driverArrivedAt?: string; // وقت ضغط السائق على تنبيه "وصلت للموقع"
   collectionStatus?: DeliveryCollectionStatus; // حالة التحصيل: كاش / دين آجل / جزئي
   collectedAmount?: number; // المبلغ المحصل نقداً من السائق
+  settledAmount?: number; // المبلغ المسوى نقدياً للإدارة من هذا التحصيل
   remainingDebtAmount?: number; // المبلغ المتبقي كدين على الزبون
   deliveredAt?: string;
   driverNotes?: string;
-  driverCashSettled?: boolean; // هل تم استلام العهدة وتصفيتها من قبل الإدارة وإنشاء سند قبض
+  driverCashSettled?: boolean; // هل تم استلام العهدة وتصفيتها بالكامل من قبل الإدارة
   driverCashSettledAt?: string;
   paymentReceiptNumber?: string; // رقم سند القبض الذي تم إنشاؤه في حساب العميل
   settlementId?: string; // معرف حركة التصفية الرسمية في سجل تصفيات السائقين
