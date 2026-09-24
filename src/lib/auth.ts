@@ -183,6 +183,10 @@ export interface AuthenticatedCustomer {
   email?: string;
   name: string;
   accountType?: string;
+  role?: string;
+  merchantStatus?: string;
+  pricingTier?: string;
+  isActive: boolean;
 }
 
 /**
@@ -225,6 +229,7 @@ export function verifyCustomerSessionToken(token: string): CustomerSessionPayloa
 
 /**
  * استخراج وفحص هوية الزبون Server-Side من الكوكيز الموقعة أو ترويسة Authorization
+ * والتحقق من أن المستخدم ما زال موجوداً وفعالاً في قاعدة البيانات
  */
 export function getAuthenticatedCustomer(request: Request): AuthenticatedCustomer | null {
   let token: string | null = null;
@@ -249,12 +254,30 @@ export function getAuthenticatedCustomer(request: Request): AuthenticatedCustome
   const payload = verifyCustomerSessionToken(token);
   if (!payload || !payload.userId) return null;
 
+  // Server-side database verification:
+  // Must verify that payload.userId still points to an existing and active user in the database!
+  // Return the fresh trusted identity from the record, NOT stale payload values.
+  const db = ensureDbExists();
+  const user = (db.users || []).find((u) => u.id === payload.userId);
+  if (!user) {
+    return null; // User does not exist or was deleted
+  }
+
+  // Check if account is disabled/inactive
+  if ((user as any).isActive === false || (user as any).disabled === true || (user as any).status === 'disabled') {
+    return null; // User is disabled/inactive
+  }
+
   return {
-    id: payload.userId,
-    phone: payload.phone,
-    email: payload.email,
-    name: payload.name || '',
-    accountType: payload.role || 'customer',
+    id: user.id,
+    phone: user.phone,
+    email: user.email,
+    name: user.name,
+    accountType: user.accountType || 'individual',
+    role: user.role,
+    merchantStatus: user.merchantStatus,
+    pricingTier: user.pricingTier,
+    isActive: (user as any).isActive !== false,
   };
 }
 

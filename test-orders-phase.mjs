@@ -487,6 +487,7 @@ async function runAllOrdersTests() {
     CUSTOMER_SESSION_COOKIE_NAME,
     signOrderAccessToken,
     verifyOrderAccessToken,
+    getAuthenticatedCustomer,
   } = await import('./src/lib/auth.ts');
   const { ensureDbExists } = await import('./src/lib/db.ts');
 
@@ -674,6 +675,40 @@ async function runAllOrdersTests() {
     phone: '07701111111',
     email: 'custA@example.com',
   };
+
+  // Create Order for Customer B
+  const custB = {
+    id: 'cust-b-uuid',
+    name: 'كرار الزبون ب',
+    phone: '07702222222',
+    email: 'custB@example.com',
+  };
+
+  // Ensure Customer A and B exist and are active in DB
+  const memDbTest16 = ensureDbExists();
+  if (!memDbTest16.users) memDbTest16.users = [];
+  memDbTest16.users = memDbTest16.users.filter((u) => u.id !== custA.id && u.id !== custB.id);
+  memDbTest16.users.push({
+    id: custA.id,
+    name: custA.name,
+    phone: custA.phone,
+    email: custA.email,
+    role: 'customer',
+    accountType: 'individual',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  });
+  memDbTest16.users.push({
+    id: custB.id,
+    name: custB.name,
+    phone: custB.phone,
+    email: custB.email,
+    role: 'customer',
+    accountType: 'individual',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  });
+
   const tokenCustA = signCustomerSession({
     userId: custA.id,
     phone: custA.phone,
@@ -683,13 +718,6 @@ async function runAllOrdersTests() {
   });
   const cookieCustA = `${CUSTOMER_SESSION_COOKIE_NAME}=${tokenCustA}`;
 
-  // Create Order for Customer B
-  const custB = {
-    id: 'cust-b-uuid',
-    name: 'كرار الزبون ب',
-    phone: '07702222222',
-    email: 'custB@example.com',
-  };
   const tokenCustB = signCustomerSession({
     userId: custB.id,
     phone: custB.phone,
@@ -930,16 +958,18 @@ async function runAllOrdersTests() {
   const { createUser: createDbUser, getUsers: getDbUsers } = await import('./src/lib/db.ts');
 
   // Setup Customer A and Customer B in DB
+  const phoneA = '0771' + Math.floor(1000000 + Math.random() * 9000000);
+  const phoneB = '0772' + Math.floor(1000000 + Math.random() * 9000000);
   const userA = createDbUser({
     name: 'حيدر الزبون أ الأصلي',
-    phone: '07701111111',
+    phone: phoneA,
     accountType: 'individual',
     city: 'بغداد',
     address: 'المنصور',
   });
   const userB = createDbUser({
     name: 'كرار الزبون ب الأصلي',
-    phone: '07702222222',
+    phone: phoneB,
     accountType: 'individual',
     city: 'النجف',
     address: 'الكوفة',
@@ -1043,7 +1073,7 @@ async function runAllOrdersTests() {
   assert(putDuplicatePhoneRes.status === 400, `Updating phone to another user's phone rejected with HTTP 400`);
 
   // Changing to a unique phone succeeds and returns refreshed session token & cookie
-  const newUniquePhone = '07709998877';
+  const newUniquePhone = '0773' + Math.floor(1000000 + Math.random() * 9000000);
   const putNewPhoneReq = new Request('http://localhost:3000/api/auth', {
     method: 'PUT',
     headers: {
@@ -1087,6 +1117,139 @@ async function runAllOrdersTests() {
   const getAuthAdminData = await getAuthAdminRes.json();
   assert(getAuthAdminRes.status === 200, `Admin can perform user lookup by identifier (HTTP 200)`);
   assert(getAuthAdminData.user.id === userB.id, `Admin received target user profile`);
+
+  // 12.8 Server-side Customer Authentication & Fresh Identity Verification
+  console.log('\n--- Test 21: Customer Authentication Server-Side Verification (Active, Exists, Fresh State) ---');
+
+  // 21.1 Valid session for existing active user = PASS
+  const activeUser = createDbUser({
+    name: 'عميل نشط وحقيقي',
+    phone: '0774' + Math.floor(1000000 + Math.random() * 9000000),
+    accountType: 'individual',
+    city: 'بغداد',
+    address: 'الكرادة',
+  });
+  const validActiveToken = signCustomerSession({
+    userId: activeUser.id,
+    phone: activeUser.phone,
+    name: activeUser.name,
+    role: 'customer',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const validActiveReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Authorization': `Bearer ${validActiveToken}` },
+  });
+  const authCustomerResult = getAuthenticatedCustomer(validActiveReq);
+  assert(authCustomerResult !== null, `Valid session for existing active user returns authenticated identity`);
+  assert(authCustomerResult?.id === activeUser.id, `Authenticated identity ID matches active user`);
+  assert(authCustomerResult?.isActive === true, `Active user has isActive: true`);
+
+  // 21.2 Valid HMAC signature but non-existent userId in database = authentication fails (null / 401)
+  const ghostToken = signCustomerSession({
+    userId: 'non-existent-user-uuid-' + Date.now(),
+    phone: '07799999999',
+    name: 'مستخدم وهمي غير موجود في القاعدة',
+    role: 'customer',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const ghostReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Authorization': `Bearer ${ghostToken}` },
+  });
+  const ghostAuthResult = getAuthenticatedCustomer(ghostReq);
+  assert(ghostAuthResult === null, `Signed token with non-existent userId rejected by getAuthenticatedCustomer (returns null)`);
+
+  const ghostApiReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${ghostToken}` },
+  });
+  const ghostApiRes = await getAuthRoute(ghostApiReq);
+  assert(ghostApiRes.status === 401, `GET /api/auth with token for non-existent user returns HTTP 401`);
+
+  // 21.3 Disabled / inactive customer account = authentication fails (null / 401)
+  const disabledUser = createDbUser({
+    name: 'عميل معطل إدارياً',
+    phone: '0775' + Math.floor(1000000 + Math.random() * 9000000),
+    accountType: 'individual',
+  });
+  // Administratively disable user
+  disabledUser.isActive = false;
+
+  const disabledToken = signCustomerSession({
+    userId: disabledUser.id,
+    phone: disabledUser.phone,
+    name: disabledUser.name,
+    role: 'customer',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const disabledReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Authorization': `Bearer ${disabledToken}` },
+  });
+  const disabledAuthResult = getAuthenticatedCustomer(disabledReq);
+  assert(disabledAuthResult === null, `Disabled user (isActive: false) rejected by getAuthenticatedCustomer (returns null)`);
+
+  const disabledApiReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${disabledToken}` },
+  });
+  const disabledApiRes = await getAuthRoute(disabledApiReq);
+  assert(disabledApiRes.status === 401, `GET /api/auth for disabled user returns HTTP 401`);
+
+  // Also check disabled via status: 'disabled'
+  const disabledStatusUser = createDbUser({
+    name: 'عميل موقوف بالحالة',
+    phone: '0776' + Math.floor(1000000 + Math.random() * 9000000),
+    accountType: 'individual',
+  });
+  disabledStatusUser.status = 'disabled';
+  const disabledStatusToken = signCustomerSession({
+    userId: disabledStatusUser.id,
+    phone: disabledStatusUser.phone,
+    name: disabledStatusUser.name,
+    role: 'customer',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const disabledStatusReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Authorization': `Bearer ${disabledStatusToken}` },
+  });
+  assert(getAuthenticatedCustomer(disabledStatusReq) === null, `User with status: 'disabled' rejected by getAuthenticatedCustomer`);
+
+  // 21.4 Administrative update takes effect immediately; does NOT rely on stale token values
+  const updatingUser = createDbUser({
+    name: 'عميل تم تعديل حسابه إدارياً',
+    phone: '0777' + Math.floor(1000000 + Math.random() * 9000000),
+    accountType: 'individual',
+  });
+  // Token issued when user was individual
+  const staleToken = signCustomerSession({
+    userId: updatingUser.id,
+    phone: updatingUser.phone,
+    name: 'الاسم القديم في التوكن',
+    role: 'customer',
+    accountType: 'individual',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+
+  // Admin updates database directly (e.g. upgrades to market / changes role / updates name & pricing tier)
+  updatingUser.name = 'الاسم الحديث في قاعدة البيانات';
+  updatingUser.accountType = 'market';
+  updatingUser.pricingTier = 'gold';
+
+  const freshCheckReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Authorization': `Bearer ${staleToken}` },
+  });
+  const freshAuth = getAuthenticatedCustomer(freshCheckReq);
+  assert(freshAuth !== null, `getAuthenticatedCustomer succeeds for updated user`);
+  assert(freshAuth?.name === 'الاسم الحديث في قاعدة البيانات', `Returns fresh name from DB, not stale token name`);
+  assert(freshAuth?.accountType === 'market', `Returns fresh accountType from DB, not stale token value`);
+  assert(freshAuth?.pricingTier === 'gold', `Returns fresh pricingTier from DB`);
+
+  // And GET /api/auth returns the fresh trusted DB data
+  const freshApiReq = new Request('http://localhost:3000/api/auth', {
+    headers: { 'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${staleToken}` },
+  });
+  const freshApiRes = await getAuthRoute(freshApiReq);
+  const freshApiData = await freshApiRes.json();
+  assert(freshApiRes.status === 200, `GET /api/auth returns HTTP 200 for updated user`);
+  assert(freshApiData.user.accountType === 'market', `API returns fresh DB accountType ('market')`);
+  assert(freshApiData.user.name === 'الاسم الحديث في قاعدة البيانات', `API returns fresh DB name`);
 
   console.log('\n===============================================================');
   console.log(` ALL TESTS COMPLETED: ${passed} PASSED, ${failed} FAILED `);

@@ -330,6 +330,7 @@ export interface User {
   lng?: number;
   mapsUrl?: string;
   savedAddresses?: SavedAddress[]; // العناوين والمواقع المحفوظة
+  isActive?: boolean; // حالة الحساب: نشط أو معطل
   createdAt: string;
 }
 
