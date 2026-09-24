@@ -39,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const saveUserToStorage = (userData: User | null) => {
+  const saveUserToStorage = (userData: User | null, token?: string) => {
     setUser(userData);
     if (userData) {
       try {
@@ -48,12 +48,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           safeUser.storefrontImage = '';
         }
         localStorage.setItem('etihad_user_iq', JSON.stringify(safeUser));
+        if (token) {
+          localStorage.setItem('etihad_customer_token', token);
+        }
       } catch (err) {
         console.warn('LocalStorage save warning:', err);
       }
     } else {
       try {
         localStorage.removeItem('etihad_user_iq');
+        localStorage.removeItem('etihad_customer_token');
       } catch {}
     }
   };
@@ -115,7 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const data = await res.json();
       if (data.success && data.user) {
-        saveUserToStorage(data.user);
+        saveUserToStorage(data.user, data.token);
         return { success: true, user: data.user };
       } else {
         return { success: false, error: data.error || 'فشل تسجيل الدخول' };
@@ -141,7 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const data = await res.json();
       if (data.success && data.user) {
-        saveUserToStorage(data.user);
+        saveUserToStorage(data.user, data.token);
         return { success: true, user: data.user };
       } else {
         return { success: false, error: data.error || 'فشل التسجيل' };
@@ -186,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const resData = await res.json();
       if (resData.success && resData.user) {
-        saveUserToStorage(resData.user);
+        saveUserToStorage(resData.user, resData.token);
         return {
           success: true,
           message: resData.message,
@@ -226,7 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       const resData = await res.json();
       if (resData.success && resData.user) {
-        saveUserToStorage(resData.user);
+        saveUserToStorage(resData.user, resData.token);
         return {
           success: true,
           message: resData.message,
@@ -271,6 +275,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('etihad_food_coupon_iq');
       localStorage.removeItem('etihad_cart_guest');
       localStorage.removeItem('etihad_coupon_guest');
+      localStorage.removeItem('etihad_customer_token');
+      fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' }),
+      }).catch(() => {});
     } catch {}
     saveUserToStorage(null);
   };

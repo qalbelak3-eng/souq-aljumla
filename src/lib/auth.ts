@@ -2,7 +2,9 @@ import crypto from 'crypto';
 import { ensureDbExists } from '@/lib/db';
 
 export const SESSION_COOKIE_NAME = 'etihad_admin_session';
+export const CUSTOMER_SESSION_COOKIE_NAME = 'etihad_customer_session';
 export const SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60; // 7 days
+export const CUSTOMER_SESSION_DURATION_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 /**
  * اشتقاق سر الجلسة حصراً من متغير البيئة دون وجود أي أسرار مضمنة في الكود
@@ -79,6 +81,15 @@ export function verifyAdminSessionToken(token: string): SessionPayload | null {
  * استخراج وفحص الجلسة من كوكيز الطلب (Signed HttpOnly Cookie)
  */
 export function getSessionFromRequest(request: Request): SessionPayload | null {
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const payload = verifyAdminSessionToken(token);
+    if (payload && (payload.role === 'admin' || payload.role === 'staff')) {
+      return payload;
+    }
+  }
+
   const cookieHeader = request.headers.get('cookie') || '';
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`));
   if (!match) return null;
@@ -152,3 +163,186 @@ export function hasPermission(
 
   return false;
 }
+
+/* =========================================================
+   Customer Session Authentication
+   ========================================================= */
+
+export interface CustomerSessionPayload {
+  userId: string;
+  phone: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  exp: number; // Unix timestamp in seconds
+}
+
+export interface AuthenticatedCustomer {
+  id: string;
+  phone: string;
+  email?: string;
+  name: string;
+  accountType?: string;
+}
+
+/**
+ * توقيع رمز جلسة الزبون رقمياً باستخدام HMAC-SHA256
+ */
+export function signCustomerSession(payload: CustomerSessionPayload): string {
+  const secret = getSessionSecret();
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+/**
+ * التحقق من صحة توقيع رمز جلسة الزبون وعدم انتهائها
+ */
+export function verifyCustomerSessionToken(token: string): CustomerSessionPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+
+  const [data, sig] = parts;
+  const secret = getSessionSecret();
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+
+  if (sig.length !== expectedSig.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8')) as CustomerSessionPayload;
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * استخراج وفحص هوية الزبون Server-Side من الكوكيز الموقعة أو ترويسة Authorization
+ */
+export function getAuthenticatedCustomer(request: Request): AuthenticatedCustomer | null {
+  let token: string | null = null;
+
+  // 1. Check Bearer Authorization header
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  }
+
+  // 2. Check Signed HttpOnly Cookie
+  if (!token) {
+    const cookieHeader = request.headers.get('cookie') || '';
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${CUSTOMER_SESSION_COOKIE_NAME}=([^;]+)`));
+    if (match) {
+      token = decodeURIComponent(match[1]);
+    }
+  }
+
+  if (!token) return null;
+
+  const payload = verifyCustomerSessionToken(token);
+  if (!payload || !payload.userId) return null;
+
+  return {
+    id: payload.userId,
+    phone: payload.phone,
+    email: payload.email,
+    name: payload.name || '',
+    accountType: payload.role || 'customer',
+  };
+}
+
+/* =========================================================
+   Order Access Token (Cryptographic Guest Order Tracking)
+   ========================================================= */
+
+export interface OrderTokenPayload {
+  orderId: string;
+  orderNumber?: string;
+  phone?: string;
+  exp: number; // Unix timestamp in seconds
+}
+
+/**
+ * توقيع رمز وصول للطلبية (Order Access Token) يتيح للزبون الضيف تتبع طلبيته بأمان تام
+ */
+export function signOrderAccessToken(payload: OrderTokenPayload): string {
+  const secret = getSessionSecret();
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+/**
+ * التحقق من صحة رمز الوصول للطلبية ومطابقته لرقم الطلبية وعدم انتهائه
+ */
+export function verifyOrderAccessToken(token: string, expectedOrderId?: string): OrderTokenPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+
+  const [data, sig] = parts;
+  const secret = getSessionSecret();
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+
+  if (sig.length !== expectedSig.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8')) as OrderTokenPayload;
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    if (expectedOrderId && payload.orderId !== expectedOrderId) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * استخراج رمز الوصول للطلبية من المعلمات أو الترويسة أو الكوكيز
+ */
+export function getOrderAccessTokenFromRequest(request: Request, orderId?: string): string | null {
+  // 1. Query param ?token=...
+  try {
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
+    if (token) return token;
+  } catch {}
+
+  // 2. Custom header x-order-token: ...
+  const headerToken = request.headers.get('x-order-token');
+  if (headerToken) return headerToken;
+
+  // 3. Bearer token if it looks like an order token
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.substring(7).trim();
+    if (orderId && verifyOrderAccessToken(bearer, orderId)) {
+      return bearer;
+    }
+  }
+
+  // 4. Scoped cookie
+  const cookieHeader = request.headers.get('cookie') || '';
+  if (orderId) {
+    const specificMatch = cookieHeader.match(new RegExp(`(?:^|;\\s*)etihad_order_token_${orderId}=([^;]+)`));
+    if (specificMatch) return decodeURIComponent(specificMatch[1]);
+  }
+  const generalMatch = cookieHeader.match(/(?:^|;\s*)etihad_order_token=([^;]+)/);
+  if (generalMatch) return decodeURIComponent(generalMatch[1]);
+
+  return null;
+}
+

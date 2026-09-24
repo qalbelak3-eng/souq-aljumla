@@ -480,7 +480,14 @@ async function runAllOrdersTests() {
     PUT: putOrderRoute,
     DELETE: deleteOrderRoute,
   } = await import('./src/app/api/orders/[id]/route.ts');
-  const { signAdminSession, SESSION_COOKIE_NAME } = await import('./src/lib/auth.ts');
+  const {
+    signAdminSession,
+    SESSION_COOKIE_NAME,
+    signCustomerSession,
+    CUSTOMER_SESSION_COOKIE_NAME,
+    signOrderAccessToken,
+    verifyOrderAccessToken,
+  } = await import('./src/lib/auth.ts');
   const { ensureDbExists } = await import('./src/lib/db.ts');
 
   // Setup staff in db.staff for permission checks
@@ -657,39 +664,253 @@ async function runAllOrdersTests() {
   const putAuthData = await putAuthRes.json();
   assert(putAuthRes.status === 200 && putAuthData.success === true, `PUT with master admin succeeded with HTTP 200`);
 
-  // 12.5 GET /api/orders Scoping and Permissions:
+  // 12.5 Customer A and Customer B Isolation Tests:
   console.log('\n--- Test 16: Scoping of Customer vs Admin Orders Access ---');
 
-  // Unauthenticated GET /api/orders with NO phone or userId -> 401
+  // Create Order for Customer A
+  const custA = {
+    id: 'cust-a-uuid',
+    name: 'حيدر الزبون أ',
+    phone: '07701111111',
+    email: 'custA@example.com',
+  };
+  const tokenCustA = signCustomerSession({
+    userId: custA.id,
+    phone: custA.phone,
+    email: custA.email,
+    name: custA.name,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const cookieCustA = `${CUSTOMER_SESSION_COOKIE_NAME}=${tokenCustA}`;
+
+  // Create Order for Customer B
+  const custB = {
+    id: 'cust-b-uuid',
+    name: 'كرار الزبون ب',
+    phone: '07702222222',
+    email: 'custB@example.com',
+  };
+  const tokenCustB = signCustomerSession({
+    userId: custB.id,
+    phone: custB.phone,
+    email: custB.email,
+    name: custB.name,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const cookieCustB = `${CUSTOMER_SESSION_COOKIE_NAME}=${tokenCustB}`;
+
+  // POST Order for Customer A
+  const postReqA = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieCustA,
+    },
+    body: JSON.stringify({
+      customer: {
+        name: custA.name,
+        phone: custA.phone,
+        city: 'بغداد',
+        address: 'المنصور',
+        userId: custA.id,
+      },
+      items: [
+        {
+          productId: prodA.id,
+          name: prodA.name,
+          price: 20000,
+          quantity: 1,
+          saleType: 'wholesale',
+        },
+      ],
+      deliveryFee: 5000,
+    }),
+  });
+  const postResA = await postOrderRoute(postReqA);
+  const postDataA = await postResA.json();
+  assert(postResA.status === 201, `Customer A created order successfully: ${postDataA.order.id}`);
+  const orderAId = postDataA.order.id;
+
+  // POST Order for Customer B
+  const postReqB = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieCustB,
+    },
+    body: JSON.stringify({
+      customer: {
+        name: custB.name,
+        phone: custB.phone,
+        city: 'النجف',
+        address: 'الكوفة',
+        userId: custB.id,
+      },
+      items: [
+        {
+          productId: prodA.id,
+          name: prodA.name,
+          price: 20000,
+          quantity: 1,
+          saleType: 'wholesale',
+        },
+      ],
+      deliveryFee: 5000,
+    }),
+  });
+  const postResB = await postOrderRoute(postReqB);
+  const postDataB = await postResB.json();
+  assert(postResB.status === 201, `Customer B created order successfully: ${postDataB.order.id}`);
+  const orderBId = postDataB.order.id;
+
+  // 16.1 Unauthenticated request to GET /api/orders without session -> 401
   const getNoAuthAllReq = new Request('http://localhost:3000/api/orders');
   const getNoAuthAllRes = await getOrdersRoute(getNoAuthAllReq);
   assert(getNoAuthAllRes.status === 401, `Unauthenticated request to list all orders rejected with HTTP 401`);
 
-  // Customer querying ONLY their own phone -> 200 and returns only their orders
-  const getCustomerReq = new Request(`http://localhost:3000/api/orders?phone=07708889911`);
-  const getCustomerRes = await getOrdersRoute(getCustomerReq);
-  const getCustomerData = await getCustomerRes.json();
-  assert(getCustomerRes.status === 200, `Customer fetching their own orders by phone returned HTTP 200`);
-  assert(getCustomerData.orders.length >= 1, `Customer received their orders list`);
-  
-  // Verify that customer cannot see other customers' orders
-  const leakedOtherCustomer = getCustomerData.orders.some((o) => o.customer.phone !== '07708889911');
-  assert(!leakedOtherCustomer, `Confirmed: Response contains ONLY the requesting customer's orders and does not leak other customers' data`);
+  // 16.2 Customer A reads their own orders via session -> 200
+  const getCustAReq = new Request('http://localhost:3000/api/orders', {
+    headers: { 'Cookie': cookieCustA },
+  });
+  const getCustARes = await getOrdersRoute(getCustAReq);
+  const getCustAData = await getCustARes.json();
+  assert(getCustARes.status === 200, `Customer A successfully fetched their orders via session (HTTP 200)`);
+  assert(getCustAData.orders.some((o) => o.id === orderAId), `Customer A orders list contains order A`);
+  assert(!getCustAData.orders.some((o) => o.id === orderBId), `Customer A orders list does NOT contain order B`);
 
-  // Admin querying all orders with admin session -> 200
+  // 16.3 Spoofing Attempt: Customer A puts Customer B's phone and userId in query params
+  // The server MUST ignore the query params and return ONLY Customer A's orders based on trusted session!
+  const getSpoofReq = new Request(`http://localhost:3000/api/orders?phone=${custB.phone}&userId=${custB.id}`, {
+    headers: { 'Cookie': cookieCustA },
+  });
+  const getSpoofRes = await getOrdersRoute(getSpoofReq);
+  const getSpoofData = await getSpoofRes.json();
+  assert(getSpoofRes.status === 200, `Query with spoofed URL params processed under Customer A session`);
+  assert(getSpoofData.orders.some((o) => o.id === orderAId), `Customer A still receives their own order A`);
+  assert(!getSpoofData.orders.some((o) => o.id === orderBId), `Spoof thwarted: Customer A CANNOT access Customer B's orders by altering URL query parameters`);
+
+  // 16.4 Admin querying all orders with admin session -> 200
   const getAdminAllReq = new Request('http://localhost:3000/api/orders', {
     headers: { 'Cookie': adminCookie },
   });
   const getAdminAllRes = await getOrdersRoute(getAdminAllReq);
   const getAdminAllData = await getAdminAllRes.json();
-  if (getAdminAllRes.status !== 200) {
-    console.error('getAdminAllRes failed with:', getAdminAllRes.status, getAdminAllData);
-  }
   assert(getAdminAllRes.status === 200, `Admin fetching all orders returned HTTP 200`);
-  assert(getAdminAllData.orders.length >= 2, `Admin successfully received all store orders`);
+  assert(
+    getAdminAllData.orders.some((o) => o.id === orderAId) && getAdminAllData.orders.some((o) => o.id === orderBId),
+    `Admin successfully received orders across all customers`
+  );
 
-  // 12.6 DELETE /api/orders/[id] with Admin Session -> 200
-  console.log('\n--- Test 17: DELETE by Admin with Inventory Restoration ---');
+  // ==============================================================
+  // Test 17: GET /api/orders/[id] Object-Level Authorization
+  // ==============================================================
+  console.log('\n--- Test 17: GET /api/orders/[id] Object-Level Authorization ---');
+
+  // 17.1 Customer A opens their own orderA -> 200
+  const getOrderAAuthReq = new Request(`http://localhost:3000/api/orders/${orderAId}`, {
+    headers: { 'Cookie': cookieCustA },
+  });
+  const getOrderAAuthRes = await getOrderByIdRoute(getOrderAAuthReq, { params: { id: orderAId } });
+  assert(getOrderAAuthRes.status === 200, `Customer A can view their own orderA (HTTP 200)`);
+
+  // 17.2 Customer A tries to open Customer B's orderB -> 403 Forbidden!
+  const getOrderBByCustAReq = new Request(`http://localhost:3000/api/orders/${orderBId}`, {
+    headers: { 'Cookie': cookieCustA },
+  });
+  const getOrderBByCustARes = await getOrderByIdRoute(getOrderBByCustAReq, { params: { id: orderBId } });
+  assert(getOrderBByCustARes.status === 403, `Customer A blocked from viewing Customer B's order (HTTP 403 Forbidden)`);
+
+  // 17.3 Unauthenticated anonymous request to orderB without session or token -> 401 Unauthorized!
+  const getOrderBAnonReq = new Request(`http://localhost:3000/api/orders/${orderBId}`);
+  const getOrderBAnonRes = await getOrderByIdRoute(getOrderBAnonReq, { params: { id: orderBId } });
+  const getOrderBAnonData = await getOrderBAnonRes.json();
+  assert(getOrderBAnonRes.status === 401, `Unauthenticated request to /api/orders/[id] rejected with HTTP 401`);
+  assert(!getOrderBAnonData.order, `Order data is NOT leaked to unauthorized caller`);
+
+  // 17.4 Admin with 'orders' permission can open any order -> 200
+  const getOrderBByAdminReq = new Request(`http://localhost:3000/api/orders/${orderBId}`, {
+    headers: { 'Cookie': adminCookie },
+  });
+  const getOrderBByAdminRes = await getOrderByIdRoute(getOrderBByAdminReq, { params: { id: orderBId } });
+  assert(getOrderBByAdminRes.status === 200, `Admin with orders permission can view any order (HTTP 200)`);
+
+  // ==============================================================
+  // Test 18: Guest Checkout & Cryptographic Order Access Token
+  // ==============================================================
+  console.log('\n--- Test 18: Guest Checkout & Cryptographic Order Access Token ---');
+
+  // 18.1 Guest places order via POST /api/orders (no session)
+  const guestPostReq = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      customer: {
+        name: 'ضيف مجهول',
+        phone: '07703333333',
+        city: 'كربلاء',
+        address: 'حي الحسين',
+        isGuest: true,
+      },
+      items: [
+        {
+          productId: prodA.id,
+          name: prodA.name,
+          price: 20000,
+          quantity: 1,
+          saleType: 'wholesale',
+        },
+      ],
+      deliveryFee: 5000,
+    }),
+  });
+  const guestPostRes = await postOrderRoute(guestPostReq);
+  const guestPostData = await guestPostRes.json();
+  assert(guestPostRes.status === 201, `Guest Checkout succeeded with HTTP 201`);
+  assert(guestPostData.orderAccessToken && typeof guestPostData.orderAccessToken === 'string', `Cryptographic orderAccessToken issued for guest order`);
+
+  const guestOrderId = guestPostData.order.id;
+  const guestToken = guestPostData.orderAccessToken;
+
+  // 18.2 Attacker tries to read guest order without token -> 401
+  const attackerGuestReq = new Request(`http://localhost:3000/api/orders/${guestOrderId}`);
+  const attackerGuestRes = await getOrderByIdRoute(attackerGuestReq, { params: { id: guestOrderId } });
+  assert(attackerGuestRes.status === 401, `Attacker without token cannot read guest order (phone alone is NOT authorization, HTTP 401)`);
+
+  // 18.3 Attacker tries to read with tampered / fake token -> 401
+  const fakeTokenReq = new Request(`http://localhost:3000/api/orders/${guestOrderId}?token=fake.tampered.token`);
+  const fakeTokenRes = await getOrderByIdRoute(fakeTokenReq, { params: { id: guestOrderId } });
+  assert(fakeTokenRes.status === 401, `Tampered or invalid token rejected with HTTP 401`);
+
+  // 18.4 Attacker uses token from another order to access guest order -> 401
+  const tokenForOrderA = signOrderAccessToken({
+    orderId: orderAId,
+    phone: custA.phone,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const wrongOrderTokenReq = new Request(`http://localhost:3000/api/orders/${guestOrderId}?token=${tokenForOrderA}`);
+  const wrongOrderTokenRes = await getOrderByIdRoute(wrongOrderTokenReq, { params: { id: guestOrderId } });
+  assert(wrongOrderTokenRes.status === 401, `Token scoped to another order rejected for guest order with HTTP 401`);
+
+  // 18.5 Legitimate guest tracks order with valid URL token -> 200
+  const validGuestReq = new Request(`http://localhost:3000/api/orders/${guestOrderId}?token=${guestToken}`);
+  const validGuestRes = await getOrderByIdRoute(validGuestReq, { params: { id: guestOrderId } });
+  const validGuestData = await validGuestRes.json();
+  assert(validGuestRes.status === 200, `Guest safely accesses order with valid cryptographic orderAccessToken (HTTP 200)`);
+  assert(validGuestData.order.id === guestOrderId, `Guest received correct order details`);
+
+  // 18.6 Legitimate guest tracks order via automatic cookie -> 200
+  const cookieGuestReq = new Request(`http://localhost:3000/api/orders/${guestOrderId}`, {
+    headers: {
+      'Cookie': `etihad_order_token_${guestOrderId}=${guestToken}`,
+    },
+  });
+  const cookieGuestRes = await getOrderByIdRoute(cookieGuestReq, { params: { id: guestOrderId } });
+  assert(cookieGuestRes.status === 200, `Guest accesses order seamlessly via scoped cookie (HTTP 200)`);
+
+  // ==============================================================
+  // Test 19: DELETE /api/orders/[id] with Admin Session -> 200
+  // ==============================================================
+  console.log('\n--- Test 19: DELETE by Admin with Inventory Restoration ---');
   const deleteAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
     method: 'DELETE',
     headers: { 'Cookie': adminCookie },

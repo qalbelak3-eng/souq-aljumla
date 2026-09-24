@@ -525,7 +525,8 @@ export default function CheckoutPage() {
         try {
           clearCart();
         } catch {}
-        window.location.href = `/order-success/${data.order.id}`;
+        const tokenParam = data.orderAccessToken ? `?token=${encodeURIComponent(data.orderAccessToken)}` : '';
+        window.location.href = `/order-success/${data.order.id}${tokenParam}`;
       } else {
         setErrorMessage(data.error || 'حدث خطأ أثناء حفظ الطلبية');
         setIsSubmitting(false);

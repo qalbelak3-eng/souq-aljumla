@@ -56,10 +56,11 @@ export default function OrdersPage() {
 
     const fetchOrders = async () => {
       try {
-        const queryParams = new URLSearchParams();
-        if (user.phone) queryParams.set('phone', user.phone);
-        if (user.id) queryParams.set('userId', user.id);
-        const res = await fetch(`/api/orders?${queryParams.toString()}`, { cache: 'no-store' });
+        const token = typeof window !== 'undefined' ? localStorage.getItem('etihad_customer_token') : null;
+        const res = await fetch('/api/orders', {
+          cache: 'no-store',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
           const userPhoneClean = user.phone ? user.phone.replace(/\D/g, '') : '';

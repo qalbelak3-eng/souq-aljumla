@@ -5,7 +5,12 @@ import { pgGetProducts } from '@/lib/postgres-catalog';
 import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
-import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import {
+  getAuthenticatedAdmin,
+  hasPermission,
+  getAuthenticatedCustomer,
+  signOrderAccessToken,
+} from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,34 +18,50 @@ export const revalidate = 0;
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || undefined;
-    const phone = searchParams.get('phone') || undefined;
-    const email = searchParams.get('email') || undefined;
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Number(limitParam) : undefined;
+    const status = (searchParams.get('status') as any) || undefined;
 
     const admin = getAuthenticatedAdmin(request);
     const isStaffOrAdmin = admin && hasPermission(admin, 'orders');
 
-    // Security Check: Non-admin users cannot query all orders across the system.
-    // They MUST specify their own customer identifier (phone, userId, or email) to only access their own orders.
-    if (!isStaffOrAdmin) {
-      if (!phone && !userId && !email) {
-        return NextResponse.json({
-          success: false,
-          error: 'غير مصرح لك باستعراض كافة الطلبات (يتطلب جلسة إدارية بصلاحية إدارة الطلبات)',
-        }, { status: 401 });
-      }
+    if (isStaffOrAdmin) {
+      // Admin with 'orders' permission can query all orders or filter by query parameters
+      const userId = searchParams.get('userId') || undefined;
+      const phone = searchParams.get('phone') || undefined;
+      const email = searchParams.get('email') || undefined;
+
+      const orders = await pgGetOrders({
+        userId,
+        phone,
+        email,
+        limit,
+        status,
+      });
+
+      return NextResponse.json({ success: true, orders, count: orders.length });
     }
 
+    // Customer flow: MUST authenticate server-side via trusted session
+    const customer = getAuthenticatedCustomer(request);
+    if (!customer) {
+      return NextResponse.json({
+        success: false,
+        error: 'غير مصرح لك باستعراض الطلبات (يتطلب جلسة مسجلة للزبون أو صلاحية إدارية)',
+      }, { status: 401 });
+    }
+
+    // STRICT SERVER-SIDE ISOLATION:
+    // Extract identity EXCLUSIVELY from customer session. URL query params cannot override or access another customer's data!
     const orders = await pgGetOrders({
-      userId,
-      phone,
-      email,
+      userId: customer.id,
+      phone: customer.phone,
+      email: customer.email,
       limit,
+      status,
     });
 
-    return NextResponse.json({ success: true, orders });
+    return NextResponse.json({ success: true, orders, count: orders.length });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -166,11 +187,23 @@ export async function POST(request: Request) {
     // Calculate final trusted total
     const finalTotal = Math.max(0, calculatedSubtotal + verifiedDeliveryFee - verifiedDiscount - verifiedCashbackDiscount);
 
-    // Session-derived operator for audit trail
+    // Session-derived operator and identity binding
     const admin = getAuthenticatedAdmin(request);
+    const customerSession = getAuthenticatedCustomer(request);
+
+    // If an authenticated customer is placing an order, bind the order to their verified account
+    if (customerSession && !admin) {
+      customer.userId = customerSession.id;
+      if (!customer.phone || customer.phone.trim() === '') {
+        customer.phone = customerSession.phone;
+      }
+    }
+
     const operator = admin
       ? { name: admin.name, username: admin.username, role: admin.role }
-      : { name: customer.name, username: customer.phone, role: 'customer' };
+      : customerSession
+      ? { name: customerSession.name || customer.name, username: customerSession.phone, role: 'customer' }
+      : { name: customer.name, username: customer.phone, role: 'guest' };
 
     const newOrder = await pgCreateOrder({
       customer,
@@ -189,6 +222,14 @@ export async function POST(request: Request) {
       operator,
     });
 
+    // Generate cryptographic order access token for secure tracking (especially for guests)
+    const orderAccessToken = signOrderAccessToken({
+      orderId: newOrder.id,
+      orderNumber: newOrder.orderNumber,
+      phone: customer.phone,
+      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+    });
+
     // Send push alert to customer phone
     try {
       await sendDirectCustomerAlert({
@@ -196,17 +237,31 @@ export async function POST(request: Request) {
         phone: customer.phone,
         title: '📋 تم استلام طلبيتك بنجاح!',
         body: `مرحباً ${customer.name}، تم تسجيل طلبيتك #${newOrder.orderNumber} بمبلغ ${finalTotal.toLocaleString()} د.ع وجاري مراجعتها من الكادر.`,
-        url: `/order-success/${newOrder.id}`,
+        url: `/order-success/${newOrder.id}?token=${encodeURIComponent(orderAccessToken)}`,
       });
     } catch (e) {}
 
     const whatsappUrl = generateWhatsAppLink(newOrder, settings);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       order: newOrder,
+      orderAccessToken,
       whatsappUrl,
     }, { status: 201 });
+
+    // Set scoped cookie for guest tracking on this browser
+    response.cookies.set({
+      name: `etihad_order_token_${newOrder.id}`,
+      value: orderAccessToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
+    });
+
+    return response;
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }

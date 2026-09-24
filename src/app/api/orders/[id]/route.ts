@@ -8,7 +8,13 @@ import {
 } from '@/lib/postgres-orders';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
-import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import {
+  getAuthenticatedAdmin,
+  hasPermission,
+  getAuthenticatedCustomer,
+  getOrderAccessTokenFromRequest,
+  verifyOrderAccessToken,
+} from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,6 +24,42 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const order = await pgGetOrderById(params.id);
     if (!order) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });
+    }
+
+    // Security Check: Authorized entity to view order details:
+    // 1. Admin with 'orders' permission
+    const admin = getAuthenticatedAdmin(request);
+    const isAdminAuthorized = admin && hasPermission(admin, 'orders');
+
+    // 2. Authenticated Customer who owns the order
+    const authenticatedCustomer = getAuthenticatedCustomer(request);
+    const orderPhoneClean = (order.customer?.phone || '').replace(/\D/g, '');
+    const authPhoneClean = (authenticatedCustomer?.phone || '').replace(/\D/g, '');
+    const isCustomerOwner = !!(
+      authenticatedCustomer && (
+        (order.customer?.userId && order.customer.userId === authenticatedCustomer.id) ||
+        (authPhoneClean && orderPhoneClean && (orderPhoneClean === authPhoneClean || orderPhoneClean.endsWith(authPhoneClean) || authPhoneClean.endsWith(orderPhoneClean)))
+      )
+    );
+
+    // 3. Guest with valid cryptographic Order Access Token
+    const orderToken = getOrderAccessTokenFromRequest(request, order.id);
+    const isTokenAuthorized = orderToken ? !!verifyOrderAccessToken(orderToken, order.id) : false;
+
+    // Reject unauthorized requests without leaking order data
+    if (!isAdminAuthorized && !isCustomerOwner && !isTokenAuthorized) {
+      if (authenticatedCustomer) {
+        // Authenticated customer trying to view someone else's order
+        return NextResponse.json({
+          success: false,
+          error: 'غير مصرح لك بالوصول إلى هذا الطلب (الطلب يخص زبوناً آخر)',
+        }, { status: 403 });
+      }
+      // Unauthenticated caller without valid order access token
+      return NextResponse.json({
+        success: false,
+        error: 'غير مصرح لك بالوصول إلى هذا الطلب (يتطلب تسجيل الدخول أو رمز وصول صالح)',
+      }, { status: 401 });
     }
 
     const settings = getSettings();

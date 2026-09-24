@@ -134,11 +134,15 @@ export default function OrderSuccessPage() {
 
   const fetchOrderLive = async () => {
     try {
-      const res = await fetch(`/api/orders/${orderId}?t=${Date.now()}`, {
+      const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+      const token = searchParams.get('token');
+      const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+      const res = await fetch(`/api/orders/${orderId}?t=${Date.now()}${tokenQuery}`, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
+          ...(token ? { 'x-order-token': token } : {}),
         },
       });
       const data = await res.json();

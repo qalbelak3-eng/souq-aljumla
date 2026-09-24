@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { findUserByEmailOrPhone, createUser, updateUserProfile } from '@/lib/db';
+import {
+  signCustomerSession,
+  CUSTOMER_SESSION_COOKIE_NAME,
+  CUSTOMER_SESSION_DURATION_SECONDS,
+} from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -56,11 +61,33 @@ export async function POST(request: Request) {
         updateUserProfile(user.id, { password: inputPass });
       }
 
-      return NextResponse.json({
+      const customerToken = signCustomerSession({
+        userId: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+        role: user.accountType || 'customer',
+        exp: Math.floor(Date.now() / 1000) + CUSTOMER_SESSION_DURATION_SECONDS,
+      });
+
+      const response = NextResponse.json({
         success: true,
         user,
+        token: customerToken,
         message: 'تم تسجيل الدخول بنجاح ✓',
       });
+
+      response.cookies.set({
+        name: CUSTOMER_SESSION_COOKIE_NAME,
+        value: customerToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: CUSTOMER_SESSION_DURATION_SECONDS,
+      });
+
+      return response;
     }
 
     if (action === 'register') {
@@ -131,15 +158,43 @@ export async function POST(request: Request) {
         mapsUrl,
       });
 
-      return NextResponse.json({
+      const customerToken = signCustomerSession({
+        userId: newUser.id,
+        phone: newUser.phone,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.accountType || 'customer',
+        exp: Math.floor(Date.now() / 1000) + CUSTOMER_SESSION_DURATION_SECONDS,
+      });
+
+      const response = NextResponse.json({
         success: true,
         user: newUser,
+        token: customerToken,
         message: isWholesale
           ? 'تم استلام طلب تاجر الجملة بنجاح! حسابك قيد المراجعة والتدقيق من قبل الإدارة لتفعيل الحساب وإرسال الفواتير.'
           : isMarket
           ? 'تم استلام طلب تسجيل الماركت بنجاح! يمكنك تصفح التطبيق، وسيقوم فريق الإدارة بالتواصل معك واعتماد حسابك لتفعيل إرسال فواتير الشراء.'
           : 'تم إنشاء الحساب وتفعيله بنجاح!',
       }, { status: 201 });
+
+      response.cookies.set({
+        name: CUSTOMER_SESSION_COOKIE_NAME,
+        value: customerToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: CUSTOMER_SESSION_DURATION_SECONDS,
+      });
+
+      return response;
+    }
+
+    if (action === 'logout') {
+      const response = NextResponse.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
+      response.cookies.delete(CUSTOMER_SESSION_COOKIE_NAME);
+      return response;
     }
 
     return NextResponse.json({ success: false, error: 'إجراء غير معروف' }, { status: 400 });
