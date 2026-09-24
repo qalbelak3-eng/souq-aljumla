@@ -8,7 +8,7 @@ import {
 } from '@/lib/postgres-orders';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
-import { getAuthenticatedAdmin } from '@/lib/auth';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,6 +31,17 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    // 1. Enforce admin authentication & 'orders' permission
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'orders')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة الطلبات' }, { status: 403 });
+    }
+
+    const operator = { name: admin.name, username: admin.username, role: admin.role };
+
     const body = await request.json();
     const { status, driverId, vehicleId, cancellationReason, driverNotes } = body;
 
@@ -43,9 +54,6 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if ((prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') && status !== 'cancelled') {
       return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
     }
-
-    const admin = getAuthenticatedAdmin(request);
-    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
 
     let updated = null;
 
@@ -125,6 +133,17 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
+    // 1. Enforce admin authentication & 'orders' permission
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'orders')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة الطلبات' }, { status: 403 });
+    }
+
+    const operator = { name: admin.name, username: admin.username, role: admin.role };
+
     const body = await request.json();
     const { items, deliveryFee, discount, notes, status, customer, paymentMethod } = body;
 
@@ -145,9 +164,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).'
       }, { status: 400 });
     }
-
-    const admin = getAuthenticatedAdmin(request);
-    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
 
     const updated = await pgUpdateOrder(
       params.id,
@@ -212,8 +228,16 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
+    // 1. Enforce admin authentication & 'orders' permission
     const admin = getAuthenticatedAdmin(request);
-    const operator = admin ? { name: admin.name, username: admin.username, role: admin.role } : undefined;
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'orders')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة الطلبات' }, { status: 403 });
+    }
+
+    const operator = { name: admin.name, username: admin.username, role: admin.role };
 
     const prevOrder = await pgGetOrderById(params.id);
     if (!prevOrder) {

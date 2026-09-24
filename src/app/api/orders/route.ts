@@ -5,7 +5,7 @@ import { pgGetProducts } from '@/lib/postgres-catalog';
 import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
-import { getAuthenticatedAdmin } from '@/lib/auth';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,6 +18,20 @@ export async function GET(request: Request) {
     const email = searchParams.get('email') || undefined;
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Number(limitParam) : undefined;
+
+    const admin = getAuthenticatedAdmin(request);
+    const isStaffOrAdmin = admin && hasPermission(admin, 'orders');
+
+    // Security Check: Non-admin users cannot query all orders across the system.
+    // They MUST specify their own customer identifier (phone, userId, or email) to only access their own orders.
+    if (!isStaffOrAdmin) {
+      if (!phone && !userId && !email) {
+        return NextResponse.json({
+          success: false,
+          error: 'غير مصرح لك باستعراض كافة الطلبات (يتطلب جلسة إدارية بصلاحية إدارة الطلبات)',
+        }, { status: 401 });
+      }
+    }
 
     const orders = await pgGetOrders({
       userId,

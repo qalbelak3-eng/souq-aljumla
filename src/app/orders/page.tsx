@@ -56,7 +56,10 @@ export default function OrdersPage() {
 
     const fetchOrders = async () => {
       try {
-        const res = await fetch('/api/orders', { cache: 'no-store' });
+        const queryParams = new URLSearchParams();
+        if (user.phone) queryParams.set('phone', user.phone);
+        if (user.id) queryParams.set('userId', user.id);
+        const res = await fetch(`/api/orders?${queryParams.toString()}`, { cache: 'no-store' });
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
           const userPhoneClean = user.phone ? user.phone.replace(/\D/g, '') : '';

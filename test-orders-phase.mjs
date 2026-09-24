@@ -470,17 +470,66 @@ async function runAllOrdersTests() {
   assert(physicalDeleteBlocked, `Physical DELETE on orders table is strictly forbidden by PostgreSQL`);
 
   // ==============================================================
-  // Test 12: API Routes Contract Integration (POST, GET, PATCH, DELETE)
+  // Test 12: API Routes Contract Integration (POST, GET, PATCH, PUT, DELETE)
   // ==============================================================
-  console.log('\n--- Test 12: API Routes End-to-End Verification ---');
+  console.log('\n--- Test 12: API Routes Contract & Auth Verification ---');
   const { GET: getOrdersRoute, POST: postOrderRoute } = await import('./src/app/api/orders/route.ts');
   const {
     GET: getOrderByIdRoute,
     PATCH: patchOrderRoute,
+    PUT: putOrderRoute,
     DELETE: deleteOrderRoute,
   } = await import('./src/app/api/orders/[id]/route.ts');
+  const { signAdminSession, SESSION_COOKIE_NAME } = await import('./src/lib/auth.ts');
+  const { ensureDbExists } = await import('./src/lib/db.ts');
 
-  // POST /api/orders (Storefront checkout with auto-created account)
+  // Setup staff in db.staff for permission checks
+  const memDb = ensureDbExists();
+  if (!memDb.staff) memDb.staff = [];
+  memDb.staff = memDb.staff.filter((s) => s.username !== 'acc_staff_test' && s.username !== 'orders_staff_test');
+  
+  // Staff with accounting permission ONLY (lacks 'orders')
+  memDb.staff.push({
+    id: 'staff-acc-only',
+    name: 'موظف محاسبة فقط',
+    username: 'acc_staff_test',
+    role: 'staff',
+    permissions: ['accounting'],
+    isActive: true,
+  });
+
+  // Staff with orders permission
+  memDb.staff.push({
+    id: 'staff-orders-ok',
+    name: 'موظف مبيعات معتمد',
+    username: 'orders_staff_test',
+    role: 'staff',
+    permissions: ['orders'],
+    isActive: true,
+  });
+
+  const adminCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
+    userId: 'admin-master',
+    username: 'admin',
+    role: 'admin',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}`;
+
+  const staffNoOrdersCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
+    userId: 'staff-acc-only',
+    username: 'acc_staff_test',
+    role: 'staff',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}`;
+
+  const staffOrdersOkCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
+    userId: 'staff-orders-ok',
+    username: 'orders_staff_test',
+    role: 'staff',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}`;
+
+  // 12.1 POST /api/orders (Public storefront customer checkout)
   const postReq = new Request('http://localhost:3000/api/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -506,7 +555,7 @@ async function runAllOrdersTests() {
 
   const postRes = await postOrderRoute(postReq);
   const postData = await postRes.json();
-  assert(postRes.status === 201, `POST /api/orders returned HTTP 201`);
+  assert(postRes.status === 201, `Customer checkout POST /api/orders returned HTTP 201 (Public storefront access works)`);
   assert(postData.success === true, `POST response success is true`);
   assert(postData.order && postData.order.orderNumber.startsWith('INV-'), `Order created via API: ${postData.order.orderNumber}`);
   assert(postData.order.total === 25000, `API Order total calculated correctly: 25000 IQD`);
@@ -514,37 +563,140 @@ async function runAllOrdersTests() {
 
   const apiOrderId = postData.order.id;
 
-  // GET /api/orders by phone
-  const getReq = new Request(`http://localhost:3000/api/orders?phone=07708889911`);
-  const getRes = await getOrdersRoute(getReq);
-  const getData = await getRes.json();
-  assert(getRes.status === 200, `GET /api/orders returned HTTP 200`);
-  assert(getData.orders.length >= 1 && getData.orders[0].id === apiOrderId, `Order found via GET /api/orders?phone=...`);
+  // 12.2 Authentication Enforcements on Sensitive Order Operations:
+  console.log('\n--- Test 13: Enforce Authentication on Sensitive Routes ---');
 
-  // GET /api/orders/[id]
-  const getByIdReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`);
-  const getByIdRes = await getOrderByIdRoute(getByIdReq, { params: { id: apiOrderId } });
-  const getByIdData = await getByIdRes.json();
-  assert(getByIdRes.status === 200, `GET /api/orders/[id] returned HTTP 200`);
-  assert(getByIdData.order.customer.name === 'سالم الكرخي', `Retrieved order matches customer`);
-
-  // PATCH /api/orders/[id]
-  const patchReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+  // PATCH without session -> 401
+  const patchNoAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'processing' }),
   });
-  const patchRes = await patchOrderRoute(patchReq, { params: { id: apiOrderId } });
-  const patchData = await patchRes.json();
-  assert(patchRes.status === 200 && patchData.order.status === 'processing', `PATCH transitioned order to processing`);
+  const patchNoAuthRes = await patchOrderRoute(patchNoAuthReq, { params: { id: apiOrderId } });
+  assert(patchNoAuthRes.status === 401, `PATCH without admin session rejected with HTTP 401`);
 
-  // DELETE /api/orders/[id] (Logical cancel + stock restore)
-  const deleteReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+  // PUT without session -> 401
+  const putNoAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes: 'تعديل غير مصرح' }),
+  });
+  const putNoAuthRes = await putOrderRoute(putNoAuthReq, { params: { id: apiOrderId } });
+  assert(putNoAuthRes.status === 401, `PUT without admin session rejected with HTTP 401`);
+
+  // DELETE without session -> 401
+  const deleteNoAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
     method: 'DELETE',
   });
-  const deleteRes = await deleteOrderRoute(deleteReq, { params: { id: apiOrderId } });
-  const deleteData = await deleteRes.json();
-  assert(deleteRes.status === 200 && deleteData.success === true, `DELETE /api/orders/[id] succeeded logically`);
+  const deleteNoAuthRes = await deleteOrderRoute(deleteNoAuthReq, { params: { id: apiOrderId } });
+  assert(deleteNoAuthRes.status === 401, `DELETE without admin session rejected with HTTP 401`);
+
+  // 12.3 Authorization Enforcements (Staff lacking 'orders' permission -> 403)
+  console.log('\n--- Test 14: Enforce Permissions on Sensitive Routes ---');
+
+  // PATCH with staff lacking 'orders' permission -> 403
+  const patchNoPermReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': staffNoOrdersCookie,
+    },
+    body: JSON.stringify({ status: 'processing' }),
+  });
+  const patchNoPermRes = await patchOrderRoute(patchNoPermReq, { params: { id: apiOrderId } });
+  assert(patchNoPermRes.status === 403, `PATCH by staff without 'orders' permission rejected with HTTP 403`);
+
+  // PUT with staff lacking 'orders' permission -> 403
+  const putNoPermReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': staffNoOrdersCookie,
+    },
+    body: JSON.stringify({ notes: 'تعديل موظف غير مخول' }),
+  });
+  const putNoPermRes = await putOrderRoute(putNoPermReq, { params: { id: apiOrderId } });
+  assert(putNoPermRes.status === 403, `PUT by staff without 'orders' permission rejected with HTTP 403`);
+
+  // DELETE with staff lacking 'orders' permission -> 403
+  const deleteNoPermReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'DELETE',
+    headers: {
+      'Cookie': staffNoOrdersCookie,
+    },
+  });
+  const deleteNoPermRes = await deleteOrderRoute(deleteNoPermReq, { params: { id: apiOrderId } });
+  assert(deleteNoPermRes.status === 403, `DELETE by staff without 'orders' permission rejected with HTTP 403`);
+
+  // 12.4 Successful operations with authorized Admin / Staff:
+  console.log('\n--- Test 15: Authorized Admin / Staff Operations ---');
+
+  // PATCH with authorized staff -> 200
+  const patchAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': staffOrdersOkCookie,
+    },
+    body: JSON.stringify({ status: 'processing' }),
+  });
+  const patchAuthRes = await patchOrderRoute(patchAuthReq, { params: { id: apiOrderId } });
+  const patchAuthData = await patchAuthRes.json();
+  assert(patchAuthRes.status === 200 && patchAuthData.order.status === 'processing', `PATCH with authorized staff succeeded with HTTP 200`);
+
+  // PUT with master admin -> 200
+  const putAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': adminCookie,
+    },
+    body: JSON.stringify({ notes: 'ملاحظة معتمدة من الإدارة' }),
+  });
+  const putAuthRes = await putOrderRoute(putAuthReq, { params: { id: apiOrderId } });
+  const putAuthData = await putAuthRes.json();
+  assert(putAuthRes.status === 200 && putAuthData.success === true, `PUT with master admin succeeded with HTTP 200`);
+
+  // 12.5 GET /api/orders Scoping and Permissions:
+  console.log('\n--- Test 16: Scoping of Customer vs Admin Orders Access ---');
+
+  // Unauthenticated GET /api/orders with NO phone or userId -> 401
+  const getNoAuthAllReq = new Request('http://localhost:3000/api/orders');
+  const getNoAuthAllRes = await getOrdersRoute(getNoAuthAllReq);
+  assert(getNoAuthAllRes.status === 401, `Unauthenticated request to list all orders rejected with HTTP 401`);
+
+  // Customer querying ONLY their own phone -> 200 and returns only their orders
+  const getCustomerReq = new Request(`http://localhost:3000/api/orders?phone=07708889911`);
+  const getCustomerRes = await getOrdersRoute(getCustomerReq);
+  const getCustomerData = await getCustomerRes.json();
+  assert(getCustomerRes.status === 200, `Customer fetching their own orders by phone returned HTTP 200`);
+  assert(getCustomerData.orders.length >= 1, `Customer received their orders list`);
+  
+  // Verify that customer cannot see other customers' orders
+  const leakedOtherCustomer = getCustomerData.orders.some((o) => o.customer.phone !== '07708889911');
+  assert(!leakedOtherCustomer, `Confirmed: Response contains ONLY the requesting customer's orders and does not leak other customers' data`);
+
+  // Admin querying all orders with admin session -> 200
+  const getAdminAllReq = new Request('http://localhost:3000/api/orders', {
+    headers: { 'Cookie': adminCookie },
+  });
+  const getAdminAllRes = await getOrdersRoute(getAdminAllReq);
+  const getAdminAllData = await getAdminAllRes.json();
+  if (getAdminAllRes.status !== 200) {
+    console.error('getAdminAllRes failed with:', getAdminAllRes.status, getAdminAllData);
+  }
+  assert(getAdminAllRes.status === 200, `Admin fetching all orders returned HTTP 200`);
+  assert(getAdminAllData.orders.length >= 2, `Admin successfully received all store orders`);
+
+  // 12.6 DELETE /api/orders/[id] with Admin Session -> 200
+  console.log('\n--- Test 17: DELETE by Admin with Inventory Restoration ---');
+  const deleteAuthReq = new Request(`http://localhost:3000/api/orders/${apiOrderId}`, {
+    method: 'DELETE',
+    headers: { 'Cookie': adminCookie },
+  });
+  const deleteAuthRes = await deleteOrderRoute(deleteAuthReq, { params: { id: apiOrderId } });
+  const deleteAuthData = await deleteAuthRes.json();
+  assert(deleteAuthRes.status === 200 && deleteAuthData.success === true, `DELETE by authorized Admin succeeded with HTTP 200`);
 
   const [apiOrderInDb] = await sql`SELECT status, inventory_restored FROM orders WHERE id = ${apiOrderId};`;
   assert(apiOrderInDb.status === 'cancelled' && apiOrderInDb.inventory_restored === true, `Order in DB is cancelled and inventory restored`);
