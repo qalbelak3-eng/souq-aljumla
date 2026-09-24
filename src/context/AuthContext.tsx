@@ -66,9 +66,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const saved = localStorage.getItem('etihad_user_iq');
       const currentUser = user || (saved ? JSON.parse(saved) : null);
-      if (currentUser && (currentUser.phone || currentUser.email)) {
-        const iden = currentUser.phone || currentUser.email;
-        const res = await fetch(`/api/auth?identifier=${encodeURIComponent(iden)}`);
+      if (currentUser) {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('etihad_customer_token') : null;
+        const res = await fetch('/api/auth', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         const data = await res.json();
         if (data.success && data.user) {
           saveUserToStorage(data.user);
@@ -89,20 +91,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsed = JSON.parse(saved);
         setUser(parsed);
         // Automatically sync and verify fresh status from server in background
-        if (parsed.phone || parsed.email) {
-          const iden = parsed.phone || parsed.email;
-          fetch(`/api/auth?identifier=${encodeURIComponent(iden)}`)
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.success && data.user) {
-                saveUserToStorage(data.user);
-              } else {
-                // If user was deleted or reset from database, log out immediately!
-                saveUserToStorage(null);
-              }
-            })
-            .catch(() => {});
-        }
+        const token = typeof window !== 'undefined' ? localStorage.getItem('etihad_customer_token') : null;
+        fetch('/api/auth', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.user) {
+              saveUserToStorage(data.user);
+            } else {
+              // If user was deleted or reset from database, log out immediately!
+              saveUserToStorage(null);
+            }
+          })
+          .catch(() => {});
       }
     } catch (e) {
       console.error(e);
@@ -252,14 +254,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (updates: Partial<User>) => {
     if (!user) return { success: false, error: 'غير مسجل الدخول' };
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('etihad_customer_token') : null;
       const res = await fetch('/api/auth', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, updates }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ updates }),
       });
       const data = await res.json();
       if (data.success && data.user) {
-        saveUserToStorage(data.user);
+        saveUserToStorage(data.user, data.token);
         return { success: true, user: data.user };
       } else {
         return { success: false, error: data.error || 'فشل تحديث البيانات' };

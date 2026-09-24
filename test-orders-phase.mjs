@@ -922,6 +922,172 @@ async function runAllOrdersTests() {
   const [apiOrderInDb] = await sql`SELECT status, inventory_restored FROM orders WHERE id = ${apiOrderId};`;
   assert(apiOrderInDb.status === 'cancelled' && apiOrderInDb.inventory_restored === true, `Order in DB is cancelled and inventory restored`);
 
+  // ==============================================================
+  // Test 20: Customer Profile & Auth Security (/api/auth Hardening)
+  // ==============================================================
+  console.log('\n--- Test 20: Customer Profile & Auth Security (PUT/GET /api/auth) ---');
+  const { GET: getAuthRoute, PUT: putAuthRoute } = await import('./src/app/api/auth/route.ts');
+  const { createUser: createDbUser, getUsers: getDbUsers } = await import('./src/lib/db.ts');
+
+  // Setup Customer A and Customer B in DB
+  const userA = createDbUser({
+    name: 'حيدر الزبون أ الأصلي',
+    phone: '07701111111',
+    accountType: 'individual',
+    city: 'بغداد',
+    address: 'المنصور',
+  });
+  const userB = createDbUser({
+    name: 'كرار الزبون ب الأصلي',
+    phone: '07702222222',
+    accountType: 'individual',
+    city: 'النجف',
+    address: 'الكوفة',
+  });
+
+  const sessionTokenA = signCustomerSession({
+    userId: userA.id,
+    phone: userA.phone,
+    name: userA.name,
+    role: userA.accountType || 'customer',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const cookieSessionA = `${CUSTOMER_SESSION_COOKIE_NAME}=${sessionTokenA}`;
+
+  // 20.1 PUT without session -> 401
+  const putNoSessionReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates: { name: 'اختراق مجهول' } }),
+  });
+  const putNoSessionRes = await putAuthRoute(putNoSessionReq);
+  assert(putNoSessionRes.status === 401, `PUT /api/auth without session rejected with HTTP 401`);
+
+  // 20.2 Customer A cannot update Customer B even if sending B's userId in Body
+  const putSpoofUserReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieSessionA,
+    },
+    body: JSON.stringify({
+      userId: userB.id,
+      updates: { name: 'محاولة تعديل اسم باء' },
+    }),
+  });
+  const putSpoofUserRes = await putAuthRoute(putSpoofUserReq);
+  assert(putSpoofUserRes.status === 200, `PUT request with Customer A session processed`);
+  const freshUserB = getDbUsers().find(u => u.id === userB.id);
+  assert(freshUserB.name === 'كرار الزبون ب الأصلي', `Confirmed: Customer B was NOT modified by Customer A (Customer B name unchanged)`);
+
+  // 20.3 Modifying accountType or merchantStatus or administrative fields via PUT is safely ignored
+  const putPrivilegeEscalationReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieSessionA,
+    },
+    body: JSON.stringify({
+      updates: {
+        accountType: 'wholesale',
+        merchantStatus: 'approved',
+        role: 'admin',
+        balance: 9999999,
+        category: 'vip',
+      },
+    }),
+  });
+  const putPrivilegeEscalationRes = await putAuthRoute(putPrivilegeEscalationReq);
+  assert(putPrivilegeEscalationRes.status === 200, `PUT request processed`);
+  const freshUserA = getDbUsers().find(u => u.id === userA.id);
+  assert(freshUserA.accountType === 'individual', `accountType modification rejected/ignored (still individual)`);
+  assert(freshUserA.merchantStatus === undefined, `merchantStatus modification rejected/ignored`);
+  assert(freshUserA.role === 'customer', `role escalation rejected/ignored (still customer)`);
+
+  // 20.4 Customer updates allowed personal fields only
+  const putAllowedReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieSessionA,
+    },
+    body: JSON.stringify({
+      updates: {
+        name: 'حيدر الزبون أ المحدث',
+        city: 'بغداد الجديدة',
+        address: 'حي المعلمين',
+      },
+    }),
+  });
+  const putAllowedRes = await putAuthRoute(putAllowedReq);
+  const putAllowedData = await putAllowedRes.json();
+  assert(putAllowedRes.status === 200 && putAllowedData.success === true, `Customer updated allowed personal fields successfully`);
+  const freshUserAAfterUpdate = getDbUsers().find(u => u.id === userA.id);
+  assert(freshUserAAfterUpdate.name === 'حيدر الزبون أ المحدث', `Name updated in DB`);
+  assert(freshUserAAfterUpdate.city === 'بغداد الجديدة', `City updated in DB`);
+  assert(freshUserAAfterUpdate.address === 'حي المعلمين', `Address updated in DB`);
+
+  // 20.5 Phone uniqueness check on update & session refresh
+  // Attempting to change phone to Customer B's existing phone -> 400
+  const putDuplicatePhoneReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieSessionA,
+    },
+    body: JSON.stringify({
+      updates: { phone: userB.phone },
+    }),
+  });
+  const putDuplicatePhoneRes = await putAuthRoute(putDuplicatePhoneReq);
+  assert(putDuplicatePhoneRes.status === 400, `Updating phone to another user's phone rejected with HTTP 400`);
+
+  // Changing to a unique phone succeeds and returns refreshed session token & cookie
+  const newUniquePhone = '07709998877';
+  const putNewPhoneReq = new Request('http://localhost:3000/api/auth', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': cookieSessionA,
+    },
+    body: JSON.stringify({
+      updates: { phone: newUniquePhone },
+    }),
+  });
+  const putNewPhoneRes = await putAuthRoute(putNewPhoneReq);
+  const putNewPhoneData = await putNewPhoneRes.json();
+  assert(putNewPhoneRes.status === 200, `Updating to unique phone succeeded`);
+  assert(putNewPhoneData.token && typeof putNewPhoneData.token === 'string', `Refreshed session token issued on phone change`);
+  assert(putNewPhoneRes.headers.get('set-cookie')?.includes(CUSTOMER_SESSION_COOKIE_NAME), `Refreshed session cookie set on phone change`);
+  const freshUserANewPhone = getDbUsers().find(u => u.id === userA.id);
+  assert(freshUserANewPhone.phone === newUniquePhone, `New phone saved in database`);
+
+  // 20.6 GET /api/auth without session -> 401 (does NOT leak user data)
+  const getAuthNoSessionReq = new Request(`http://localhost:3000/api/auth?identifier=${userB.phone}`);
+  const getAuthNoSessionRes = await getAuthRoute(getAuthNoSessionReq);
+  const getAuthNoSessionData = await getAuthNoSessionRes.json();
+  assert(getAuthNoSessionRes.status === 401, `GET /api/auth by identifier without session rejected with HTTP 401`);
+  assert(!getAuthNoSessionData.user, `No user data exposed to unauthenticated caller`);
+
+  // 20.7 Customer A cannot GET Customer B's data; session A returns only A's data
+  const getAuthCustAReq = new Request(`http://localhost:3000/api/auth?identifier=${userB.phone}`, {
+    headers: { 'Cookie': cookieSessionA },
+  });
+  const getAuthCustARes = await getAuthRoute(getAuthCustAReq);
+  const getAuthCustAData = await getAuthCustARes.json();
+  assert(getAuthCustARes.status === 200, `Customer A GET /api/auth returns HTTP 200`);
+  assert(getAuthCustAData.user.id === userA.id, `Confirmed: Session A returns A's data only`);
+  assert(getAuthCustAData.user.id !== userB.id, `Confirmed: Customer A CANNOT get Customer B's data`);
+
+  // 20.8 Admin lookup by identifier remains functional
+  const getAuthAdminReq = new Request(`http://localhost:3000/api/auth?identifier=${userB.phone}`, {
+    headers: { 'Cookie': adminCookie },
+  });
+  const getAuthAdminRes = await getAuthRoute(getAuthAdminReq);
+  const getAuthAdminData = await getAuthAdminRes.json();
+  assert(getAuthAdminRes.status === 200, `Admin can perform user lookup by identifier (HTTP 200)`);
+  assert(getAuthAdminData.user.id === userB.id, `Admin received target user profile`);
+
   console.log('\n===============================================================');
   console.log(` ALL TESTS COMPLETED: ${passed} PASSED, ${failed} FAILED `);
   console.log('===============================================================\n');
