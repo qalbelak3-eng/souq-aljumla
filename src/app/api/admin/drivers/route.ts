@@ -1,54 +1,60 @@
 import { NextResponse } from 'next/server';
-import { getDrivers, saveDriver, getOrders } from '@/lib/db';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import { pgGetDrivers, pgCreateDriver } from '@/lib/postgres-drivers';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(req: Request) {
   try {
-    const drivers = getDrivers();
-    const orders = getOrders();
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'drivers')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة السائقين' }, { status: 403 });
+    }
 
-    const driversWithStats = drivers.map((d) => {
-      const driverOrders = orders.filter((o) => o.driverId === d.id);
-      const activeDeliveries = driverOrders.filter((o) => o.status === 'processing' || o.status === 'shipped').length;
-      const completedDeliveries = driverOrders.filter((o) => o.status === 'delivered').length;
-      const totalDeliveredRevenue = driverOrders
-        .filter((o) => o.status === 'delivered')
-        .reduce((sum, o) => sum + o.total, 0);
-
-      return {
-        ...d,
-        activeDeliveries,
-        completedDeliveries,
-        totalDeliveredRevenue,
-      };
-    });
+    const drivers = await pgGetDrivers();
 
     return NextResponse.json({
       success: true,
-      drivers: driversWithStats,
+      drivers,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching drivers:', error);
-    return NextResponse.json({ success: false, error: 'حدث خطأ أثناء جلب قائمة السائقين' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || 'حدث خطأ أثناء جلب قائمة السائقين' },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'drivers')) {
+      return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إضافة سائقين' }, { status: 403 });
+    }
+
     const body = await req.json();
-    const { name, phone, password, vehicleInfo, notes } = body;
+    const { name, phone, password, vehicleInfo, defaultVehicleId, notes, isActive } = body;
 
     if (!name || !phone) {
       return NextResponse.json({ success: false, error: 'يرجى إدخال اسم السائق ورقم الهاتف' }, { status: 400 });
     }
 
-    const newDriver = saveDriver({
+    const newDriver = await pgCreateDriver({
       name,
       phone,
       password: password || '123',
       vehicleInfo: vehicleInfo || '',
+      defaultVehicleId,
       notes: notes || '',
-      isActive: true,
-      currentCashInHand: 0,
+      isActive: isActive !== false,
     });
 
     return NextResponse.json({
@@ -56,8 +62,10 @@ export async function POST(req: Request) {
       driver: newDriver,
       message: 'تم إضافة السائق بنجاح',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating driver:', error);
-    return NextResponse.json({ success: false, error: 'حدث خطأ أثناء إضافة السائق' }, { status: 500 });
+    const message = error.message || 'حدث خطأ أثناء إضافة السائق';
+    const status = message.includes('مسجل مسبقاً') ? 400 : 500;
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }

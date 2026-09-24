@@ -369,3 +369,150 @@ export function getOrderAccessTokenFromRequest(request: Request, orderId?: strin
   return null;
 }
 
+/* =========================================================
+   Password Hashing & Verification (scrypt + random salt)
+   ========================================================= */
+
+/**
+ * تشفير كلمة المرور باستخدام scrypt وملح عشوائي آمن (Cryptographically secure)
+ */
+export function hashPassword(password: string): string {
+  if (!password || typeof password !== 'string') {
+    throw new Error('كلمة المرور مطلوبة للتشفير');
+  }
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(password.trim(), salt, 64);
+  return `scrypt:${salt}:${derivedKey.toString('hex')}`;
+}
+
+/**
+ * التحقق من صحة كلمة المرور بمقارنة آمنة زمنياً ضد هجمات التوقيت
+ */
+export function verifyPassword(password: string, hash?: string | null): boolean {
+  if (!password || !hash || typeof hash !== 'string') return false;
+  const parts = hash.split(':');
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+  const [, salt, originalHex] = parts;
+  try {
+    const derivedKey = crypto.scryptSync(password.trim(), salt, 64);
+    const derivedHex = derivedKey.toString('hex');
+    if (derivedHex.length !== originalHex.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(derivedHex, 'hex'), Buffer.from(originalHex, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/* =========================================================
+   Driver Session Authentication
+   ========================================================= */
+
+export const DRIVER_SESSION_COOKIE_NAME = 'etihad_driver_session';
+export const DRIVER_SESSION_DURATION_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+export interface DriverSessionPayload {
+  driverId: string;
+  authIdentityId?: string;
+  phone: string;
+  name: string;
+  role: 'driver';
+  exp: number; // Unix timestamp in seconds
+}
+
+export interface AuthenticatedDriver {
+  id: string;
+  authIdentityId: string;
+  financialAccountId: string;
+  name: string;
+  phone: string;
+  defaultVehicleId?: string;
+  vehicleInfo?: string;
+  isActive: boolean;
+}
+
+/**
+ * توقيع رمز جلسة السائق رقمياً باستخدام HMAC-SHA256
+ */
+export function signDriverSession(payload: DriverSessionPayload): string {
+  const secret = getSessionSecret();
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+/**
+ * التحقق من صحة توقيع رمز جلسة السائق وعدم انتهائها
+ */
+export function verifyDriverSessionToken(token: string): DriverSessionPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+
+  const [data, sig] = parts;
+  const secret = getSessionSecret();
+  const expectedSig = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+
+  if (sig.length !== expectedSig.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8')) as DriverSessionPayload;
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000) || payload.role !== 'driver') {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * استخراج وفحص هوية السائق Server-Side من الكوكيز الموقعة أو ترويسة Authorization
+ * والتحقق الإلزامي من أن السائق موجود وفعال في قاعدة بيانات PostgreSQL
+ */
+export async function getAuthenticatedDriver(request: Request): Promise<AuthenticatedDriver | null> {
+  let token: string | null = null;
+
+  // 1. Check Bearer Authorization header
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  }
+
+  // 2. Check Signed HttpOnly Cookie
+  if (!token) {
+    const cookieHeader = request.headers.get('cookie') || '';
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${DRIVER_SESSION_COOKIE_NAME}=([^;]+)`));
+    if (match) {
+      token = decodeURIComponent(match[1]);
+    }
+  }
+
+  if (!token) return null;
+
+  const payload = verifyDriverSessionToken(token);
+  if (!payload || !payload.driverId) return null;
+
+  // Server-side PostgreSQL verification:
+  // Must verify that driverId still points to an existing and active driver in PostgreSQL!
+  const { pgGetDriverById } = await import('@/lib/postgres-drivers');
+  const driver = await pgGetDriverById(payload.driverId);
+  if (!driver || !driver.isActive) {
+    return null;
+  }
+
+  return {
+    id: driver.id,
+    authIdentityId: driver.authIdentityId,
+    financialAccountId: driver.financialAccountId,
+    name: driver.name,
+    phone: driver.phone,
+    defaultVehicleId: driver.defaultVehicleId,
+    vehicleInfo: driver.vehicleInfo,
+    isActive: driver.isActive,
+  };
+}
+
+
