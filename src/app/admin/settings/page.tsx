@@ -691,11 +691,11 @@ export default function AdminSettingsPage() {
               <span>تحديد موقع المخزن الآن عبر GPS (إذا كنت في المخزن)</span>
             </button>
 
-            {/* عرض الموقع الحالي */}
-            {settings.warehouseLat && settings.warehouseLng && (
+            {/* عرض الموقع الحالي أو تنبيه بعدم التحديد */}
+            {settings.warehouseLat && settings.warehouseLng ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between gap-2">
                 <div>
-                  <span className="font-black text-emerald-900 text-xs block">✅ موقع المخزن محدد</span>
+                  <span className="font-black text-emerald-900 text-xs block">✅ موقع المخزن محدد ومعتمد في النظام</span>
                   <span className="text-[11px] text-emerald-700 font-mono">
                     {settings.warehouseLat.toFixed(6)}, {settings.warehouseLng.toFixed(6)}
                   </span>
@@ -708,6 +708,16 @@ export default function AdminSettingsPage() {
                 >
                   عرض على الخريطة 🗺️
                 </a>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-amber-900 text-xs space-y-1">
+                <div className="font-black flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>تنبيه للمشرف: موقع المخزن غير محدد في إعدادات المتجر</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed font-normal">
+                  يرجى إدخال إحداثيات المخزن الحقيقية أو الضغط على زر GPS أعلاه ثم حفظ التعديلات. لن يتم تفعيل حساب المسافات أو نقطة انطلاق مسار التوصيل حتى يتم اعتماد وحفظ الموقع الحقيقي.
+                </p>
               </div>
             )}
 

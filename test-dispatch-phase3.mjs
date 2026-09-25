@@ -13,7 +13,6 @@ import { decryptPin } from './src/lib/delivery-pin.ts';
 import {
   buildDriverDeliveryQueue,
   resolveDeliveryQueueOrigin,
-  DEFAULT_WAREHOUSE_COORDINATES,
 } from './src/lib/dispatch-recommender.ts';
 
 const Ep = EpDefault.default || EpDefault;
@@ -46,7 +45,7 @@ async function runSqlScript(client, filePath) {
 
 async function setup() {
   console.log('1. Starting embedded PostgreSQL on port', PORT);
-  ep = new Ep({ databaseDir: tempDir, port: PORT });
+  ep = new Ep({ databaseDir: tempDir, port: PORT, initdbFlags: ['-E', 'UTF8', '--locale=C'] });
   await ep.initialise();
   await ep.start();
   console.log('   PostgreSQL started successfully.');
@@ -234,6 +233,19 @@ async function runDispatchPhase3Tests() {
   assert(order1.status === originalStatus1, 'A.6: Order 1 status is completely unchanged');
   assert(order2.status === originalStatus2, 'A.6: Order 2 status is completely unchanged');
 
+  // Test A.7: Strict No-Fake-Coordinates Policy
+  const originNone = resolveDeliveryQueueOrigin({ warehouseLocation: null, lastDeliveredLocation: null, historyOrders: [] });
+  assert(originNone.coords === null, 'A.7: Coords are strictly null when no warehouse is configured (No fake fallback)');
+  assert(originNone.type === 'none', 'A.7: Origin type is none');
+  assert(originNone.label === 'موقع المخزن غير محدد في الإعدادات', 'A.7: Informative Arabic label indicates warehouse not configured');
+
+  const resA7 = buildDriverDeliveryQueue([order2, order1], { warehouseLocation: null, historyOrders: [] });
+  assert(resA7.originUsed === null, 'A.7: originUsed is strictly null');
+  assert(resA7.totalDistanceKm === 0, 'A.7: totalDistanceKm is 0 when no origin');
+  assert(resA7.queue[0].distanceKm === null, 'A.7: First order distanceKm is null (not invented)');
+  assert(resA7.queue[0].cumulativeDistanceKm === null, 'A.7: First order cumulativeDistanceKm is null');
+  assert(resA7.queue[1].distanceKm === null, 'A.7: Second order distanceKm is null');
+
   // =========================================================================
   // SECTION B: Database & API Integration Tests
   // =========================================================================
@@ -254,6 +266,8 @@ async function runDispatchPhase3Tests() {
     pgGetDriverOrders,
   } = await import('./src/lib/postgres-delivery.ts');
   const { GET: getDriverOrdersRoute } = await import('./src/app/api/driver/orders/route.ts');
+  const { pgGetStoreSettings, pgUpdateStoreSettings } = await import('./src/lib/postgres-settings.ts');
+  const { GET: getSettingsRoute, POST: postSettingsRoute } = await import('./src/app/api/settings/route.ts');
 
   // Seed Admin Operator
   const adminOp = {
@@ -400,7 +414,6 @@ async function runDispatchPhase3Tests() {
   assert(driverAStats.inFlightDeliveries === 3, 'B.1: Driver A has inFlightDeliveries=3');
   assert(driverAStats.effectiveStatus === 'busy', 'B.1: Driver A effectiveStatus is busy 🟠');
 
-  // Test B.2: Call GET /api/driver/orders for Driver A
   const tokenA = signDriverSession({
     driverId: driverA.id,
     authIdentityId: driverA.authIdentityId,
@@ -409,6 +422,53 @@ async function runDispatchPhase3Tests() {
     role: 'driver',
     exp: Math.floor(Date.now() / 1000) + 86400,
   });
+
+  // Test B.1b: Initial PostgreSQL store settings (Warehouse coords are strictly null/undefined, no fake fallback)
+  const initialPgSettings = await pgGetStoreSettings();
+  assert(
+    initialPgSettings.warehouseLat === undefined || initialPgSettings.warehouseLat === null,
+    'B.1b: Initial PostgreSQL warehouseLat is null/undefined (strictly no placeholder)'
+  );
+  assert(
+    initialPgSettings.warehouseLng === undefined || initialPgSettings.warehouseLng === null,
+    'B.1b: Initial PostgreSQL warehouseLng is null/undefined (strictly no placeholder)'
+  );
+
+  // Before warehouse is configured, driver orders route returns deliveryQueue with originUsed = null
+  const reqABefore = new Request(`http://localhost:3000/api/driver/orders?driverId=${driverA.id}`, {
+    headers: { cookie: `${DRIVER_SESSION_COOKIE_NAME}=${tokenA}` },
+  });
+  const apiResABefore = await getDriverOrdersRoute(reqABefore);
+  const dataABefore = await apiResABefore.json();
+  assert(dataABefore.success === true, 'B.1b: GET /api/driver/orders succeeded before warehouse configured');
+  assert(dataABefore.deliveryQueue.originUsed === null, 'B.1b: deliveryQueue.originUsed is null (no fake warehouse used)');
+  assert(dataABefore.deliveryQueue.totalDistanceKm === 0, 'B.1b: totalDistanceKm is 0 when warehouse not configured');
+
+  // Test B.1c: Admin configures real warehouse in PostgreSQL via POST /api/settings
+  const updateSettingsReq = new Request('http://localhost:3000/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      warehouseLat: 32.6068,
+      warehouseLng: 44.0186,
+      warehouseName: 'مستودع كربلاء المركزي المعتمد',
+      pricePerKm: 500,
+    }),
+  });
+  const updateRes = await postSettingsRoute(updateSettingsReq);
+  const updateData = await updateRes.json();
+  assert(updateData.success === true, 'B.1c: POST /api/settings succeeded updating warehouse in PostgreSQL');
+  assert(updateData.settings.warehouseLat === 32.6068, 'B.1c: PostgreSQL saved real warehouseLat (32.6068)');
+  assert(updateData.settings.warehouseLng === 44.0186, 'B.1c: PostgreSQL saved real warehouseLng (44.0186)');
+
+  // Verify GET /api/settings reads persisted settings from PostgreSQL
+  const getSettingsReq = new Request('http://localhost:3000/api/settings');
+  const getSettingsRes = await getSettingsRoute(getSettingsReq);
+  const getSettingsData = await getSettingsRes.json();
+  assert(getSettingsData.settings.warehouseLat === 32.6068, 'B.1c: GET /api/settings confirms persisted warehouseLat');
+  assert(getSettingsData.settings.warehouseLng === 44.0186, 'B.1c: GET /api/settings confirms persisted warehouseLng');
+
+  // Test B.2: Call GET /api/driver/orders for Driver A with configured warehouse
   const reqA = new Request(`http://localhost:3000/api/driver/orders?driverId=${driverA.id}`, {
     headers: {
       cookie: `${DRIVER_SESSION_COOKIE_NAME}=${tokenA}`,
@@ -422,6 +482,10 @@ async function runDispatchPhase3Tests() {
   }
   assert(dataA.success === true, 'B.2: GET /api/driver/orders succeeded for Driver A');
   assert(dataA.deliveryQueue !== undefined, 'B.2: deliveryQueue returned in API response');
+  assert(dataA.deliveryQueue.originUsed !== null, 'B.2: deliveryQueue has originUsed after warehouse configured in PostgreSQL');
+  assert(dataA.deliveryQueue.originUsed.type === 'warehouse', 'B.2: originUsed.type is warehouse');
+  assert(dataA.deliveryQueue.originUsed.lat === 32.6068, 'B.2: originUsed.lat matches PostgreSQL warehouse');
+  assert(dataA.deliveryQueue.originUsed.lng === 44.0186, 'B.2: originUsed.lng matches PostgreSQL warehouse');
   assert(dataA.deliveryQueue.queue.length === 3, 'B.2: deliveryQueue contains exactly Driver A 3 orders');
   assert(dataA.deliveryQueue.nextSuggestedOrder.order.id === dbOrderA1.id, 'B.2: Order A1 is suggested next ⭐');
   assert(dataA.deliveryQueue.queue[0].order.id === dbOrderA1.id, 'B.2: Queue sequence 1 is Order A1');

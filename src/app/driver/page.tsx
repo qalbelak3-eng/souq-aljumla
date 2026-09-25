@@ -713,6 +713,19 @@ export default function DriverDashboardPage() {
                       </div>
                     </div>
 
+                    {/* تنبيه غياب إحداثيات المخزن في إعدادات النظام */}
+                    {!effectiveQueue.originUsed && (
+                      <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-amber-900 text-xs font-bold flex items-start gap-2 shadow-2xs">
+                        <span className="text-base shrink-0">⚠️</span>
+                        <div>
+                          <p className="font-black">موقع المستودع غير محدد في إعدادات النظام</p>
+                          <p className="text-[11px] text-amber-800 mt-0.5 font-normal">
+                            يرجى من إدارة العمليات تحديد موقع المخزن وحفظه من لوحة التحكم لتفعيل حساب مسافات التوصيل الدقيقة وترتيب الانطلاق.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Card 1: التالي المقترح ⭐ */}
                     {effectiveQueue.nextSuggestedOrder && (
                       <div className="bg-gradient-to-br from-amber-500/10 via-amber-100/30 to-emerald-500/10 border-2 border-amber-400 rounded-2xl p-3.5 space-y-3 shadow-2xs">

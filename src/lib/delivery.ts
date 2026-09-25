@@ -117,7 +117,7 @@ export function getEffectiveDeliveryFee(
   if (subtotal === 0) return 0;
 
   // 1. حساب بالكيلومتر GPS إذا كان موقع الزبون والمخزن متوفراً
-  if (user?.lat && user?.lng && settings && settings.warehouseLat && settings.pricePerKm) {
+  if (user?.lat && user?.lng && settings && settings.warehouseLat && settings.warehouseLng && settings.pricePerKm) {
     const gpsRes = calculateDeliveryFeeByDistance(user.lat, user.lng, settings as StoreSettings);
     if (gpsRes) return gpsRes.fee;
   }

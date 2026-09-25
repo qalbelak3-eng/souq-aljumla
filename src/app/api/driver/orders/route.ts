@@ -15,7 +15,7 @@ import { driverRatings } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
 import { buildDriverDeliveryQueue } from '@/lib/dispatch-recommender';
-import { getSettings } from '@/lib/db';
+import { pgGetStoreSettings } from '@/lib/postgres-settings';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -59,15 +59,22 @@ export async function GET(req: Request) {
     // 6. Compute Multi-Order Smart Delivery Queue (Phase Dispatch-3)
     let warehouseLocation: { lat: number; lng: number } | null = null;
     try {
-      const settings = getSettings();
-      if (settings?.warehouseLat && settings?.warehouseLng) {
+      const settings = await pgGetStoreSettings();
+      if (
+        settings?.warehouseLat !== undefined &&
+        settings?.warehouseLat !== null &&
+        settings?.warehouseLng !== undefined &&
+        settings?.warehouseLng !== null &&
+        !isNaN(Number(settings.warehouseLat)) &&
+        !isNaN(Number(settings.warehouseLng))
+      ) {
         warehouseLocation = {
           lat: Number(settings.warehouseLat),
           lng: Number(settings.warehouseLng),
         };
       }
     } catch (e) {
-      // Ignore settings fetch errors and fallback
+      // Ignore settings fetch errors
     }
 
     const deliveryQueue = buildDriverDeliveryQueue(activeOrders, {

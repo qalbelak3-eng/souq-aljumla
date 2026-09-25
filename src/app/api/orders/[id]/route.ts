@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSettings } from '@/lib/db';
+import { pgGetStoreSettings } from '@/lib/postgres-settings';
 import {
   pgGetOrderById,
   pgUpdateOrderStatus,
@@ -73,7 +73,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     const authorizedOrder = await pgGetOrderById(params.id, { includePin: shouldIncludePin });
 
-    const settings = getSettings();
+    const settings = await pgGetStoreSettings();
     const whatsappUrl = generateWhatsAppLink(authorizedOrder || order, settings);
 
     return NextResponse.json({ success: true, order: authorizedOrder || order, whatsappUrl });

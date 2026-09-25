@@ -211,8 +211,6 @@ export function rankDriversForOrder<T extends Driver = Driver>(
    Phase Dispatch-3: Multi-Order Smart Delivery Queue
    ========================================================= */
 
-export const DEFAULT_WAREHOUSE_COORDINATES = { lat: 32.6068, lng: 44.0186 }; // كربلاء المقدسة - المستودع الرئيسي
-
 /**
  * فحص صحة الإحداثيات الجغرافية
  */
@@ -288,9 +286,9 @@ export interface BuildDeliveryQueueOptions {
 
 /**
  * تحديد نقطة الانطلاق المرجعية لحساب مسار التوصيل:
- * 1. إذا توفر موقع آخر طلب تم تسليمه -> يستخدم كنقطة انطلاق (بدل العودة للمخزن).
- * 2. إذا توفر موقع المخزن في الإعدادات -> يستخدم كنقطة انطلاق في بداية الجولة.
- * 3. مستودع كربلاء الافتراضي كـ Fallback.
+ * 1. إذا توفر موقع صريح أو تاريخي لآخر طلب تم تسليمه -> يستخدم كنقطة انطلاق (بدل العودة للمخزن).
+ * 2. إذا توفر موقع المخزن الحقيقي المحفوظ في إعدادات PostgreSQL -> يستخدم كنقطة انطلاق في بداية الجولة.
+ * 3. لا نستخدم أي Fallback جغرافي افتراضي أو وهمي على الإطلاق.
  */
 export function resolveDeliveryQueueOrigin(options?: BuildDeliveryQueueOptions): {
   coords: { lat: number; lng: number } | null;
@@ -331,7 +329,7 @@ export function resolveDeliveryQueueOrigin(options?: BuildDeliveryQueueOptions):
     }
   }
 
-  // 3. موقع المخزن المحدد في الإعدادات
+  // 3. موقع المخزن الحقيقي المحدد في إعدادات PostgreSQL
   if (options?.warehouseLocation && isValidCoords(options.warehouseLocation.lat, options.warehouseLocation.lng)) {
     return {
       coords: { lat: Number(options.warehouseLocation.lat), lng: Number(options.warehouseLocation.lng) },
@@ -340,19 +338,11 @@ export function resolveDeliveryQueueOrigin(options?: BuildDeliveryQueueOptions):
     };
   }
 
-  // 4. موقع المستودع الافتراضي (كربلاء)
-  if (DEFAULT_WAREHOUSE_COORDINATES && isValidCoords(DEFAULT_WAREHOUSE_COORDINATES.lat, DEFAULT_WAREHOUSE_COORDINATES.lng)) {
-    return {
-      coords: DEFAULT_WAREHOUSE_COORDINATES,
-      type: 'fallback',
-      label: 'موقع المستودع الافتراضي (كربلاء) 🏢',
-    };
-  }
-
+  // 4. لا يوجد موقع مخزن مضبوط في الإعدادات ولا يوجد تسليم سابق -> يمنع اختراع موقع وهمي
   return {
     coords: null,
     type: 'none',
-    label: 'بدون نقطة انطلاق محددة',
+    label: 'موقع المخزن غير محدد في الإعدادات',
   };
 }
 
@@ -446,17 +436,18 @@ export function buildDriverDeliveryQueue<T = any>(
 
     const result: QueuedDeliveryOrder<T>[] = [];
 
-    // أ) ترتيب الطلبات ذات الإحداثيات GPS بالجار الأقرب
-    while (withGps.length > 0) {
-      let bestIndex = 0;
-      let bestDistance = Infinity;
+    // أ) ترتيب الطلبات ذات الإحداثيات GPS
+    if (originInfo.coords) {
+      // لدينا نقطة انطلاق موثوقة (مستودع PostgreSQL الحقيقي أو آخر تسليم)
+      while (withGps.length > 0) {
+        let bestIndex = 0;
+        let bestDistance = Infinity;
 
-      if (currentPoint) {
         for (let i = 0; i < withGps.length; i++) {
           const item = withGps[i];
           const dist = calculateDistanceKm(
-            currentPoint.lat,
-            currentPoint.lng,
+            currentPoint!.lat,
+            currentPoint!.lng,
             item.coords.lat,
             item.coords.lng
           );
@@ -473,42 +464,52 @@ export function buildDriverDeliveryQueue<T = any>(
             }
           }
         }
-      } else {
-        // إذا لم تتوفر نقطة انطلاق إطلاقاً: فرز قطعي للمحطة الأولى
-        bestDistance = 0;
-        for (let i = 1; i < withGps.length; i++) {
-          if (compareOrdersDeterministically(withGps[i].order, withGps[bestIndex].order) < 0) {
-            bestIndex = i;
-          }
-        }
-      }
 
-      const chosen = withGps.splice(bestIndex, 1)[0];
-      const legDistance = currentPoint ? Math.round(bestDistance * 10) / 10 : null;
-
-      if (legDistance !== null) {
+        const chosen = withGps.splice(bestIndex, 1)[0];
+        const legDistance = Math.round(bestDistance * 10) / 10;
         runningCumulativeKm += legDistance;
         totalDistanceKm += legDistance;
+
+        const { baseAddress, locationDesc } = extractOrderAddress(chosen.order);
+        const mapsUrl = extractOrderMapsUrl(chosen.order);
+
+        result.push({
+          order: chosen.order,
+          sequence: 0, // will be assigned globally
+          isNextSuggested: false,
+          distanceKm: legDistance,
+          cumulativeDistanceKm: Math.round(runningCumulativeKm * 10) / 10,
+          hasGps: true,
+          statusGroup,
+          locationDesc,
+          baseAddress,
+          mapsUrl,
+        });
+
+        // النقطة الحالية تنتقل إلى موقع المحطة المختارة
+        currentPoint = chosen.coords;
       }
+    } else {
+      // لا تتوفر نقطة انطلاق موثوقة (موقع المخزن غير مضبوط في الإعدادات ولا يوجد تسليم سابق)
+      // فرز قطعي بدون اختراع مسافات وهمية
+      withGps.sort((a, b) => compareOrdersDeterministically(a.order, b.order));
+      for (const item of withGps) {
+        const { baseAddress, locationDesc } = extractOrderAddress(item.order);
+        const mapsUrl = extractOrderMapsUrl(item.order);
 
-      const { baseAddress, locationDesc } = extractOrderAddress(chosen.order);
-      const mapsUrl = extractOrderMapsUrl(chosen.order);
-
-      result.push({
-        order: chosen.order,
-        sequence: 0, // will be assigned globally
-        isNextSuggested: false,
-        distanceKm: legDistance,
-        cumulativeDistanceKm: legDistance !== null ? Math.round(runningCumulativeKm * 10) / 10 : null,
-        hasGps: true,
-        statusGroup,
-        locationDesc,
-        baseAddress,
-        mapsUrl,
-      });
-
-      // النقطة الحالية تنتقل إلى موقع المحطة المختارة
-      currentPoint = chosen.coords;
+        result.push({
+          order: item.order,
+          sequence: 0,
+          isNextSuggested: false,
+          distanceKm: null,
+          cumulativeDistanceKm: null,
+          hasGps: true,
+          statusGroup,
+          locationDesc,
+          baseAddress,
+          mapsUrl,
+        });
+      }
     }
 
     // ب) الطلبات بدون GPS توضع بعد الطلبات المحسوبة مع فرز قطعي

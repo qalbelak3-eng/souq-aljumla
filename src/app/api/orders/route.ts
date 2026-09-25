@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSettings, getUsers, validateCoupon } from '@/lib/db';
+import { getUsers, validateCoupon } from '@/lib/db';
+import { pgGetStoreSettings } from '@/lib/postgres-settings';
 import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
     }
 
     // Server-side recalculation of each item price based on verified product catalog
-    const settings = getSettings();
+    const settings = await pgGetStoreSettings();
     const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
