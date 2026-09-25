@@ -248,6 +248,35 @@ export interface Driver {
   createdAt: string;
 }
 
+export interface QueuedDeliveryOrder<T = any> {
+  order: T;
+  sequence: number;           // 1-based index (1 = التالي المقترح ⭐)
+  isNextSuggested: boolean;   // true for sequence === 1 (among deliverable orders)
+  distanceKm: number | null;  // المسافة بالكيلومتر من المحطة السابقة (أو نقطة الانطلاق للمحطة 1)
+  cumulativeDistanceKm: number | null; // إجمالي المسافة التراكمية من نقطة الانطلاق
+  hasGps: boolean;
+  statusGroup: 'shipped' | 'processing';
+  locationDesc?: string | null;
+  baseAddress: string;
+  mapsUrl: string;
+}
+
+export interface DriverDeliveryQueueResult<T = any> {
+  queue: QueuedDeliveryOrder<T>[];
+  nextSuggestedOrder: QueuedDeliveryOrder<T> | null;
+  originUsed: {
+    lat: number;
+    lng: number;
+    type: 'last_delivered' | 'warehouse' | 'fallback' | 'custom' | 'none';
+    label: string;
+  } | null;
+  totalDistanceKm: number;
+  ordersWithGpsCount: number;
+  ordersWithoutGpsCount: number;
+  shippedCount: number;
+  processingCount: number;
+}
+
 export type DriverSettlementType = 'normal' | 'shortage' | 'overage' | 'shortage_repayment' | 'reversal';
 export type DriverSettlementStatus = 'settled' | 'partial' | 'pending' | 'reversed';
 

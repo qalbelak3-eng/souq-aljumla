@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Truck,
@@ -25,7 +25,16 @@ import {
   Star,
   Edit3
 } from 'lucide-react';
-import { Order, Driver, DeliveryCollectionStatus, StoreSettings, DriverRating } from '@/types';
+import {
+  Order,
+  Driver,
+  DeliveryCollectionStatus,
+  StoreSettings,
+  DriverRating,
+  DriverDeliveryQueueResult,
+  QueuedDeliveryOrder,
+} from '@/types';
+import { buildDriverDeliveryQueue } from '@/lib/dispatch-recommender';
 import { generateDeliveryCustomerWhatsAppLink, generateDeliveryAccountantWhatsAppLink } from '@/lib/whatsapp';
 import EtihadLogo from '@/components/EtihadLogo';
 import { useToast } from '@/context/ToastContext';
@@ -70,6 +79,22 @@ export default function DriverDashboardPage() {
   const [editDeliveryNotes, setEditDeliveryNotes] = useState('');
   const [isSavingEditCollection, setIsSavingEditCollection] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Delivery Queue (Phase Dispatch-3: Smart Multi-Order Delivery Route)
+  const [deliveryQueue, setDeliveryQueue] = useState<DriverDeliveryQueueResult | null>(null);
+  const [showFullQueue, setShowFullQueue] = useState(false);
+
+  // Compute effective queue (from server response or fallback memo)
+  const effectiveQueue = useMemo(() => {
+    if (deliveryQueue && deliveryQueue.queue.length > 0) return deliveryQueue;
+    if (activeOrders.length === 0) return null;
+    return buildDriverDeliveryQueue(activeOrders, {
+      warehouseLocation: settings?.warehouseLat && settings?.warehouseLng
+        ? { lat: Number(settings.warehouseLat), lng: Number(settings.warehouseLng) }
+        : null,
+      historyOrders,
+    });
+  }, [deliveryQueue, activeOrders, settings, historyOrders]);
 
   const handleUpdateOperationalStatus = async (newStatus: 'available' | 'break' | 'off_duty') => {
     if (!driver || isUpdatingStatus) return;
@@ -170,6 +195,9 @@ export default function DriverDashboardPage() {
         }
         if (data.driver) {
           setDriver((prev) => (prev ? { ...prev, ...data.driver } : data.driver));
+        }
+        if (data.deliveryQueue) {
+          setDeliveryQueue(data.deliveryQueue);
         }
       }
     } catch (err) {
@@ -641,27 +669,257 @@ export default function DriverDashboardPage() {
                 </p>
               </div>
             ) : (
-              activeOrders.map((order, idx) => {
-                const mapsUrl = getGoogleMapsLink(order);
-                const isExpanded = expandedOrderId === order.id;
+              <>
+                {/* Phase Dispatch-3: مسار توصيلاتي الذكي (Smart Multi-Order Delivery Route) */}
+                {effectiveQueue && effectiveQueue.queue.length > 0 && (
+                  <div className="bg-white border-2 border-amber-300 rounded-3xl p-4 sm:p-5 shadow-sm space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-amber-100 pb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-xs">
+                          <Navigation className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
+                            <span>مسار توصيلاتي</span>
+                            <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                              ترتيب ذكي ⭐
+                            </span>
+                          </h3>
+                          <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span>{effectiveQueue.originUsed?.label || 'نقطة الانطلاق'}</span>
+                            {effectiveQueue.totalDistanceKm > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>إجمالي المسار: ~{effectiveQueue.totalDistanceKm} كم</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                return (
-                  <div
-                    key={order.id}
-                    className="bg-white border-2 border-slate-200 hover:border-amber-400 rounded-3xl p-4 sm:p-5 shadow-sm transition-all space-y-4 relative overflow-hidden"
-                  >
-                    {/* Badge top */}
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="bg-amber-100 text-amber-900 text-xs font-mono font-black px-2.5 py-1 rounded-xl border border-amber-200">
-                          #{idx + 1} • {order.orderNumber}
-                        </span>
-                        {order.vehicleName && (
-                          <span className="bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1">
-                            <span>🚗 {order.vehicleName}</span>
-                            {order.vehiclePlate && <span className="font-mono opacity-80" dir="ltr">({order.vehiclePlate})</span>}
+                      {/* Stats badge */}
+                      <div className="flex items-center gap-1.5 text-[11px] font-black">
+                        {effectiveQueue.shippedCount > 0 && (
+                          <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded-lg border border-orange-200">
+                            {effectiveQueue.shippedCount} بالطريق 🚚
                           </span>
                         )}
+                        {effectiveQueue.processingCount > 0 && (
+                          <span className="bg-blue-100 text-blue-900 px-2 py-0.5 rounded-lg border border-blue-200">
+                            {effectiveQueue.processingCount} للتجهيز 📦
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card 1: التالي المقترح ⭐ */}
+                    {effectiveQueue.nextSuggestedOrder && (
+                      <div className="bg-gradient-to-br from-amber-500/10 via-amber-100/30 to-emerald-500/10 border-2 border-amber-400 rounded-2xl p-3.5 space-y-3 shadow-2xs">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="bg-amber-500 text-white text-[11px] font-black px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1">
+                            <Star className="w-3.5 h-3.5 fill-white text-white" />
+                            <span>التالي المقترح ⭐ (#1)</span>
+                          </span>
+
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                            effectiveQueue.nextSuggestedOrder.statusGroup === 'shipped'
+                              ? 'bg-orange-100 text-orange-900 border border-orange-200'
+                              : 'bg-blue-100 text-blue-900 border border-blue-200'
+                          }`}>
+                            {effectiveQueue.nextSuggestedOrder.statusGroup === 'shipped' ? '🚚 معك بالمركبة' : '📦 قيد التجهيز'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-black text-slate-900">
+                              #{effectiveQueue.nextSuggestedOrder.order.orderNumber}
+                            </span>
+                            <span className="font-black text-slate-900">
+                              {effectiveQueue.nextSuggestedOrder.order.customer?.name}
+                            </span>
+                          </div>
+
+                          {/* Distance indicator */}
+                          <div className="text-[11px] font-black flex items-center gap-1.5 text-slate-700">
+                            <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            {effectiveQueue.nextSuggestedOrder.hasGps ? (
+                              <span className="text-emerald-700">
+                                المسافة التقريبية: ~{effectiveQueue.nextSuggestedOrder.distanceKm} كم من نقطة الانطلاق
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
+                                المسافة غير متاحة (بدون إحداثيات GPS)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Address & locationDesc */}
+                          <div className="text-[11px] text-slate-600 bg-white/80 p-2 rounded-xl border border-amber-200/60 space-y-1">
+                            <div className="font-bold flex items-center gap-1">
+                              <span>العنوان:</span>
+                              <span className="text-slate-800">{effectiveQueue.nextSuggestedOrder.baseAddress || 'غير محدد'}</span>
+                            </div>
+                            {effectiveQueue.nextSuggestedOrder.locationDesc && (
+                              <div className="text-emerald-800 bg-emerald-50 px-2 py-1 rounded-lg font-black flex items-center gap-1 text-[10.5px]">
+                                <span>📌 علامة مميزة:</span>
+                                <span>{effectiveQueue.nextSuggestedOrder.locationDesc}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Navigation Button */}
+                        <div className="pt-1 flex items-center gap-2">
+                          <a
+                            href={effectiveQueue.nextSuggestedOrder.mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 px-3 rounded-xl transition text-center flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                          >
+                            <Navigation className="w-3.5 h-3.5" />
+                            <span>فتح الملاحة (Google Maps)</span>
+                          </a>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById(`order-card-${effectiveQueue.nextSuggestedOrder?.order.id}`);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              setExpandedOrderId(effectiveQueue.nextSuggestedOrder?.order.id || null);
+                            }}
+                            className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-black py-2 px-3 rounded-xl transition text-xs"
+                          >
+                            عرض الطلب 👇
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remaining Stops in the Queue */}
+                    {effectiveQueue.queue.length > 1 && (
+                      <div className="space-y-2 pt-1 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setShowFullQueue(!showFullQueue)}
+                          className="w-full flex items-center justify-between text-xs font-black text-slate-700 hover:text-slate-900 py-1.5 px-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span>بقية المحطات المقترحة بالترتيب</span>
+                            <span className="bg-slate-200 text-slate-800 text-[10px] px-1.5 py-0.2 rounded-full">
+                              {effectiveQueue.queue.length - 1} محطات
+                            </span>
+                          </span>
+                          {showFullQueue ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+
+                        {showFullQueue && (
+                          <div className="space-y-2 pt-1">
+                            {effectiveQueue.queue.slice(1).map((item) => (
+                              <div
+                                key={item.order.id}
+                                className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex items-center justify-between gap-3 text-[11px]"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-800 flex items-center justify-center font-mono font-black text-[11px] shrink-0">
+                                    {item.sequence}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono font-black text-slate-900">#{item.order.orderNumber}</span>
+                                      <span className="text-slate-700 truncate font-bold">{item.order.customer?.name}</span>
+                                      <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
+                                        item.statusGroup === 'shipped' ? 'bg-orange-100 text-orange-900' : 'bg-blue-100 text-blue-900'
+                                      }`}>
+                                        {item.statusGroup === 'shipped' ? '🚚 بالطريق' : '📦 تجهيز'}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                      {item.baseAddress}
+                                      {item.locationDesc ? ` • 📌 ${item.locationDesc}` : ''}
+                                    </div>
+                                    <div className="text-[10px] text-slate-600 mt-0.5 font-bold">
+                                      {item.hasGps ? (
+                                        <span className="text-emerald-700">+~{item.distanceKm} كم من المحطة السابقة</span>
+                                      ) : (
+                                        <span className="text-slate-400">المسافة غير متاحة (بدون GPS)</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <a
+                                    href={item.mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg transition"
+                                    title="فتح الخريطة"
+                                  >
+                                    <Navigation className="w-3.5 h-3.5" />
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const el = document.getElementById(`order-card-${item.order.id}`);
+                                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                      setExpandedOrderId(item.order.id);
+                                    }}
+                                    className="p-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition text-[10px] font-black"
+                                    title="عرض الطلب"
+                                  >
+                                    عرض
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Disclaimer note */}
+                    <p className="text-[10px] text-slate-400 font-bold border-t border-slate-100 pt-2 text-center">
+                      💡 هذا المسار هو اقتراح ذكي (Recommendation) لاختصار مسافة القيادة وزمن التوصيل. يمكنك تسليم الطلبات بأي تسلسل تراه مناسباً.
+                    </p>
+                  </div>
+                )}
+
+                {activeOrders.map((order, idx) => {
+                  const mapsUrl = getGoogleMapsLink(order);
+                  const isExpanded = expandedOrderId === order.id;
+                  const queueItem = effectiveQueue?.queue.find((q) => q.order.id === order.id);
+
+                  return (
+                    <div
+                      key={order.id}
+                      id={`order-card-${order.id}`}
+                      className="bg-white border-2 border-slate-200 hover:border-amber-400 rounded-3xl p-4 sm:p-5 shadow-sm transition-all space-y-4 relative overflow-hidden"
+                    >
+                      {/* Badge top */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="bg-amber-100 text-amber-900 text-xs font-mono font-black px-2.5 py-1 rounded-xl border border-amber-200">
+                            #{idx + 1} • {order.orderNumber}
+                          </span>
+                          {queueItem?.isNextSuggested && (
+                            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-2xs">
+                              <Star className="w-3 h-3 fill-white" />
+                              <span>التالي المقترح ⭐ (محطة 1)</span>
+                            </span>
+                          )}
+                          {queueItem && !queueItem.isNextSuggested && (
+                            <span className="bg-slate-100 text-slate-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-slate-200">
+                              محطة #{queueItem.sequence}
+                            </span>
+                          )}
+                          {order.vehicleName && (
+                            <span className="bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1">
+                              <span>🚗 {order.vehicleName}</span>
+                              {order.vehiclePlate && <span className="font-mono opacity-80" dir="ltr">({order.vehiclePlate})</span>}
+                            </span>
+                          )}
                         {order.customer.locationTitle && (
                           <span className="bg-sky-100 text-sky-900 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-sky-200">
                             {order.customer.locationTitle}
@@ -941,9 +1199,10 @@ export default function DriverDashboardPage() {
 
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </>
+          )}
+        </div>
         )}
 
         {/* Tab 2: HISTORY COMPLETED ORDERS */}

@@ -14,6 +14,8 @@ import { getDb } from '@/db/client';
 import { driverRatings } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+import { buildDriverDeliveryQueue } from '@/lib/dispatch-recommender';
+import { getSettings } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -54,6 +56,25 @@ export async function GET(req: Request) {
       .orderBy(desc(driverRatings.createdAt))
       .limit(20);
 
+    // 6. Compute Multi-Order Smart Delivery Queue (Phase Dispatch-3)
+    let warehouseLocation: { lat: number; lng: number } | null = null;
+    try {
+      const settings = getSettings();
+      if (settings?.warehouseLat && settings?.warehouseLng) {
+        warehouseLocation = {
+          lat: Number(settings.warehouseLat),
+          lng: Number(settings.warehouseLng),
+        };
+      }
+    } catch (e) {
+      // Ignore settings fetch errors and fallback
+    }
+
+    const deliveryQueue = buildDriverDeliveryQueue(activeOrders, {
+      warehouseLocation,
+      historyOrders,
+    });
+
     return NextResponse.json({
       success: true,
       driver: driverProfile
@@ -64,6 +85,7 @@ export async function GET(req: Request) {
             vehicleInfo: driverProfile.vehicleInfo,
             currentCashInHand: driverProfile.currentCashInHand || 0,
             activeDeliveries: driverProfile.activeDeliveries,
+            inFlightDeliveries: driverProfile.inFlightDeliveries,
             completedDeliveries: driverProfile.completedDeliveries,
             totalDeliveredRevenue: driverProfile.totalDeliveredRevenue,
             operationalStatus: driverProfile.operationalStatus,
@@ -73,6 +95,7 @@ export async function GET(req: Request) {
       ratings,
       activeOrders,
       historyOrders,
+      deliveryQueue,
     });
   } catch (error: any) {
     console.error('Error fetching driver orders:', error);
