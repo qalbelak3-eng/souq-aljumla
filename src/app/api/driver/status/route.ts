@@ -44,6 +44,7 @@ export async function GET(req: Request) {
       operationalStatus: driverProfile.operationalStatus,
       effectiveStatus: driverProfile.effectiveStatus,
       activeDeliveries: driverProfile.activeDeliveries,
+      inFlightDeliveries: driverProfile.inFlightDeliveries,
     });
   } catch (error: any) {
     console.error('Error fetching driver operational status:', error);
@@ -113,6 +114,7 @@ export async function PUT(req: Request) {
       operationalStatus: updated.operationalStatus,
       effectiveStatus: updated.effectiveStatus,
       activeDeliveries: updated.activeDeliveries,
+      inFlightDeliveries: updated.inFlightDeliveries,
     });
   } catch (error: any) {
     console.error('Error updating driver operational status:', error);

@@ -24,6 +24,7 @@ export interface DriverWithStats extends Driver {
   authIdentityIsActive?: boolean;
   financialAccountId: string;
   activeDeliveries: number;
+  inFlightDeliveries: number;
   completedDeliveries: number;
   totalDeliveredRevenue: number;
   currentCashInHand: number;
@@ -417,6 +418,7 @@ export async function pgCreateDriver(input: CreateDriverInput): Promise<DriverWi
       effectiveStatus: computeDriverOperationalStatus(baseStatus, 0),
       currentCashInHand: 0,
       activeDeliveries: 0,
+      inFlightDeliveries: 0,
       completedDeliveries: 0,
       totalDeliveredRevenue: 0,
       createdAt: newDriver.createdAt.toISOString(),
@@ -480,14 +482,18 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
     settledMap.set(s.driverId, (settledMap.get(s.driverId) || 0) + Number(s.actualAmount || 0));
   }
 
-  const statsMap = new Map<string, { active: number; completed: number; revenue: number; collectedCash: number }>();
+  const statsMap = new Map<string, { active: number; inFlight: number; completed: number; revenue: number; collectedCash: number }>();
 
   for (const o of driverOrders) {
     if (!o.driverId) continue;
-    const curr = statsMap.get(o.driverId) || { active: 0, completed: 0, revenue: 0, collectedCash: 0 };
+    const curr = statsMap.get(o.driverId) || { active: 0, inFlight: 0, completed: 0, revenue: 0, collectedCash: 0 };
     if (o.status === 'processing' || o.status === 'shipped') {
       curr.active += 1;
-    } else if (o.status === 'delivered') {
+    }
+    if (o.status === 'shipped') {
+      curr.inFlight += 1;
+    }
+    if (o.status === 'delivered') {
       curr.completed += 1;
       curr.revenue += Number(o.total) || 0;
     }
@@ -504,12 +510,12 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
   }
 
   return rows.map(({ driver, vehicle }) => {
-    const s = statsMap.get(driver.id) || { active: 0, completed: 0, revenue: 0, collectedCash: 0 };
+    const s = statsMap.get(driver.id) || { active: 0, inFlight: 0, completed: 0, revenue: 0, collectedCash: 0 };
     const totalSettled = settledMap.get(driver.id) || 0;
     const cashInHand = Math.max(0, s.collectedCash - totalSettled);
 
     const baseStatus = (driver.operationalStatus as DriverBaseStatus) || 'available';
-    const effectiveStatus = computeDriverOperationalStatus(baseStatus, s.active);
+    const effectiveStatus = computeDriverOperationalStatus(baseStatus, s.inFlight);
 
     return {
       id: driver.id,
@@ -526,6 +532,7 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
       effectiveStatus,
       currentCashInHand: cashInHand,
       activeDeliveries: s.active,
+      inFlightDeliveries: s.inFlight,
       completedDeliveries: s.completed,
       totalDeliveredRevenue: s.revenue,
       createdAt: driver.createdAt.toISOString(),
@@ -579,6 +586,7 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
   const totalSettled = activeSettlements.reduce((sum, s) => sum + Number(s.actualAmount || 0), 0);
 
   let active = 0;
+  let inFlight = 0;
   let completed = 0;
   let revenue = 0;
   let totalCollected = 0;
@@ -586,7 +594,11 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
   for (const o of driverOrders) {
     if (o.status === 'processing' || o.status === 'shipped') {
       active += 1;
-    } else if (o.status === 'delivered') {
+    }
+    if (o.status === 'shipped') {
+      inFlight += 1;
+    }
+    if (o.status === 'delivered') {
       completed += 1;
       revenue += Number(o.total) || 0;
     }
@@ -603,7 +615,7 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
   const cashInHand = Math.max(0, totalCollected - totalSettled);
 
   const baseStatus = (driver.operationalStatus as DriverBaseStatus) || 'available';
-  const effectiveStatus = computeDriverOperationalStatus(baseStatus, active);
+  const effectiveStatus = computeDriverOperationalStatus(baseStatus, inFlight);
 
   return {
     id: driver.id,
@@ -621,6 +633,7 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
     effectiveStatus,
     currentCashInHand: cashInHand,
     activeDeliveries: active,
+    inFlightDeliveries: inFlight,
     completedDeliveries: completed,
     totalDeliveredRevenue: revenue,
     createdAt: driver.createdAt.toISOString(),
@@ -668,6 +681,7 @@ export async function pgGetDriverByPhone(phone: string): Promise<DriverWithAuth 
     notes: driver.notes || undefined,
     currentCashInHand: 0,
     activeDeliveries: 0,
+    inFlightDeliveries: 0,
     completedDeliveries: 0,
     totalDeliveredRevenue: 0,
     createdAt: driver.createdAt.toISOString(),

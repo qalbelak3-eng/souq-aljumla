@@ -7,17 +7,17 @@ export const HIGH_CUSTODY_WARNING = '⚠️ عهدة مرتفعة — يفضّل
  * احتساب الحالة التشغيلية الفعلية للسائق (Effective Operational Status)
  * - إذا كان السائق في استراحة 'break' -> يبقى 'break' ☕
  * - إذا كان السائق خارج الدوام 'off_duty' -> يبقى 'off_duty' ⚫
- * - إذا كان السائق متاحاً 'available' ولديه طلبات نشطة (activeDeliveries > 0) -> يتحول تشغيلياً إلى 'busy' 🟠
- * - إذا كان السائق متاحاً 'available' وبدون طلبات نشطة -> يبقى 'available' 🟢
+ * - إذا كان السائق متاحاً 'available' ولديه طلبات خرجت للتوصيل الفعلي بالطريق (inFlightDeliveries > 0) -> يتحول تشغيلياً إلى 'busy' 🟠
+ * - إذا كان السائق متاحاً 'available' وبدون طلبات بالطريق (inFlightDeliveries === 0) -> يبقى 'available' 🟢
  */
 export function computeDriverOperationalStatus(
   baseStatus?: DriverBaseStatus | string,
-  activeDeliveries: number = 0
+  inFlightDeliveries: number = 0
 ): DriverOperationalStatus {
   const clean = String(baseStatus || '').toLowerCase().trim();
   if (clean === 'break') return 'break';
   if (clean === 'off_duty') return 'off_duty';
-  if (activeDeliveries > 0) return 'busy';
+  if (inFlightDeliveries > 0) return 'busy';
   return 'available';
 }
 
@@ -44,6 +44,7 @@ export interface RankedDriver<T extends Driver = Driver> {
   isRecommended: boolean;
   hasActiveVehicle: boolean;
   activeDeliveries: number;
+  inFlightDeliveries: number;
   currentCashInHand: number;
   completedDeliveries: number;
   isHighCustody: boolean;
@@ -76,7 +77,7 @@ export function driverHasActiveVehicle(driver: Driver, vehicles?: Vehicle[]): bo
  * 3. إعطاء أفضلية للمتاح (available) على المشغول (busy).
  * 4. تطبيق معايير التوزيع التشغيلي:
  *    - أفضلية من لديه مركبة فعالة.
- *    - الأقل في عدد الطلبات النشطة (activeDeliveries).
+ *    - الأقل في إجمالي الحمل التشغيلي (activeDeliveries).
  *    - للطلبات النقدية: الأقل في العهدة النقدية (currentCashInHand).
  *      للطلبات غير النقدية: الأكثر خبرة وإنجازاً (completedDeliveries).
  * 5. كسر التعادل بمعيار قطعي ثابت (Deterministic Tiebreaker) باستخدام الاسم أو المعرف.
@@ -93,8 +94,8 @@ export function rankDriversForOrder<T extends Driver = Driver>(
   // 2. تصفية واستبعاد السائقين في استراحة أو خارج الدوام
   const eligibleDrivers = activeDrivers.filter((driver) => {
     const rawStatus = (driver as any).operationalStatus || (driver as any).effectiveStatus;
-    const activeDeliveries = Number((driver as any).activeDeliveries || 0);
-    const effStatus = computeDriverOperationalStatus(rawStatus, activeDeliveries);
+    const inFlightDeliveries = Number((driver as any).inFlightDeliveries || 0);
+    const effStatus = computeDriverOperationalStatus(rawStatus, inFlightDeliveries);
     return effStatus !== 'break' && effStatus !== 'off_duty';
   });
 
@@ -105,17 +106,19 @@ export function rankDriversForOrder<T extends Driver = Driver>(
   const decorated: RankedDriver<T>[] = eligibleDrivers.map((driver) => {
     const hasActiveVehicle = driverHasActiveVehicle(driver, vehicles);
     const activeDeliveries = Number((driver as any).activeDeliveries || 0);
+    const inFlightDeliveries = Number((driver as any).inFlightDeliveries || 0);
     const currentCashInHand = Number(driver.currentCashInHand || 0);
     const completedDeliveries = Number((driver as any).completedDeliveries || 0);
     const isHighCustody = currentCashInHand >= HIGH_CUSTODY_THRESHOLD;
     const baseStatus = ((driver as any).operationalStatus as DriverBaseStatus) || 'available';
-    const effectiveStatus = computeDriverOperationalStatus(baseStatus, activeDeliveries);
+    const effectiveStatus = (driver as any).effectiveStatus || computeDriverOperationalStatus(baseStatus, inFlightDeliveries);
 
     return {
       driver,
       isRecommended: false,
       hasActiveVehicle,
       activeDeliveries,
+      inFlightDeliveries,
       currentCashInHand,
       completedDeliveries,
       isHighCustody,

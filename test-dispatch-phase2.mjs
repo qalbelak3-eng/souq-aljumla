@@ -135,23 +135,23 @@ async function runDispatchPhase2Tests() {
   // =========================================================================
   console.log('--- Section A: Unit Rules for Availability & Status Derivation ---');
 
-  // A.1: Status derivation (computeDriverOperationalStatus)
-  assert(computeDriverOperationalStatus('available', 0) === 'available', 'available + 0 active deliveries = available 🟢');
-  assert(computeDriverOperationalStatus('available', 2) === 'busy', 'available + 2 active deliveries = busy 🟠');
-  assert(computeDriverOperationalStatus('break', 0) === 'break', 'break + 0 active deliveries = break ☕');
-  assert(computeDriverOperationalStatus('break', 1) === 'break', 'break + 1 active delivery = break ☕');
-  assert(computeDriverOperationalStatus('off_duty', 0) === 'off_duty', 'off_duty + 0 active deliveries = off_duty ⚫');
-  assert(computeDriverOperationalStatus('off_duty', 1) === 'off_duty', 'off_duty + 1 active delivery = off_duty ⚫');
+  // A.1: Status derivation (computeDriverOperationalStatus based on inFlightDeliveries)
+  assert(computeDriverOperationalStatus('available', 0) === 'available', 'available + 0 in-flight deliveries = available 🟢');
+  assert(computeDriverOperationalStatus('available', 2) === 'busy', 'available + 2 in-flight deliveries = busy 🟠');
+  assert(computeDriverOperationalStatus('break', 0) === 'break', 'break + 0 in-flight deliveries = break ☕');
+  assert(computeDriverOperationalStatus('break', 1) === 'break', 'break + 1 in-flight delivery = break ☕');
+  assert(computeDriverOperationalStatus('off_duty', 0) === 'off_duty', 'off_duty + 0 in-flight deliveries = off_duty ⚫');
+  assert(computeDriverOperationalStatus('off_duty', 1) === 'off_duty', 'off_duty + 1 in-flight delivery = off_duty ⚫');
   assert(computeDriverOperationalStatus(undefined, 0) === 'available', 'undefined defaults to available');
-  assert(computeDriverOperationalStatus(undefined, 1) === 'busy', 'undefined with 1 active delivery = busy');
+  assert(computeDriverOperationalStatus(undefined, 1) === 'busy', 'undefined with 1 in-flight delivery = busy');
 
   // A.2: Smart Recommendation exclusions: break & off_duty must be excluded
   const mockDrivers = [
-    { id: 'd-active-avail', name: 'أحمد المتاح', isActive: true, operationalStatus: 'available', activeDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
-    { id: 'd-active-busy', name: 'بلال المشغول', isActive: true, operationalStatus: 'available', activeDeliveries: 1, currentCashInHand: 0, isVehicleActive: true },
-    { id: 'd-break', name: 'جمال المستريح', isActive: true, operationalStatus: 'break', activeDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
-    { id: 'd-offduty', name: 'خالد المنتهي', isActive: true, operationalStatus: 'off_duty', activeDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
-    { id: 'd-inactive', name: 'سعيد المعطل', isActive: false, operationalStatus: 'available', activeDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-active-avail', name: 'أحمد المتاح', isActive: true, operationalStatus: 'available', activeDeliveries: 0, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-active-busy', name: 'بلال المشغول', isActive: true, operationalStatus: 'available', activeDeliveries: 1, inFlightDeliveries: 1, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-break', name: 'جمال المستريح', isActive: true, operationalStatus: 'break', activeDeliveries: 0, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-offduty', name: 'خالد المنتهي', isActive: true, operationalStatus: 'off_duty', activeDeliveries: 0, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-inactive', name: 'سعيد المعطل', isActive: false, operationalStatus: 'available', activeDeliveries: 0, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
   ];
 
   const rankedA = rankDriversForOrder(mockDrivers);
@@ -167,14 +167,26 @@ async function runDispatchPhase2Tests() {
   assert(rankedA[1].driver.id === 'd-active-busy', 'Busy driver is ranked #2');
   assert(rankedA[1].effectiveStatus === 'busy', 'Second driver effectiveStatus is busy');
 
-  // A.4: When both are busy, least loaded wins
+  // A.4: When both are busy, least loaded by activeDeliveries wins
   const mockBusyDrivers = [
-    { id: 'd-busy-2', name: 'زياد محمل 2', isActive: true, operationalStatus: 'available', activeDeliveries: 2, currentCashInHand: 0, isVehicleActive: true },
-    { id: 'd-busy-1', name: 'سالم محمل 1', isActive: true, operationalStatus: 'available', activeDeliveries: 1, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-busy-2', name: 'زياد محمل 2', isActive: true, operationalStatus: 'available', activeDeliveries: 2, inFlightDeliveries: 1, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-busy-1', name: 'سالم محمل 1', isActive: true, operationalStatus: 'available', activeDeliveries: 1, inFlightDeliveries: 1, currentCashInHand: 0, isVehicleActive: true },
   ];
   const rankedBusy = rankDriversForOrder(mockBusyDrivers);
   assert(rankedBusy[0].driver.id === 'd-busy-1', 'Least loaded busy driver (1 order) ranks ahead of more loaded (2 orders)');
   assert(rankedBusy[0].isRecommended === true, 'Least loaded busy driver is recommended when no available drivers exist');
+
+  // A.5: Both available: driver with assigned orders (processing) vs 0 orders -> least loaded wins!
+  const mockAvailDriversWithLoad = [
+    { id: 'd-avail-load3', name: 'عمر متاح بحمل 3', isActive: true, operationalStatus: 'available', activeDeliveries: 3, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-avail-load1', name: 'سعد متاح بحمل 1', isActive: true, operationalStatus: 'available', activeDeliveries: 1, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+    { id: 'd-avail-load0', name: 'يحيى متاح بحمل 0', isActive: true, operationalStatus: 'available', activeDeliveries: 0, inFlightDeliveries: 0, currentCashInHand: 0, isVehicleActive: true },
+  ];
+  const rankedAvailLoad = rankDriversForOrder(mockAvailDriversWithLoad);
+  assert(rankedAvailLoad[0].driver.id === 'd-avail-load0', 'Driver with 0 activeDeliveries ranked #1');
+  assert(rankedAvailLoad[1].driver.id === 'd-avail-load1', 'Driver with 1 activeDeliveries ranked #2');
+  assert(rankedAvailLoad[2].driver.id === 'd-avail-load3', 'Driver with 3 activeDeliveries ranked #3');
+  assert(rankedAvailLoad[0].effectiveStatus === 'available' && rankedAvailLoad[2].effectiveStatus === 'available', 'All remain effectiveStatus: available while inFlightDeliveries=0');
 
   // =========================================================================
   // Section B: Database Operations & State Machine Transitions
@@ -316,9 +328,9 @@ async function runDispatchPhase2Tests() {
   await pgUpdateDriver(driver2.id, { isActive: true });
 
   // =========================================================================
-  // Section C: Protection of In-Flight / Shipped Deliveries
+  // Section C: Protection of In-Flight / Shipped Deliveries & Lifecycle Combinations
   // =========================================================================
-  console.log('\n--- Section C: In-Flight Shipped Delivery Protection against Off-Duty ---');
+  console.log('\n--- Section C: In-Flight Shipped Delivery Protection against Off-Duty & Lifecycle Combinations ---');
   const adminOp = {
     id: 'a0000000-0000-0000-0000-000000000001',
     name: 'مشرف العمليات',
@@ -326,25 +338,51 @@ async function runDispatchPhase2Tests() {
     username: 'ops_admin',
   };
 
-  const order1 = await pgCreateOrder({
-    customer: { name: 'ماركت دجلة', phone: '07709995544', city: 'بغداد', address: 'المنصور', isGuest: false, userId: custAuth.id },
+  // C.0: Explicit Test Cases for (Processing vs Shipped vs Available vs Busy)
+  // Case 1: 0 processing + 0 shipped -> available 🟢
+  const d1Init = await pgGetDriverById(driver1.id);
+  assert(d1Init.activeDeliveries === 0 && d1Init.inFlightDeliveries === 0, 'Case 1: 0 processing + 0 shipped: activeDeliveries=0, inFlightDeliveries=0');
+  assert(d1Init.effectiveStatus === 'available', 'Case 1: 0 processing + 0 shipped -> available 🟢');
+
+  // Case 2: 1 processing + 0 shipped -> available 🟢
+  const orderP1 = await pgCreateOrder({
+    customer: { name: 'ماركت دجلة 1', phone: '07709995544', city: 'بغداد', address: 'المنصور', isGuest: false, userId: custAuth.id },
     items: [{ productId: prod.id, name: 'عصير مانجو', price: 20000, quantity: 1, saleType: 'wholesale', unitLabel: 'كرتون', image: '' }],
     paymentMethod: 'cod',
     accountId: custAcc.id,
   });
+  await pgAssignOrderDriver({ orderId: orderP1.id, driverId: driver1.id, adminOperator: adminOp });
+  const d1Case2 = await pgGetDriverById(driver1.id);
+  assert(d1Case2.activeDeliveries === 1, 'Case 2: 1 processing + 0 shipped: activeDeliveries=1');
+  assert(d1Case2.inFlightDeliveries === 0, 'Case 2: 1 processing + 0 shipped: inFlightDeliveries=0');
+  assert(d1Case2.effectiveStatus === 'available', 'Case 2: 1 processing + 0 shipped -> available 🟢 (assigned in warehouse, not yet on road)');
 
-  await pgAssignOrderDriver({ orderId: order1.id, driverId: driver1.id, adminOperator: adminOp });
-  await pgStartDriverDelivery(driver1.id, order1.id, { id: driver1.id, name: driver1.name, phone: driver1.phone });
+  // Case 3: 3 processing + 0 shipped -> available 🟢 with load=3
+  const orderP2 = await pgCreateOrder({
+    customer: { name: 'ماركت دجلة 2', phone: '07709995544', city: 'بغداد', address: 'المنصور', isGuest: false, userId: custAuth.id },
+    items: [{ productId: prod.id, name: 'عصير مانجو', price: 20000, quantity: 1, saleType: 'wholesale', unitLabel: 'كرتون', image: '' }],
+    paymentMethod: 'cod',
+    accountId: custAcc.id,
+  });
+  await pgAssignOrderDriver({ orderId: orderP2.id, driverId: driver1.id, adminOperator: adminOp });
+  const orderP3 = await pgCreateOrder({
+    customer: { name: 'ماركت دجلة 3', phone: '07709995544', city: 'بغداد', address: 'المنصور', isGuest: false, userId: custAuth.id },
+    items: [{ productId: prod.id, name: 'عصير مانجو', price: 20000, quantity: 1, saleType: 'wholesale', unitLabel: 'كرتون', image: '' }],
+    paymentMethod: 'cod',
+    accountId: custAcc.id,
+  });
+  await pgAssignOrderDriver({ orderId: orderP3.id, driverId: driver1.id, adminOperator: adminOp });
+  const d1Case3 = await pgGetDriverById(driver1.id);
+  assert(d1Case3.activeDeliveries === 3, 'Case 3: 3 processing + 0 shipped: activeDeliveries=3');
+  assert(d1Case3.inFlightDeliveries === 0, 'Case 3: 3 processing + 0 shipped: inFlightDeliveries=0');
+  assert(d1Case3.effectiveStatus === 'available', 'Case 3: 3 processing + 0 shipped -> available 🟢 (remains available to collect orders)');
 
-  // Driver 1 now has 1 SHIPPED order
-  const [shippedOrder] = await sql`SELECT status, driver_id FROM orders WHERE id = ${order1.id}`;
-  assert(shippedOrder.status === 'shipped', 'Order transitioned to shipped status');
-
-  // Check driver stats: activeDeliveries should be 1, so effectiveStatus should be 'busy'
-  const d1ShippedStats = await pgGetDriverById(driver1.id);
-  assert(d1ShippedStats.activeDeliveries === 1, 'Driver 1 has 1 active delivery');
-  assert(d1ShippedStats.operationalStatus === 'available', 'Base operationalStatus is available');
-  assert(d1ShippedStats.effectiveStatus === 'busy', 'Effective status is busy 🟠 while order is shipped');
+  // Case 4 & 5: 2 processing + 1 shipped -> busy 🟠 (activeDeliveries=3, inFlightDeliveries=1)
+  await pgStartDriverDelivery(driver1.id, orderP1.id, { id: driver1.id, name: driver1.name, phone: driver1.phone });
+  const d1Case5 = await pgGetDriverById(driver1.id);
+  assert(d1Case5.activeDeliveries === 3, 'Case 5: 2 processing + 1 shipped: activeDeliveries=3');
+  assert(d1Case5.inFlightDeliveries === 1, 'Case 5: 2 processing + 1 shipped: inFlightDeliveries=1');
+  assert(d1Case5.effectiveStatus === 'busy', 'Case 5: 2 processing + 1 shipped -> busy 🟠 (driver is on road delivering order 1)');
 
   // Driver 1 attempts to go 'off_duty' while holding a shipped order -> MUST FAIL
   let offDutyBlocked = false;
@@ -359,26 +397,35 @@ async function runDispatchPhase2Tests() {
   }
   assert(offDutyBlocked, 'Driver with shipped order is strictly blocked from going off_duty');
 
-  // Complete the delivery
-  const [pinRow] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${order1.id}`;
-  const pin1 = decryptPin(pinRow.delivery_pin_encrypted);
-  await pgDeliverDriverOrder(driver1.id, order1.id, { id: driver1.id, name: driver1.name, phone: driver1.phone }, {
+  // Case 6: After delivering the shipped order, if processing remains -> automatically returns to available 🟢!
+  const [pinRowP1] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderP1.id}`;
+  const pinP1 = decryptPin(pinRowP1.delivery_pin_encrypted);
+  await pgDeliverDriverOrder(driver1.id, orderP1.id, { id: driver1.id, name: driver1.name, phone: driver1.phone }, {
     collectionStatus: 'collected_cash',
-    deliveryPin: pin1,
+    deliveryPin: pinP1,
   });
 
-  // Order delivered: activeDeliveries is now 0
-  const d1DeliveredStats = await pgGetDriverById(driver1.id);
-  assert(d1DeliveredStats.activeDeliveries === 0, 'Driver 1 active deliveries back to 0');
-  assert(d1DeliveredStats.effectiveStatus === 'available', 'Driver 1 effective status back to available');
+  const d1AfterDeliveredShipped = await pgGetDriverById(driver1.id);
+  assert(d1AfterDeliveredShipped.activeDeliveries === 2, 'After delivering shipped order, remaining activeDeliveries=2 (the 2 processing orders)');
+  assert(d1AfterDeliveredShipped.inFlightDeliveries === 0, 'After delivering shipped order, inFlightDeliveries=0');
+  assert(d1AfterDeliveredShipped.effectiveStatus === 'available', 'Case 6: Driver automatically returns to available 🟢 because 0 shipped remain!');
 
-  // Now driver 1 can go off_duty cleanly!
-  const d1OffDuty = await pgUpdateDriverOperationalStatus({
-    driverId: driver1.id,
-    operationalStatus: 'off_duty',
-  });
-  assert(d1OffDuty.operationalStatus === 'off_duty', 'Driver 1 successfully transitioned to off_duty after completing delivery');
-  assert(d1OffDuty.effectiveStatus === 'off_duty', 'Driver 1 effectiveStatus is off_duty ⚫');
+  // Case 7: Break & Off-duty remain as-is regardless of processing orders
+  await pgUpdateDriverOperationalStatus({ driverId: driver1.id, operationalStatus: 'break' });
+  const d1BreakWithProcessing = await pgGetDriverById(driver1.id);
+  assert(d1BreakWithProcessing.operationalStatus === 'break', 'Case 7: Operational status is break');
+  assert(d1BreakWithProcessing.effectiveStatus === 'break', 'Case 7: Effective status remains break ☕ despite having 2 processing orders');
+
+  // Clean up the 2 remaining processing orders (cancel them so driver can go off_duty)
+  await pgCancelOrder(orderP2.id, { reason: 'إلغاء تنظيفي' });
+  await pgCancelOrder(orderP3.id, { reason: 'إلغاء تنظيفي' });
+  const d1Cleaned = await pgGetDriverById(driver1.id);
+  assert(d1Cleaned.activeDeliveries === 0 && d1Cleaned.inFlightDeliveries === 0, 'Driver 1 active orders cleaned');
+
+  // Transition to available
+  await pgUpdateDriverOperationalStatus({ driverId: driver1.id, operationalStatus: 'available' });
+  const d1Reset = await pgGetDriverById(driver1.id);
+  assert(d1Reset.effectiveStatus === 'available', 'Driver 1 reset to available 🟢');
 
   // =========================================================================
   // Section D: API Route Security & Session Isolation

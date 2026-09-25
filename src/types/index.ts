@@ -238,7 +238,8 @@ export interface Driver {
   operationalStatus?: DriverOperationalStatus; // الحالة التشغيلية الأساسية المسجلة في النظام
   effectiveStatus?: DriverOperationalStatus; // الحالة التشغيلية الفعلية المحتسبة (تأخذ بعين الاعتبار الانشغال busy)
   currentCashInHand?: number; // إجمالي الكاش الموجود في عهدة السائق حالياً
-  activeDeliveries?: number; // عدد الطلبات النشطة حالياً
+  activeDeliveries?: number; // عدد الطلبات النشطة حالياً (processing + shipped)
+  inFlightDeliveries?: number; // عدد الطلبات التي خرجت للتوصيل الفعلي بالطريق (status = 'shipped')
   completedDeliveries?: number; // عدد الطلبات المكتملة
   averageRating?: number; // معدل تقييم السائق من الزبائن (مثال: 4.8)
   ratingsCount?: number; // إجمالي عدد التقييمات

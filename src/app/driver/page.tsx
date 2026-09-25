@@ -436,17 +436,27 @@ export default function DriverDashboardPage() {
                 <h1 className="font-black text-sm text-slate-900">{driver.name}</h1>
                 {(() => {
                   const baseStatus = driver.operationalStatus || 'available';
-                  const hasActive = activeOrders.length > 0;
+                  const inFlight = driver.inFlightDeliveries || activeOrders.filter(o => o.status === 'shipped').length;
+                  const activeCount = driver.activeDeliveries || activeOrders.length;
                   if (baseStatus === 'break') {
                     return <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-md">استراحة ☕</span>;
                   }
                   if (baseStatus === 'off_duty') {
                     return <span className="bg-slate-200 text-slate-800 text-[10px] font-black px-2 py-0.5 rounded-md">خارج الدوام ⚫</span>;
                   }
-                  if (hasActive) {
-                    return <span className="bg-orange-100 text-orange-900 text-[10px] font-black px-2 py-0.5 rounded-md">مشغول 🟠</span>;
+                  if (inFlight > 0) {
+                    const remainingAssigned = activeCount - inFlight;
+                    return (
+                      <span className="bg-orange-100 text-orange-900 text-[10px] font-black px-2 py-0.5 rounded-md">
+                        مشغول 🟠 ({inFlight} بالطريق{remainingAssigned > 0 ? ` • ${remainingAssigned} مسند` : ''})
+                      </span>
+                    );
                   }
-                  return <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md">متاح 🟢</span>;
+                  return (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md">
+                      متاح 🟢 {activeCount > 0 ? `(${activeCount} طلب مسند/مجهز)` : ''}
+                    </span>
+                  );
                 })()}
                 <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
                   <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>

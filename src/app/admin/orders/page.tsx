@@ -960,7 +960,11 @@ export default function AdminOrdersPage() {
                                   const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
                                   const star = item.isRecommended ? '⭐ [مقترح] ' : '';
                                   const statusIcon = item.effectiveStatus === 'busy' ? '🟠' : '🟢';
-                                  const statusLabel = item.effectiveStatus === 'busy' ? `مشغول (${item.activeDeliveries} طلب)` : 'متاح (0 طلبات)';
+                                  const inFlight = item.inFlightDeliveries || (drv.inFlightDeliveries ?? 0);
+                                  const remainingAssigned = Math.max(0, item.activeDeliveries - inFlight);
+                                  const statusLabel = item.effectiveStatus === 'busy'
+                                    ? (remainingAssigned > 0 ? `مشغول (${inFlight} بالطريق • ${remainingAssigned} مسند)` : `مشغول (${inFlight} بالطريق)`)
+                                    : (item.activeDeliveries > 0 ? `متاح (${item.activeDeliveries} طلب مجهز/مسند)` : 'متاح (0 طلبات)');
 
                                   return (
                                     <option key={drv.id} value={drv.id}>
@@ -1264,7 +1268,11 @@ export default function AdminOrdersPage() {
                           const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
                           const star = item.isRecommended ? '⭐ [مقترح] ' : '';
                           const statusIcon = item.effectiveStatus === 'busy' ? '🟠' : '🟢';
-                          const statusLabel = item.effectiveStatus === 'busy' ? `مشغول (${item.activeDeliveries} طلب)` : 'متاح (0 طلبات)';
+                          const inFlight = item.inFlightDeliveries || (drv.inFlightDeliveries ?? 0);
+                          const remainingAssigned = Math.max(0, item.activeDeliveries - inFlight);
+                          const statusLabel = item.effectiveStatus === 'busy'
+                            ? (remainingAssigned > 0 ? `مشغول (${inFlight} بالطريق • ${remainingAssigned} مسند)` : `مشغول (${inFlight} بالطريق)`)
+                            : (item.activeDeliveries > 0 ? `متاح (${item.activeDeliveries} طلب مجهز/مسند)` : 'متاح (0 طلبات)');
 
                           return (
                             <option key={drv.id} value={drv.id}>
