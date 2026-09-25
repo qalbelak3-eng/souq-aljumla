@@ -99,7 +99,8 @@ const getLocationStyle = (title: string, index: number, isSelected: boolean) => 
 // ─── MapPickerModal ──────────────────────────────────────────────────────────
 // Req #3: shows a Leaflet map with a draggable pin centered on initialLat/initialLng
 // The user adjusts the pin then presses "تأكيد هذا الموقع".
-// Leaflet is loaded from CDN (no API key needed) using OpenStreetMap tiles.
+// Leaflet is loaded from npm package (leaflet + @types/leaflet) via dynamic import
+// to avoid Next.js SSR issues. OpenStreetMap tiles are preserved.
 interface MapPickerModalProps {
   initialLat: number;
   initialLng: number;
@@ -118,72 +119,60 @@ function MapPickerModal({ initialLat, initialLng, onConfirm, onCancel }: MapPick
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Inject Leaflet CSS if not already present
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-    }
-
-    // Load Leaflet JS if not already loaded
-    const loadLeaflet = () => {
-      if ((window as any).L) {
-        setLeafletReady(true);
-        return;
-      }
-      if (document.getElementById('leaflet-js')) return;
-      const script = document.createElement('script');
-      script.id = 'leaflet-js';
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = () => setLeafletReady(true);
-      document.body.appendChild(script);
-    };
-    loadLeaflet();
+    // Dynamic import: loads leaflet only in the browser (SSR-safe).
+    // CSS is bundled via globals.css @import 'leaflet/dist/leaflet.css' — no CDN needed.
+    import('leaflet').then(() => {
+      setLeafletReady(true);
+    });
   }, []);
 
   useEffect(() => {
     if (!leafletReady || !mapRef.current) return;
-    const L = (window as any).L;
-    if (!L || leafletRef.current) return;
 
-    // Initialize map
-    const map = L.map(mapRef.current).setView([initialLat, initialLng], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19,
-    }).addTo(map);
+    // Use the already-imported leaflet module from the window namespace set by dynamic import
+    import('leaflet').then((L) => {
+      const leaflet = L.default ?? L;
+      if (leafletRef.current) return; // Already initialized
 
-    // Custom icon to avoid missing default icon issue in Next.js
-    const icon = L.divIcon({
-      html: '<div style="font-size:2rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))">📍</div>',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-      className: '',
-    });
+      // Initialize map
+      const map = leaflet.map(mapRef.current!).setView([initialLat, initialLng], 16);
+      leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(map);
 
-    const marker = L.marker([initialLat, initialLng], { draggable: true, icon }).addTo(map);
-    markerRef.current = marker;
-    leafletRef.current = map;
+      // Custom emoji divIcon avoids broken default icon PNG path in webpack/Next.js
+      const icon = leaflet.divIcon({
+        html: '<div style="font-size:2rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))">📍</div>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        className: '',
+      });
 
-    marker.on('dragend', (e: any) => {
-      const pos = e.target.getLatLng();
-      setPinLat(pos.lat);
-      setPinLng(pos.lng);
-    });
+      const marker = leaflet.marker([initialLat, initialLng], { draggable: true, icon }).addTo(map);
+      markerRef.current = marker;
+      leafletRef.current = map;
 
-    // Click on map moves the pin
-    map.on('click', (e: any) => {
-      marker.setLatLng(e.latlng);
-      setPinLat(e.latlng.lat);
-      setPinLng(e.latlng.lng);
+      marker.on('dragend', (e: any) => {
+        const pos = e.target.getLatLng();
+        setPinLat(pos.lat);
+        setPinLng(pos.lng);
+      });
+
+      // Click on map moves the pin
+      map.on('click', (e: any) => {
+        marker.setLatLng(e.latlng);
+        setPinLat(e.latlng.lat);
+        setPinLng(e.latlng.lng);
+      });
     });
 
     return () => {
-      map.remove();
-      leafletRef.current = null;
-      markerRef.current = null;
+      if (leafletRef.current) {
+        leafletRef.current.remove();
+        leafletRef.current = null;
+        markerRef.current = null;
+      }
     };
   }, [leafletReady]);
 

@@ -129,7 +129,7 @@ async function runDriversPhase2Tests() {
     RETURNING id, name;
   `;
 
-  // Product A: 4 boxes/carton, 6 items/box -> 24 pieces/carton. Initial stock: 100 pieces
+  // Product A: 4 boxes/carton, 6 items/box -> 24 pieces/carton. Initial stock: 200 pieces
   const [prodA] = await sql`
     INSERT INTO products (
       name, category_id, company_id,
@@ -140,12 +140,12 @@ async function runDriversPhase2Tests() {
     ) VALUES (
       'عصير راني برتقال حبيبات كرتون 24', ${cat.id}, ${comp.id},
       4, 6, 24,
-      100,
+      200,
       'قطعة مفردة', 'كرتون 24 قطعة',
       1000.00, 20000.00, 700.0000, 16800.00
     ) RETURNING id, name, current_stock_pieces;
   `;
-  assert(parseInt(prodA.current_stock_pieces, 10) === 100, 'Product A created with 100 pieces initial stock');
+  assert(parseInt(prodA.current_stock_pieces, 10) === 200, 'Product A created with 200 pieces initial stock');
 
   // Customer financial account
   const [custAccount] = await sql`
@@ -228,7 +228,7 @@ async function runDriversPhase2Tests() {
   // =========================================================
   console.log('\n--- Test 1: Driver Assignment & Re-assignment ---');
 
-  // 1.1 Create Order 1 (2 cartons = 48 pieces -> stock should drop from 100 to 52)
+  // 1.1 Create Order 1 (2 cartons = 48 pieces -> stock should drop from 200 to 152)
   const order1 = await pgCreateOrder({
     customer: {
       name: 'سوبرماركت النور',
@@ -258,7 +258,7 @@ async function runDriversPhase2Tests() {
   assert(order1.total === 40000, 'Order 1 total is 40,000 IQD');
 
   const [stockCheck1] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck1.current_stock_pieces, 10) === 52, 'Product stock accurately deducted upon order creation (100 -> 52)');
+  assert(parseInt(stockCheck1.current_stock_pieces, 10) === 152, 'Product stock accurately deducted upon order creation (200 -> 152)');
 
   // 1.2 Reject assignment to non-existent driver
   let badDriverCaught = false;
@@ -452,7 +452,7 @@ async function runDriversPhase2Tests() {
 
   // 3.3 Verify stock NOT deducted again!
   const [stockCheck2] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck2.current_stock_pieces, 10) === 52, 'Stock remains unchanged at 52 (NOT double-deducted!)');
+  assert(parseInt(stockCheck2.current_stock_pieces, 10) === 152, 'Stock remains unchanged at 152 (NOT double-deducted!)');
 
   // 3.4 Verify idempotency of start_delivery
   const repeatStartReq = new Request('http://localhost:3000/api/driver/orders', {
@@ -608,7 +608,7 @@ async function runDriversPhase2Tests() {
   // =========================================================
   console.log('\n--- Test 5: Scenario 2 — Failed Delivery & Return to Warehouse ---');
 
-  // 5.1 Create Order 2 (1 carton = 24 pieces -> stock drops from 52 to 28)
+  // 5.1 Create Order 2 (1 carton = 24 pieces -> stock drops from 152 to 128)
   const order2 = await pgCreateOrder({
     customer: {
       name: 'سوبرماركت النور',
@@ -634,7 +634,7 @@ async function runDriversPhase2Tests() {
   });
 
   const [stockCheck3] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck3.current_stock_pieces, 10) === 28, 'Stock deducted for Order 2 (52 -> 28)');
+  assert(parseInt(stockCheck3.current_stock_pieces, 10) === 128, 'Stock deducted for Order 2 (152 -> 128)');
 
   // Assign Order 2 to Driver A and start delivery
   await pgAssignOrderDriver({
@@ -679,7 +679,7 @@ async function runDriversPhase2Tests() {
 
   // Verify inventory is NOT restored upon delivery failure (items still with driver)
   const [stockCheck4] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck4.current_stock_pieces, 10) === 28, 'Stock remains at 28 (Goods still with driver, NOT restored yet)');
+  assert(parseInt(stockCheck4.current_stock_pieces, 10) === 128, 'Stock remains at 128 (Goods still with driver, NOT restored yet)');
 
   // 5.4 Driver B attempts return -> 403
   const badReturnReq = new Request('http://localhost:3000/api/driver/orders', {
@@ -709,9 +709,9 @@ async function runDriversPhase2Tests() {
   assert(validReturnData.order.collectionStatus === 'returned', 'collectionStatus is returned');
   assert(validReturnData.order.inventoryRestored === true, 'inventoryRestored is true');
 
-  // 5.6 Verify inventory restored exactly once (28 + 24 = 52)
+  // 5.6 Verify inventory restored exactly once (128 + 24 = 152)
   const [stockCheck5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck5.current_stock_pieces, 10) === 52, 'Stock restored to warehouse exactly once (28 + 24 = 52 pieces)');
+  assert(parseInt(stockCheck5.current_stock_pieces, 10) === 152, 'Stock restored to warehouse exactly once (128 + 24 = 152 pieces)');
 
   // Verify inventory_movements record exists
   const [returnMove] = await sql`
@@ -734,7 +734,7 @@ async function runDriversPhase2Tests() {
   const repeatReturnRes = await postDriverOrders(repeatReturnReq);
   assert(repeatReturnRes.status === 200, 'Re-submitting return succeeds idempotently');
   const [stockCheck6] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck6.current_stock_pieces, 10) === 52, 'Stock NOT double restored on repeat return (remains 52)');
+  assert(parseInt(stockCheck6.current_stock_pieces, 10) === 152, 'Stock NOT double restored on repeat return (remains 152)');
 
   const returnMoveCount = await sql`
     SELECT count(*) FROM inventory_movements
