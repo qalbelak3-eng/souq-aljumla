@@ -230,8 +230,11 @@ export interface Driver {
   password?: string;
   vehicleInfo?: string; // الوصف العام أو السيارة الافتراضية
   defaultVehicleId?: string; // معرف السيارة الافتراضية
+  isVehicleActive?: boolean; // حالة تفعيل المركبة الافتراضية
   isActive: boolean;
   currentCashInHand?: number; // إجمالي الكاش الموجود في عهدة السائق حالياً
+  activeDeliveries?: number; // عدد الطلبات النشطة حالياً
+  completedDeliveries?: number; // عدد الطلبات المكتملة
   averageRating?: number; // معدل تقييم السائق من الزبائن (مثال: 4.8)
   ratingsCount?: number; // إجمالي عدد التقييمات
   ratingTierLabel?: string; // الدرجة اللفظية: ممتاز / جيد جداً / جيد / عادي / سيء

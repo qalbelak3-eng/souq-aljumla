@@ -34,6 +34,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 import EtihadLogo from '@/components/EtihadLogo';
 import { getProductPriceForUser } from '@/lib/pricing';
+import { rankDriversForOrder, HIGH_CUSTODY_THRESHOLD, HIGH_CUSTODY_WARNING } from '@/lib/dispatch-recommender';
 
 export default function AdminOrdersPage() {
   const toast = useToast();
@@ -288,9 +289,17 @@ export default function AdminOrdersPage() {
         if (statusFilter === 'pending' && driverId && driverId !== 'none') {
           setStatusFilter('all');
         }
+        toast.success(
+          driverId === 'none'
+            ? 'تم إلغاء إسناد الطلبية بنجاح 🚚'
+            : `تم إسناد الطلبية للسائق (${driver?.name || 'المحدد'}) بنجاح 🚚✓`
+        );
+      } else {
+        toast.error(data.error || 'فشل إسناد الطلبية للسائق');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error(e?.message || 'حدث خطأ في الاتصال بالخادم أثناء إسناد الطلبية');
     }
   };
 
@@ -307,9 +316,13 @@ export default function AdminOrdersPage() {
         if (selectedOrder && selectedOrder.id === orderId) {
           setSelectedOrder(data.order);
         }
+        toast.success('تم تحديث مركبة الطلبية بنجاح 🚗✓');
+      } else {
+        toast.error(data.error || 'فشل تعيين المركبة للطلبية');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error(e?.message || 'حدث خطأ أثناء تعيين المركبة');
     }
   };
 
@@ -894,22 +907,68 @@ export default function AdminOrdersPage() {
                       </td>
 
                       {/* 1. Clean Driver Assignment Column */}
-                      <td className="py-3 px-2.5 whitespace-nowrap min-w-[120px]">
-                        <select
-                          value={order.driverId || 'none'}
-                          onChange={(e) => handleAssignDriver(order.id, e.target.value)}
-                          className={`w-full text-xs font-bold rounded-xl px-2.5 py-1.5 border focus:outline-none cursor-pointer transition ${
-                            order.driverId ? 'bg-amber-50 border-amber-300 text-amber-950 font-black' : 'bg-slate-50 border-slate-200 text-slate-500'
-                          }`}
-                          title="اختيار السائق المستلم للطلبية"
-                        >
-                          <option value="none">بدون سائق 🚚</option>
-                          {drivers.map((drv) => (
-                            <option key={drv.id} value={drv.id}>
-                              {drv.name}
-                            </option>
-                          ))}
-                        </select>
+                      <td className="py-3 px-2.5 whitespace-nowrap min-w-[200px]">
+                        {(() => {
+                          const ranked = rankDriversForOrder(drivers, order, vehicles);
+                          const assignedDriver = drivers.find((d) => d.id === order.driverId);
+                          const isAssignedHighCustody = assignedDriver && (assignedDriver.currentCashInHand || 0) >= HIGH_CUSTODY_THRESHOLD;
+                          const isTerminal = order.status === 'delivered' || order.status === 'cancelled';
+                          const isShipped = order.status === 'shipped';
+
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <select
+                                value={order.driverId || 'none'}
+                                onChange={(e) => handleAssignDriver(order.id, e.target.value)}
+                                disabled={isTerminal}
+                                className={`w-full text-xs font-bold rounded-xl px-2.5 py-1.5 border focus:outline-none cursor-pointer transition ${
+                                  isTerminal
+                                    ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                    : order.driverId
+                                    ? 'bg-amber-50 border-amber-300 text-amber-950 font-black'
+                                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                                }`}
+                                title={
+                                  isTerminal
+                                    ? 'الطلبية في حالة نهائية ولا يمكن تعديل إسنادها'
+                                    : isShipped
+                                    ? 'الطلبية خرجت للتوصيل - يجب إرجاعها للمستودع قبل تغيير السائق'
+                                    : 'اختيار السائق المستلم للطلبية'
+                                }
+                              >
+                                <option value="none">بدون سائق 🚚</option>
+                                {ranked.map((item) => {
+                                  const drv = item.driver;
+                                  const vehLabel = drv.vehicleInfo ? `🚗 ${drv.vehicleInfo}` : (drv.defaultVehicleId ? '🚗 مركبة افتراضية' : 'بدون مركبة');
+                                  const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
+                                  const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
+                                  const star = item.isRecommended ? '⭐ [مقترح] ' : '';
+
+                                  return (
+                                    <option key={drv.id} value={drv.id}>
+                                      {star}{drv.name} ({vehLabel} • {item.activeDeliveries} نشطة • {custodyLabel}{highCustodyMark})
+                                    </option>
+                                  );
+                                })}
+
+                                {order.driverId && !ranked.some((r) => r.driver.id === order.driverId) && (
+                                  <option value={order.driverId} disabled>
+                                    [سابق/معطل] {assignedDriver?.name || order.driverName || 'سائق غير معروف'}
+                                  </option>
+                                )}
+                              </select>
+
+                              {isAssignedHighCustody && (
+                                <span
+                                  className="text-[10px] text-amber-800 font-bold bg-amber-100/90 px-2 py-0.5 rounded-md flex items-center gap-1 inline-flex w-fit max-w-[200px] truncate"
+                                  title={HIGH_CUSTODY_WARNING}
+                                >
+                                  ⚠️ عهدة مرتفعة ({(assignedDriver?.currentCashInHand || 0).toLocaleString()} د.ع)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* 2. Dedicated Vehicle Column */}
@@ -1096,41 +1155,101 @@ export default function AdminOrdersPage() {
             </div>
 
             {/* Driver & Delivery Information Box */}
-            <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-2 text-xs">
+            <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-3 text-xs">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h4 className="font-black text-amber-950 flex items-center gap-1.5">
                   <Truck className="w-4 h-4 text-amber-700" />
                   <span>بيانات السائق والسيارة والتوصيل:</span>
                 </h4>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    value={selectedOrder.driverId || 'none'}
-                    onChange={(e) => handleAssignDriver(selectedOrder.id, e.target.value)}
-                    className="bg-white border border-amber-300 text-amber-950 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer"
-                  >
-                    <option value="none">بدون سائق 🚚</option>
-                    {drivers.map((drv) => (
-                      <option key={drv.id} value={drv.id}>
-                        {drv.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={selectedOrder.vehicleId || 'none'}
-                    onChange={(e) => handleAssignVehicle(selectedOrder.id, e.target.value)}
-                    className="bg-white border border-emerald-300 text-emerald-950 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer"
-                  >
-                    <option value="none">🚗 بدون سيارة محددة</option>
-                    {vehicles.map((veh) => (
-                      <option key={veh.id} value={veh.id}>
-                        🚗 {veh.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
+
+              {(() => {
+                const ranked = rankDriversForOrder(drivers, selectedOrder, vehicles);
+                const assignedDriver = drivers.find((d) => d.id === selectedOrder.driverId);
+                const isAssignedHighCustody = assignedDriver && (assignedDriver.currentCashInHand || 0) >= HIGH_CUSTODY_THRESHOLD;
+                const topRecommended = ranked[0];
+                const isTerminal = selectedOrder.status === 'delivered' || selectedOrder.status === 'cancelled';
+
+                return (
+                  <div className="space-y-2">
+                    {/* Smart Recommendation Banner */}
+                    {topRecommended && topRecommended.driver.id !== selectedOrder.driverId && !isTerminal && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs animate-fadeIn">
+                        <div className="flex items-center gap-1.5 text-emerald-950 font-bold">
+                          <span>⭐</span>
+                          <span>السائق المقترح: <strong>{topRecommended.driver.name}</strong></span>
+                          <span className="text-emerald-700 font-normal">
+                            ({topRecommended.activeDeliveries} طلبات نشطة • عهدة: {topRecommended.currentCashInHand.toLocaleString()} د.ع)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAssignDriver(selectedOrder.id, topRecommended.driver.id)}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition cursor-pointer shrink-0"
+                          title="تأكيد اختيار وإسناد الطلبية للسائق المقترح"
+                        >
+                          إسناد للمقترح ⭐
+                        </button>
+                      </div>
+                    )}
+
+                    {/* High Custody Warning */}
+                    {isAssignedHighCustody && (
+                      <div className="bg-amber-100/90 border border-amber-300 text-amber-900 rounded-xl p-2.5 flex items-center gap-2 text-xs font-bold animate-fadeIn">
+                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>⚠️ عهدة مرتفعة ({(assignedDriver?.currentCashInHand || 0).toLocaleString()} د.ع) — يفضّل إجراء تسوية قبل إسناد طلبات نقدية جديدة</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={selectedOrder.driverId || 'none'}
+                        onChange={(e) => handleAssignDriver(selectedOrder.id, e.target.value)}
+                        disabled={isTerminal}
+                        className={`bg-white border border-amber-300 text-amber-950 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer max-w-full ${
+                          isTerminal ? 'opacity-60 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <option value="none">بدون سائق 🚚</option>
+                        {ranked.map((item) => {
+                          const drv = item.driver;
+                          const vehLabel = drv.vehicleInfo ? `🚗 ${drv.vehicleInfo}` : (drv.defaultVehicleId ? '🚗 مركبة افتراضية' : 'بدون مركبة');
+                          const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
+                          const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
+                          const star = item.isRecommended ? '⭐ [مقترح] ' : '';
+
+                          return (
+                            <option key={drv.id} value={drv.id}>
+                              {star}{drv.name} ({vehLabel} • {item.activeDeliveries} نشطة • {custodyLabel}{highCustodyMark})
+                            </option>
+                          );
+                        })}
+                        {selectedOrder.driverId && !ranked.some((r) => r.driver.id === selectedOrder.driverId) && (
+                          <option value={selectedOrder.driverId} disabled>
+                            [سابق/معطل] {assignedDriver?.name || selectedOrder.driverName || 'سائق غير معروف'}
+                          </option>
+                        )}
+                      </select>
+
+                      <select
+                        value={selectedOrder.vehicleId || 'none'}
+                        onChange={(e) => handleAssignVehicle(selectedOrder.id, e.target.value)}
+                        disabled={isTerminal}
+                        className={`bg-white border border-emerald-300 text-emerald-950 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer ${
+                          isTerminal ? 'opacity-60 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <option value="none">🚗 بدون سيارة محددة</option>
+                        {vehicles.map((veh) => (
+                          <option key={veh.id} value={veh.id}>
+                            🚗 {veh.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-2 text-slate-700 pt-1">
                 <div>
