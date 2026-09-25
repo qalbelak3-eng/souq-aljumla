@@ -48,6 +48,7 @@ async function setup() {
     'drizzle/0005_audit_hardening_triggers.sql',
     'drizzle/0006_driver_settlement_lifecycle.sql',
     'drizzle/0007_delivery_pin_proof.sql',
+    'drizzle/0008_delivery_pin_encrypted.sql',
   ];
 
   for (const m of migrations) {

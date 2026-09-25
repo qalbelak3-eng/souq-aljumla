@@ -62,8 +62,16 @@ export async function GET(request: Request, { params }: { params: { id: string }
       }, { status: 401 });
     }
 
-    // Authorized caller gets order with deliveryPin included
-    const authorizedOrder = await pgGetOrderById(params.id, { includePin: true });
+    // Security Hardening:
+    // 1. Delivery PIN is strictly confidential to the customer; Admin and Driver never receive deliveryPin.
+    // 2. PIN is only accessible to verified customer owner or guest with valid cryptographic token.
+    // 3. PIN is strictly hidden once the order is delivered or cancelled.
+    const shouldIncludePin = !admin &&
+      (isCustomerOwner || isTokenAuthorized) &&
+      order.status !== 'delivered' &&
+      order.status !== 'cancelled';
+
+    const authorizedOrder = await pgGetOrderById(params.id, { includePin: shouldIncludePin });
 
     const settings = getSettings();
     const whatsappUrl = generateWhatsAppLink(authorizedOrder || order, settings);

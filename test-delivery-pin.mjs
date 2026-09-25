@@ -49,6 +49,7 @@ async function setup() {
     'drizzle/0005_audit_hardening_triggers.sql',
     'drizzle/0006_driver_settlement_lifecycle.sql',
     'drizzle/0007_delivery_pin_proof.sql',
+    'drizzle/0008_delivery_pin_encrypted.sql',
   ];
 
   for (const m of migrations) {
@@ -99,7 +100,8 @@ async function runDeliveryPinTests() {
   } = await import('./src/lib/postgres-delivery.ts');
 
   const {
-    deriveOrderPin,
+    decryptPin,
+    encryptPin,
     hashPin,
     verifyPin,
     generateOrderPinData,
@@ -320,15 +322,31 @@ async function runDeliveryPinTests() {
     accountId: custAccountA.id,
   });
 
-  const [order1Db] = await sql`SELECT delivery_pin_hash, delivery_pin_seed, delivery_pin_attempts FROM orders WHERE id = ${order1.id}`;
-  assert(order1Db.delivery_pin_seed !== null, 'delivery_pin_seed generated and present in DB');
+  const [order1Db] = await sql`SELECT delivery_pin_hash, delivery_pin_encrypted, delivery_pin_attempts FROM orders WHERE id = ${order1.id}`;
+  assert(order1Db.delivery_pin_encrypted !== null, 'delivery_pin_encrypted generated and present in DB');
   assert(order1Db.delivery_pin_hash !== null, 'delivery_pin_hash generated and present in DB');
   assert(order1Db.delivery_pin_attempts === 0, 'delivery_pin_attempts initialized to 0');
 
-  const order1Pin = deriveOrderPin(order1.id, order1Db.delivery_pin_seed);
-  assert(/^\d{4}$/.test(order1Pin), `Derived PIN is a 4-digit numeric string: ${order1Pin}`);
+  const order1Pin = decryptPin(order1Db.delivery_pin_encrypted);
+  assert(/^\d{4}$/.test(order1Pin), `Decrypted PIN is a 4-digit numeric string: ${order1Pin}`);
 
-  // Second order must have different seed/PIN
+  // Customer A views own order before delivery -> receives PIN
+  const custAViewBeforeReq = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
+    headers: { Cookie: custACookie },
+  });
+  const custAViewBeforeRes = await getOrderRoute(custAViewBeforeReq, { params: { id: order1.id } });
+  const custABeforeData = await custAViewBeforeRes.json();
+  assert(custABeforeData.order.deliveryPin === order1Pin, 'Customer A receives deliveryPin before delivery');
+
+  // Admin views order before delivery -> does NOT receive PIN (Admin isolation)
+  const adminViewBeforeReq = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
+    headers: { Cookie: adminCookie },
+  });
+  const adminViewBeforeRes = await getOrderRoute(adminViewBeforeReq, { params: { id: order1.id } });
+  const adminBeforeData = await adminViewBeforeRes.json();
+  assert(adminBeforeData.order.deliveryPin === undefined, 'Admin NEVER receives deliveryPin (before delivery)');
+
+  // Second order must have different encrypted ciphertext and distinct PIN
   const order2 = await pgCreateOrder({
     customer: {
       name: 'سوبرماركت دجلة',
@@ -353,19 +371,33 @@ async function runDeliveryPinTests() {
     accountId: custAccountB.id,
   });
 
-  const [order2Db] = await sql`SELECT delivery_pin_seed, delivery_pin_hash FROM orders WHERE id = ${order2.id}`;
-  assert(order1Db.delivery_pin_seed !== order2Db.delivery_pin_seed, 'Different orders receive distinct cryptographic seeds');
-  const order2Pin = deriveOrderPin(order2.id, order2Db.delivery_pin_seed);
-  assert(/^\d{4}$/.test(order2Pin), `Order 2 derived PIN is 4 digits: ${order2Pin}`);
+  const [order2Db] = await sql`SELECT delivery_pin_encrypted, delivery_pin_hash FROM orders WHERE id = ${order2.id}`;
+  assert(order1Db.delivery_pin_encrypted !== order2Db.delivery_pin_encrypted, 'Different orders receive distinct AES-256-GCM ciphertexts');
+  const order2Pin = decryptPin(order2Db.delivery_pin_encrypted);
+  assert(/^\d{4}$/.test(order2Pin), `Order 2 decrypted PIN is 4 digits: ${order2Pin}`);
 
   // =========================================================================
-  // Test 2: Raw PIN NOT in PostgreSQL (scrypt hash + seed only)
+  // Test 2: Raw PIN NOT in PostgreSQL (AES-256-GCM authenticated ciphertext + scrypt hash only)
   // =========================================================================
-  console.log('\n--- Test 2: Raw PIN NOT in DB (scrypt hash + seed only) ---');
+  console.log('\n--- Test 2: Raw PIN NOT in DB (AES-256-GCM ciphertext + scrypt hash only) ---');
   assert(order1Db.delivery_pin_hash.includes(':'), 'delivery_pin_hash contains salt:hash scrypt format');
   assert(order1Db.delivery_pin_hash.length >= 60, 'delivery_pin_hash is strong cryptographic scrypt output');
-  assert(order1Db.delivery_pin_hash !== order1Pin, 'DB does NOT contain raw PIN');
-  assert(order1Db.delivery_pin_seed !== order1Pin, 'delivery_pin_seed is NOT raw PIN');
+  assert(order1Db.delivery_pin_hash !== order1Pin, 'DB does NOT contain raw PIN in hash column');
+  assert(order1Db.delivery_pin_encrypted !== order1Pin, 'delivery_pin_encrypted is NOT raw PIN');
+
+  // Verify AES-256-GCM format iv:authTag:ciphertext
+  const gcmParts = order1Db.delivery_pin_encrypted.split(':');
+  assert(gcmParts.length === 3, 'delivery_pin_encrypted follows iv:authTag:ciphertext format');
+  assert(gcmParts[0].length >= 16, 'AES-GCM IV is present and encoded');
+  assert(gcmParts[1].length >= 20, 'AES-GCM Auth Tag is present and encoded');
+  assert(gcmParts[2].length >= 4, 'AES-GCM Ciphertext is present and encoded');
+
+  // Authenticated encryption tampering protection: tampered tag or ciphertext fails decryption
+  const tamperedTag = `${gcmParts[0]}:corruptedTag==:${gcmParts[2]}`;
+  assert(decryptPin(tamperedTag) === null, 'Tampered Auth Tag causes decryptPin to fail-closed and return null');
+  const tamperedCipher = `${gcmParts[0]}:${gcmParts[1]}:corruptedCiphertext==`;
+  assert(decryptPin(tamperedCipher) === null, 'Tampered Ciphertext causes decryptPin to fail-closed and return null');
+
   assert(verifyPin(order1Pin, order1Db.delivery_pin_hash), 'verifyPin validates correct PIN against stored scrypt hash');
 
   // Verify that raw 'delivery_pin' column does NOT exist in orders table
@@ -374,6 +406,22 @@ async function runDeliveryPinTests() {
     WHERE table_name = 'orders' AND column_name = 'delivery_pin'
   `;
   assert(colCheck.length === 0, 'No plaintext "delivery_pin" column exists in database schema');
+
+  // Verify that legacy 'delivery_pin_seed' column was dropped by migration 0008
+  const seedColCheck = await sql`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'delivery_pin_seed'
+  `;
+  assert(seedColCheck.length === 0, 'Legacy "delivery_pin_seed" column was dropped from orders table');
+
+  // Dump order row from database and ensure raw PIN is nowhere in the row
+  const [order1FullDump] = await sql`SELECT * FROM orders WHERE id = ${order1.id}`;
+  const dumpedValues = Object.entries(order1FullDump);
+  for (const [col, val] of dumpedValues) {
+    if (typeof val === 'string') {
+      assert(val !== order1Pin, `Column ${col} does NOT equal plaintext PIN`);
+    }
+  }
 
   // =========================================================================
   // Test 3: Successful delivery with correct PIN by assigned driver in 'shipped' state
@@ -417,6 +465,30 @@ async function runDeliveryPinTests() {
   `;
   assert(auditDelivery !== undefined, 'delivery_completed audit log recorded');
   assert(auditDelivery.details.includes('PIN'), 'Audit log explicitly notes customer PIN verification');
+
+  // Verify post-delivery secret erasure in database
+  const [order1SecDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${order1.id}`;
+  assert(order1SecDb.delivery_pin_encrypted === null, 'delivery_pin_encrypted is erased (NULL) in DB immediately upon delivery');
+
+  // Customer A views delivered order: deliveryPin is absent, proof metadata is present
+  const custAAfterReq = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
+    headers: { Cookie: custACookie },
+  });
+  const custAAfterRes = await getOrderRoute(custAAfterReq, { params: { id: order1.id } });
+  const custAAfterData = await custAAfterRes.json();
+  assert(custAAfterData.order.deliveryPin === undefined, 'Customer API NO LONGER returns deliveryPin after order is delivered');
+  assert(custAAfterData.order.deliveryProofMethod === 'customer_pin', 'Customer API returns deliveryProofMethod as customer_pin');
+  assert(custAAfterData.order.deliveryVerifiedAt !== null, 'Customer API returns deliveryVerifiedAt timestamp');
+
+  // Admin views delivered order: deliveryPin is absent, proof metadata is present
+  const adminAfterReq = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
+    headers: { Cookie: adminCookie },
+  });
+  const adminAfterRes = await getOrderRoute(adminAfterReq, { params: { id: order1.id } });
+  const adminAfterData = await adminAfterRes.json();
+  assert(adminAfterData.order.deliveryPin === undefined, 'Admin API NEVER returns deliveryPin on delivered order');
+  assert(adminAfterData.order.deliveryProofMethod === 'customer_pin', 'Admin API returns deliveryProofMethod');
+  assert(adminAfterData.order.deliveryVerifiedAt !== null, 'Admin API returns deliveryVerifiedAt');
 
   // =========================================================================
   // Test 4: Incorrect PIN rejected, order remains shipped, attempt count incremented
@@ -504,12 +576,14 @@ async function runDeliveryPinTests() {
     assert(ord.deliveryPin === undefined, 'Order in driver view does not leak deliveryPin');
     assert(ord.deliveryPinHash === undefined, 'Order in driver view does not leak deliveryPinHash');
     assert(ord.deliveryPinSeed === undefined, 'Order in driver view does not leak deliveryPinSeed');
+    assert(ord.deliveryPinEncrypted === undefined, 'Order in driver view does not leak deliveryPinEncrypted');
   }
 
   const rawDriverJson = JSON.stringify(driverGetData);
   assert(!rawDriverJson.includes('"deliveryPin"'), 'Driver GET JSON does NOT contain "deliveryPin" key');
   assert(!rawDriverJson.includes('"deliveryPinHash"'), 'Driver GET JSON does NOT contain "deliveryPinHash" key');
   assert(!rawDriverJson.includes('"deliveryPinSeed"'), 'Driver GET JSON does NOT contain "deliveryPinSeed" key');
+  assert(!rawDriverJson.includes('"deliveryPinEncrypted"'), 'Driver GET JSON does NOT contain "deliveryPinEncrypted" key');
 
   // =========================================================================
   // Test 8: Customer A cannot see Customer B PIN (HTTP 403)
@@ -522,14 +596,21 @@ async function runDeliveryPinTests() {
   const custBViewOrder1Res = await getOrderRoute(custBViewOrder1Req, { params: { id: order1.id } });
   assert(custBViewOrder1Res.status === 403, 'Customer B accessing Customer A order is blocked with HTTP 403 Forbidden');
 
-  // Customer A views their own order (order1)
-  const custAViewOrder1Req = new Request(`http://localhost:3000/api/orders/${order1.id}`, {
+  // Customer A tries to view Customer B's active order (order2)
+  const custAViewOrder2Req = new Request(`http://localhost:3000/api/orders/${order2.id}`, {
     headers: { Cookie: custACookie },
   });
-  const custAViewOrder1Res = await getOrderRoute(custAViewOrder1Req, { params: { id: order1.id } });
-  const custAData = await custAViewOrder1Res.json();
-  assert(custAViewOrder1Res.status === 200, 'Customer A views their own order (HTTP 200)');
-  assert(custAData.order.deliveryPin === order1Pin, 'Customer A receives their valid delivery PIN');
+  const custAViewOrder2Res = await getOrderRoute(custAViewOrder2Req, { params: { id: order2.id } });
+  assert(custAViewOrder2Res.status === 403, 'Customer A accessing Customer B order is blocked with HTTP 403 Forbidden');
+
+  // Customer B views their own active order (order2) before delivery -> receives deliveryPin
+  const custBViewOrder2Req = new Request(`http://localhost:3000/api/orders/${order2.id}`, {
+    headers: { Cookie: custBCookie },
+  });
+  const custBViewOrder2Res = await getOrderRoute(custBViewOrder2Req, { params: { id: order2.id } });
+  const custBData = await custBViewOrder2Res.json();
+  assert(custBViewOrder2Res.status === 200, 'Customer B views their own active order (HTTP 200)');
+  assert(custBData.order.deliveryPin === order2Pin, 'Customer B receives their valid delivery PIN before delivery');
 
   // =========================================================================
   // Test 9: Guest order access token allows viewing PIN; unauthorized blocked
@@ -558,8 +639,8 @@ async function runDeliveryPinTests() {
     createAccountIfMissing: true,
   });
 
-  const [guestDb] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${guestOrder.id}`;
-  const guestPin = deriveOrderPin(guestOrder.id, guestDb.delivery_pin_seed);
+  const [guestDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${guestOrder.id}`;
+  const guestPin = decryptPin(guestDb.delivery_pin_encrypted);
 
   // Unauthorized access (no token, no customer cookie) -> 401/403
   const noTokenReq = new Request(`http://localhost:3000/api/orders/${guestOrder.id}`);
@@ -664,8 +745,8 @@ async function runDeliveryPinTests() {
   });
   await pgStartDriverDelivery(driverA.id, orderRace.id, driverOpA);
 
-  const [raceDb] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderRace.id}`;
-  const racePin = deriveOrderPin(orderRace.id, raceDb.delivery_pin_seed);
+  const [raceDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderRace.id}`;
+  const racePin = decryptPin(raceDb.delivery_pin_encrypted);
 
   const driverStatsBefore = await pgGetDriverById(driverA.id);
   const cashBefore = driverStatsBefore.currentCashInHand;
@@ -756,8 +837,8 @@ async function runDeliveryPinTests() {
   });
   await pgStartDriverDelivery(driverA.id, orderPartial.id, driverOpA);
 
-  const [partDb] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderPartial.id}`;
-  const partPin = deriveOrderPin(orderPartial.id, partDb.delivery_pin_seed);
+  const [partDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderPartial.id}`;
+  const partPin = decryptPin(partDb.delivery_pin_encrypted);
 
   const partDelivered = await pgDeliverDriverOrder(driverA.id, orderPartial.id, driverOpA, {
     collectionStatus: 'partial',
@@ -802,8 +883,8 @@ async function runDeliveryPinTests() {
   });
   await pgStartDriverDelivery(driverA.id, orderDebt.id, driverOpA);
 
-  const [debtDb] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderDebt.id}`;
-  const debtPin = deriveOrderPin(orderDebt.id, debtDb.delivery_pin_seed);
+  const [debtDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderDebt.id}`;
+  const debtPin = decryptPin(debtDb.delivery_pin_encrypted);
 
   const debtDelivered = await pgDeliverDriverOrder(driverA.id, orderDebt.id, driverOpA, {
     collectionStatus: 'debt_unpaid',
@@ -861,15 +942,17 @@ async function runDeliveryPinTests() {
   assert(validOverrideData.order.status === 'delivered', 'Order status transitioned to delivered via override');
   assert(validOverrideData.order.deliveryProofMethod === 'admin_override', 'deliveryProofMethod is admin_override');
   assert(validOverrideData.order.deliveryOverrideReason.includes('هاتف الزبون نفدت بطاريته'), 'deliveryOverrideReason recorded');
+  assert(validOverrideData.order.deliveryPin === undefined, 'Admin override response does not return raw deliveryPin');
 
   const [order2AfterOverride] = await sql`
-    SELECT status, delivery_proof_method, delivery_override_reason, delivery_override_by, delivery_override_by_name
+    SELECT status, delivery_proof_method, delivery_override_reason, delivery_override_by, delivery_override_by_name, delivery_pin_encrypted
     FROM orders WHERE id = ${order2.id}
   `;
   assert(order2AfterOverride.status === 'delivered', 'Database order status is delivered');
   assert(order2AfterOverride.delivery_proof_method === 'admin_override', 'DB delivery_proof_method is admin_override');
   assert(order2AfterOverride.delivery_override_by === adminAuthIdentity.id, 'delivery_override_by matches admin user ID');
   assert(order2AfterOverride.delivery_override_by_name === 'مدير العمليات والتوصيل', 'delivery_override_by_name matches admin name');
+  assert(order2AfterOverride.delivery_pin_encrypted === null, 'delivery_pin_encrypted is erased (NULL) in DB after admin override');
 
   const [overrideAudit] = await sql`
     SELECT action_type, category, severity, details FROM audit_logs
@@ -957,8 +1040,8 @@ async function runDeliveryPinTests() {
   });
   await pgStartDriverDelivery(driverA.id, orderCancel.id, driverOpA);
 
-  const [cancelDb] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderCancel.id}`;
-  const cancelPin = deriveOrderPin(orderCancel.id, cancelDb.delivery_pin_seed);
+  const [cancelDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderCancel.id}`;
+  const cancelPin = decryptPin(cancelDb.delivery_pin_encrypted);
 
   // Driver marks delivery as returned/failed
   const { pgReturnDriverOrder } = await import('./src/lib/postgres-delivery.ts');
@@ -968,6 +1051,17 @@ async function runDeliveryPinTests() {
 
   const [stockAfterReturn16] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prod.id}`;
   assert(parseInt(stockAfterReturn16.current_stock_pieces, 10) === stockBeforeNum16, 'Stock restored to original quantity upon return');
+
+  // Verify secret erasure and customer API behavior on cancelled/returned order
+  const [cancelAfterDb] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderCancel.id}`;
+  assert(cancelAfterDb.delivery_pin_encrypted === null, 'delivery_pin_encrypted is erased (NULL) on cancelled/returned order');
+
+  const custCancelReq = new Request(`http://localhost:3000/api/orders/${orderCancel.id}`, {
+    headers: { Cookie: custACookie },
+  });
+  const custCancelRes = await getOrderRoute(custCancelReq, { params: { id: orderCancel.id } });
+  const custCancelData = await custCancelRes.json();
+  assert(custCancelData.order.deliveryPin === undefined, 'Customer API does NOT return deliveryPin on cancelled/returned order');
 
   // Try to deliver returned/cancelled order with correct PIN -> MUST fail
   let deliverReturnedCaught = false;

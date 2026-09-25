@@ -50,7 +50,7 @@ export const orders = pgTable('orders', {
 
   // Delivery PIN Proof & Verification
   deliveryPinHash: varchar('delivery_pin_hash', { length: 255 }),
-  deliveryPinSeed: varchar('delivery_pin_seed', { length: 64 }),
+  deliveryPinEncrypted: text('delivery_pin_encrypted'),
   deliveryPinAttempts: integer('delivery_pin_attempts').default(0).notNull(),
   deliveryPinLockedUntil: timestamp('delivery_pin_locked_until', { withTimezone: true }),
   deliveryProofMethod: varchar('delivery_proof_method', { length: 30 }), // 'customer_pin' | 'admin_override'

@@ -49,6 +49,7 @@ async function setup() {
     'drizzle/0005_audit_hardening_triggers.sql',
     'drizzle/0006_driver_settlement_lifecycle.sql',
     'drizzle/0007_delivery_pin_proof.sql',
+    'drizzle/0008_delivery_pin_encrypted.sql',
   ];
 
   for (const m of migrations) {
@@ -116,7 +117,7 @@ async function runDriversPhase2Tests() {
   );
   const { PATCH: patchAdminOrder } = await import('./src/app/api/orders/[id]/route.ts');
   const { GET: getAdminDriverOrders } = await import('./src/app/api/admin/drivers/[id]/orders/route.ts');
-  const { deriveOrderPin } = await import('./src/lib/delivery-pin.ts');
+  const { decryptPin } = await import('./src/lib/delivery-pin.ts');
 
   // --- Seed Reference Data ---
   console.log('--- Step 0: Seeding Reference Catalog & Accounts ---');
@@ -542,8 +543,8 @@ async function runDriversPhase2Tests() {
   assert((await postDriverOrders(badDeliverReq)).status === 403, 'Driver B delivery attempt on Driver A order rejected with HTTP 403');
 
   // 4.2 Driver A delivers Order 1 with cash collection
-  const [order1Row] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${order1.id}`;
-  const order1Pin = deriveOrderPin(order1.id, order1Row.delivery_pin_seed);
+  const [order1Row] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${order1.id}`;
+  const order1Pin = decryptPin(order1Row.delivery_pin_encrypted);
 
   const validDeliverReq = new Request('http://localhost:3000/api/driver/orders', {
     method: 'POST',
@@ -801,8 +802,8 @@ async function runDriversPhase2Tests() {
   });
 
   // 6.2 Execute two parallel deliver operations concurrently
-  const [order3Row] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${order3.id}`;
-  const order3Pin = deriveOrderPin(order3.id, order3Row.delivery_pin_seed);
+  const [order3Row] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${order3.id}`;
+  const order3Pin = decryptPin(order3Row.delivery_pin_encrypted);
   const driverOpA = { id: driverA.id, name: driverA.name, phone: driverA.phone };
   const [resConcurrent1, resConcurrent2] = await Promise.all([
     pgDeliverDriverOrder(driverA.id, order3.id, driverOpA, { collectionStatus: 'collected_cash', deliveryPin: order3Pin }),
@@ -862,8 +863,8 @@ async function runDriversPhase2Tests() {
   const [stockBefore5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
   const stockBeforeNum5 = parseInt(stockBefore5.current_stock_pieces, 10);
 
-  const [order5Row] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${order5.id}`;
-  const order5Pin = deriveOrderPin(order5.id, order5Row.delivery_pin_seed);
+  const [order5Row] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${order5.id}`;
+  const order5Pin = decryptPin(order5Row.delivery_pin_encrypted);
 
   // Fire Deliver and Return concurrently
   const [raceDeliverRes, raceReturnRes] = await Promise.allSettled([

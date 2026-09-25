@@ -49,6 +49,7 @@ async function setup() {
     'drizzle/0005_audit_hardening_triggers.sql',
     'drizzle/0006_driver_settlement_lifecycle.sql',
     'drizzle/0007_delivery_pin_proof.sql',
+    'drizzle/0008_delivery_pin_encrypted.sql',
   ];
 
   for (const m of migrations) {
@@ -113,7 +114,7 @@ async function runDriversPhase3Tests() {
     DRIVER_SESSION_COOKIE_NAME,
   } = await import('./src/lib/auth.ts');
 
-  const { deriveOrderPin } = await import('./src/lib/delivery-pin.ts');
+  const { decryptPin } = await import('./src/lib/delivery-pin.ts');
 
   const { GET: getAdminDriverCustody, POST: postAdminDriverSettle } = await import(
     './src/app/api/admin/drivers/[id]/settle/route.ts'
@@ -288,8 +289,8 @@ async function runDriversPhase3Tests() {
 
   await pgAssignOrderDriver({ orderId: orderA.id, driverId: driver1.id, adminOperator: adminOp });
   await pgStartDriverDelivery(driver1.id, orderA.id, driverOp1);
-  const [orderARow] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderA.id}`;
-  const orderAPin = deriveOrderPin(orderA.id, orderARow.delivery_pin_seed);
+  const [orderARow] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderA.id}`;
+  const orderAPin = decryptPin(orderARow.delivery_pin_encrypted);
   await pgDeliverDriverOrder(driver1.id, orderA.id, driverOp1, { collectionStatus: 'collected_cash', deliveryPin: orderAPin });
 
   const custodyAfterA = await pgGetDriverCustody(driver1.id);
@@ -333,8 +334,8 @@ async function runDriversPhase3Tests() {
 
   await pgAssignOrderDriver({ orderId: orderB.id, driverId: driver1.id, adminOperator: adminOp });
   await pgStartDriverDelivery(driver1.id, orderB.id, driverOp1);
-  const [orderBRow] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderB.id}`;
-  const orderBPin = deriveOrderPin(orderB.id, orderBRow.delivery_pin_seed);
+  const [orderBRow] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderB.id}`;
+  const orderBPin = decryptPin(orderBRow.delivery_pin_encrypted);
   await pgDeliverDriverOrder(driver1.id, orderB.id, driverOp1, {
     collectionStatus: 'partial',
     collectedAmount: 60000,
@@ -575,8 +576,8 @@ async function runDriversPhase3Tests() {
   await pgStartDriverDelivery(driver1.id, orderC.id, driverOp1);
 
   // Run Deliver and Settlement concurrently
-  const [orderCRow] = await sql`SELECT delivery_pin_seed FROM orders WHERE id = ${orderC.id}`;
-  const orderCPin = deriveOrderPin(orderC.id, orderCRow.delivery_pin_seed);
+  const [orderCRow] = await sql`SELECT delivery_pin_encrypted FROM orders WHERE id = ${orderC.id}`;
+  const orderCPin = decryptPin(orderCRow.delivery_pin_encrypted);
   const [raceDeliver, raceSettle] = await Promise.allSettled([
     pgDeliverDriverOrder(driver1.id, orderC.id, driverOp1, { collectionStatus: 'collected_cash', deliveryPin: orderCPin }),
     pgCreateDriverSettlement(driver1.id, { amount: 40000, notes: 'تسوية في سباق التوصيل' }, adminOp),

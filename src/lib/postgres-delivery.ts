@@ -668,11 +668,11 @@ export async function pgDeliverDriverOrder(
     // Verify Customer Delivery PIN
     let pinHash = order.deliveryPinHash;
     if (!pinHash) {
-      const pinData = generateOrderPinData(order.id);
+      const pinData = generateOrderPinData();
       pinHash = pinData.hash;
       await tx.update(orders).set({
         deliveryPinHash: pinData.hash,
-        deliveryPinSeed: pinData.seed,
+        deliveryPinEncrypted: pinData.encrypted,
         deliveryPinAttempts: 0,
       }).where(eq(orders.id, order.id));
     }
@@ -757,6 +757,7 @@ export async function pgDeliverDriverOrder(
         deliveredAt,
         deliveryVerifiedAt: new Date(),
         deliveryProofMethod: 'customer_pin',
+        deliveryPinEncrypted: null,
         deliveryPinAttempts: 0,
         deliveryPinLockedUntil: null,
         collectionStatus: finalCollectionStatus,
@@ -911,6 +912,7 @@ export async function pgAdminOverrideDelivery(
         deliveryOverrideReason: trimmedReason,
         deliveryOverrideBy: adminOperator.userId && isUuid(adminOperator.userId) ? adminOperator.userId : null,
         deliveryOverrideByName: adminOperator.name || adminOperator.username,
+        deliveryPinEncrypted: null,
         deliveryPinAttempts: 0,
         deliveryPinLockedUntil: null,
         collectionStatus: finalCollectionStatus,

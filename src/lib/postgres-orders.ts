@@ -13,7 +13,7 @@ import {
   vehicles,
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
-import { deriveOrderPin, generateOrderPinData } from '@/lib/delivery-pin';
+import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 
 /* =========================================================
    Types & Interfaces
@@ -152,7 +152,13 @@ export function formatOrderRecord(
     deliveryProofMethod: orderRow.deliveryProofMethod || undefined,
     deliveryVerifiedAt: orderRow.deliveryVerifiedAt ? new Date(orderRow.deliveryVerifiedAt).toISOString() : undefined,
     deliveryOverrideReason: orderRow.deliveryOverrideReason || undefined,
-    deliveryPin: includePin && orderRow.deliveryPinSeed ? deriveOrderPin(String(orderRow.id), orderRow.deliveryPinSeed) : undefined,
+    deliveryPin:
+      includePin &&
+      orderRow.deliveryPinEncrypted &&
+      orderRow.status !== 'delivered' &&
+      orderRow.status !== 'cancelled'
+        ? (decryptPin(orderRow.deliveryPinEncrypted) || undefined)
+        : undefined,
     createdAt: new Date(orderRow.createdAt).toISOString(),
     updatedAt: new Date(orderRow.updatedAt).toISOString(),
   };
@@ -482,7 +488,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     // Step D: Insert Order
     // -------------------------------------------------------------
     const newOrderId = crypto.randomUUID();
-    const pinData = generateOrderPinData(newOrderId);
+    const pinData = generateOrderPinData();
 
     const [insertedOrder] = await tx
       .insert(orders)
@@ -518,7 +524,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         driverCashSettled: false,
         inventoryRestored: false,
         deliveryPinHash: pinData.hash,
-        deliveryPinSeed: pinData.seed,
+        deliveryPinEncrypted: pinData.encrypted,
         deliveryPinAttempts: 0,
         notes: data.notes?.trim() || null,
       })
@@ -719,6 +725,7 @@ export async function pgCancelOrder(
         collectionStatus: options?.isReturn ? 'returned' : order.collectionStatus,
         remainingDebtAmount: '0.00',
         inventoryRestored: true,
+        deliveryPinEncrypted: null,
         driverNotes: options?.reason || order.driverNotes,
         updatedAt: new Date(),
       })
