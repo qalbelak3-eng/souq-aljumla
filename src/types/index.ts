@@ -152,6 +152,7 @@ export interface SavedAddress {
   title: string; // e.g. "موقع البيت 🏠" أو "موقع العمل 🏢" أو "الماركت 🏪"
   city: string;
   address: string;
+  locationDesc?: string; // وصف إضافي للموقع للسائق مثل: "حي الحسين – مقابل جامع..."
   lat?: number;
   lng?: number;
   mapsUrl?: string;
@@ -166,6 +167,7 @@ export interface CustomerInfo {
   city: string;
   address: string;
   locationTitle?: string; // e.g. "موقع البيت" أو "موقع العمل"
+  locationDesc?: string; // وصف إضافي للسائق مثل: "حي الحسين – مقابل جامع..."
   lat?: number;
   lng?: number;
   mapsUrl?: string; // رابط الخريطة

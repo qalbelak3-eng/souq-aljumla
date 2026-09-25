@@ -287,10 +287,26 @@ export async function PUT(request: Request) {
       safeUpdates.storefrontImage = typeof rawUpdates.storefrontImage === 'string' ? rawUpdates.storefrontImage.trim() : undefined;
     }
     if (rawUpdates.lat !== undefined) {
-      safeUpdates.lat = rawUpdates.lat !== null && rawUpdates.lat !== '' ? Number(rawUpdates.lat) : undefined;
+      if (rawUpdates.lat === null || rawUpdates.lat === '') {
+        safeUpdates.lat = undefined;
+      } else {
+        const latVal = Number(rawUpdates.lat);
+        if (isNaN(latVal) || latVal < -90 || latVal > 90) {
+          return NextResponse.json({ success: false, error: 'قيمة lat غير صالحة — يجب أن تكون بين -90 و 90' }, { status: 400 });
+        }
+        safeUpdates.lat = latVal;
+      }
     }
     if (rawUpdates.lng !== undefined) {
-      safeUpdates.lng = rawUpdates.lng !== null && rawUpdates.lng !== '' ? Number(rawUpdates.lng) : undefined;
+      if (rawUpdates.lng === null || rawUpdates.lng === '') {
+        safeUpdates.lng = undefined;
+      } else {
+        const lngVal = Number(rawUpdates.lng);
+        if (isNaN(lngVal) || lngVal < -180 || lngVal > 180) {
+          return NextResponse.json({ success: false, error: 'قيمة lng غير صالحة — يجب أن تكون بين -180 و 180' }, { status: 400 });
+        }
+        safeUpdates.lng = lngVal;
+      }
     }
     if (rawUpdates.mapsUrl !== undefined) {
       safeUpdates.mapsUrl = typeof rawUpdates.mapsUrl === 'string' ? rawUpdates.mapsUrl.trim() : undefined;

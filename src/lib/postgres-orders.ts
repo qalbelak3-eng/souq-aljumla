@@ -481,7 +481,9 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         accountId: customerAccount.id,
         customerNameSnap: data.customer.name.trim(),
         customerPhoneSnap: normalizePhone(data.customer.phone),
-        deliveryAddressSnap: data.customer.address?.trim() || 'العراق',
+        deliveryAddressSnap: data.customer.locationDesc?.trim()
+          ? `${data.customer.address?.trim() || 'العراق'}\n${data.customer.locationDesc.trim()}`
+          : data.customer.address?.trim() || 'العراق',
         locationTitleSnap: data.customer.locationTitle?.trim() || null,
         lat: data.customer.lat !== undefined ? String(data.customer.lat) : null,
         lng: data.customer.lng !== undefined ? String(data.customer.lng) : null,

@@ -86,6 +86,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'يرجى إكمال جميع بيانات العميل المطلوبة' }, { status: 400 });
     }
 
+    // Server-side lat/lng range validation (Req #9)
+    if (customer.lat !== undefined && customer.lat !== null && customer.lat !== '') {
+      const latVal = Number(customer.lat);
+      if (isNaN(latVal) || latVal < -90 || latVal > 90) {
+        return NextResponse.json({ success: false, error: 'إحداثيات الموقع (lat) غير صالحة — يجب أن تكون بين -90 و 90' }, { status: 400 });
+      }
+      customer.lat = latVal;
+    } else {
+      customer.lat = undefined;
+    }
+    if (customer.lng !== undefined && customer.lng !== null && customer.lng !== '') {
+      const lngVal = Number(customer.lng);
+      if (isNaN(lngVal) || lngVal < -180 || lngVal > 180) {
+        return NextResponse.json({ success: false, error: 'إحداثيات الموقع (lng) غير صالحة — يجب أن تكون بين -180 و 180' }, { status: 400 });
+      }
+      customer.lng = lngVal;
+    } else {
+      customer.lng = undefined;
+    }
+
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'سلة المشتريات فارغة' }, { status: 400 });
     }

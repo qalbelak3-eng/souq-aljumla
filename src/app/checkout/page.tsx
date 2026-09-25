@@ -96,6 +96,150 @@ const getLocationStyle = (title: string, index: number, isSelected: boolean) => 
   return fallbackStyles[index % fallbackStyles.length];
 };
 
+// ─── MapPickerModal ──────────────────────────────────────────────────────────
+// Req #3: shows a Leaflet map with a draggable pin centered on initialLat/initialLng
+// The user adjusts the pin then presses "تأكيد هذا الموقع".
+// Leaflet is loaded from CDN (no API key needed) using OpenStreetMap tiles.
+interface MapPickerModalProps {
+  initialLat: number;
+  initialLng: number;
+  onConfirm: (lat: number, lng: number) => void;
+  onCancel: () => void;
+}
+
+function MapPickerModal({ initialLat, initialLng, onConfirm, onCancel }: MapPickerModalProps) {
+  const mapRef = React.useRef<HTMLDivElement>(null);
+  const leafletRef = React.useRef<any>(null);
+  const markerRef = React.useRef<any>(null);
+  const [pinLat, setPinLat] = React.useState(initialLat);
+  const [pinLng, setPinLng] = React.useState(initialLng);
+  const [leafletReady, setLeafletReady] = React.useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Inject Leaflet CSS if not already present
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    // Load Leaflet JS if not already loaded
+    const loadLeaflet = () => {
+      if ((window as any).L) {
+        setLeafletReady(true);
+        return;
+      }
+      if (document.getElementById('leaflet-js')) return;
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = () => setLeafletReady(true);
+      document.body.appendChild(script);
+    };
+    loadLeaflet();
+  }, []);
+
+  useEffect(() => {
+    if (!leafletReady || !mapRef.current) return;
+    const L = (window as any).L;
+    if (!L || leafletRef.current) return;
+
+    // Initialize map
+    const map = L.map(mapRef.current).setView([initialLat, initialLng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Custom icon to avoid missing default icon issue in Next.js
+    const icon = L.divIcon({
+      html: '<div style="font-size:2rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))">📍</div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      className: '',
+    });
+
+    const marker = L.marker([initialLat, initialLng], { draggable: true, icon }).addTo(map);
+    markerRef.current = marker;
+    leafletRef.current = map;
+
+    marker.on('dragend', (e: any) => {
+      const pos = e.target.getLatLng();
+      setPinLat(pos.lat);
+      setPinLng(pos.lng);
+    });
+
+    // Click on map moves the pin
+    map.on('click', (e: any) => {
+      marker.setLatLng(e.latlng);
+      setPinLat(e.latlng.lat);
+      setPinLng(e.latlng.lng);
+    });
+
+    return () => {
+      map.remove();
+      leafletRef.current = null;
+      markerRef.current = null;
+    };
+  }, [leafletReady]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-emerald-50">
+          <div className="flex items-center gap-2 text-sm font-black text-emerald-900">
+            <MapPin className="w-4 h-4 text-emerald-600" />
+            <span>تحديد موقعك على الخريطة</span>
+          </div>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-700 transition">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-600 font-medium px-4 pt-2 pb-1">
+          حرّك الدبوس 📍 أو اضغط على الخريطة لضبط موقعك بدقة، ثم اضغط «تأكيد هذا الموقع».
+        </p>
+
+        {/* Map container */}
+        <div ref={mapRef} style={{ height: '320px', width: '100%' }} className="bg-slate-100">
+          {!leafletReady && (
+            <div className="flex items-center justify-center h-full text-slate-500 text-xs">
+              جاري تحميل الخريطة...
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-2 text-[10px] text-slate-500 font-mono text-center border-t border-slate-100">
+          الإحداثيات المحددة: {pinLat.toFixed(6)}, {pinLng.toFixed(6)}
+        </div>
+
+        <div className="flex gap-3 px-4 pb-4">
+          <button
+            type="button"
+            onClick={() => onConfirm(pinLat, pinLng)}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            تأكيد هذا الموقع
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl transition"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function CheckoutPage() {
   const toast = useToast();
   const {
@@ -155,6 +299,8 @@ export default function CheckoutPage() {
 
   // GPS & Locations
   const [coords, setCoords] = useState<{ lat?: number; lng?: number; mapsUrl?: string }>({});
+  const [pendingCoords, setPendingCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [liveGps, setLiveGps] = useState<{ lat: number; lng: number } | null>(null);
   const [locationMismatch, setLocationMismatch] = useState<{
     distanceKm: number;
@@ -166,6 +312,7 @@ export default function CheckoutPage() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('home');
   const [saveThisLocation, setSaveThisLocation] = useState(false);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [locationDesc, setLocationDesc] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -309,7 +456,8 @@ export default function CheckoutPage() {
       setIsEditingAddress(true);
     }
 
-    // Auto-detect live GPS in background with High Accuracy to check if user is at the selected address
+    // Auto-detect live GPS in background to check if user is at the selected address
+    // Per Req #2: never auto-apply GPS coords without user confirmation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -317,18 +465,14 @@ export default function CheckoutPage() {
           const lng = pos.coords.longitude;
           setLiveGps({ lat, lng });
 
-          // If no coords set yet, use live GPS
           if (!user?.lat && !coords.lat) {
-            setCoords({
-              lat,
-              lng,
-              mapsUrl: `https://www.google.com/maps?q=${lat},${lng}`,
-            });
-            setGpsStatus('تم تحديد موقعك الجغرافي تلقائياً عبر GPS 📍');
+            // No confirmed coords yet — store as pending and prompt user to confirm via map picker
+            setPendingCoords({ lat, lng });
+            setShowMapPicker(true);
           } else if (user?.lat && user?.lng) {
             // Check distance between saved address and live position
             const diffKm = calculateDistanceKm(lat, lng, user.lat, user.lng);
-            if (diffKm > 0.5) { // إذا كان الفرق أكثر من 500 متر
+            if (diffKm > 0.5) {
               setLocationMismatch({
                 distanceKm: Math.round(diffKm * 10) / 10,
                 savedTitle: user.businessName || 'موقع البيت 🏠',
@@ -370,12 +514,9 @@ export default function CheckoutPage() {
 
   const handleApplyCurrentLiveLocation = () => {
     if (!liveGps) return;
-    const url = `https://www.google.com/maps?q=${liveGps.lat},${liveGps.lng}`;
-    setCoords({ lat: liveGps.lat, lng: liveGps.lng, mapsUrl: url });
-    setLocationTitle('موقعي الحالي الآن 📍');
-    setSelectedLocationId('custom');
-    setLocationMismatch(null);
-    setGpsStatus('تم تحديث موقع التوصيل إلى موقعك الجغرافي الحالي بنجاح ✓');
+    // Req #2: don't apply directly — open map picker for confirmation
+    setPendingCoords({ lat: liveGps.lat, lng: liveGps.lng });
+    setShowMapPicker(true);
   };
 
   const handleDetectGps = () => {
@@ -392,11 +533,11 @@ export default function CheckoutPage() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const url = `https://www.google.com/maps?q=${lat},${lng}`;
-        setCoords({ lat, lng, mapsUrl: url });
         setIsDetectingGps(false);
-        setGpsStatus(`تم التقاط وتثبيت إحداثيات موقعك بنجاح (${lat.toFixed(4)}, ${lng.toFixed(4)}) ✓`);
-        toast.showToast('تم التقاط وتثبيت موقعك الجغرافي بنجاح! 📍✓', 'success');
+        // Req #2+#3: store in pending and open map picker for user to confirm/adjust with draggable pin
+        setPendingCoords({ lat, lng });
+        setShowMapPicker(true);
+        setGpsStatus(`تم التقاط موقعك (${lat.toFixed(4)}, ${lng.toFixed(4)}) — يرجى تأكيد الموقع على الخريطة`);
       },
       (err) => {
         setIsDetectingGps(false);
@@ -405,6 +546,16 @@ export default function CheckoutPage() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  // Called from MapPickerModal when user confirms the pin position
+  const handleConfirmMapLocation = (lat: number, lng: number) => {
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+    setCoords({ lat, lng, mapsUrl });
+    setPendingCoords(null);
+    setShowMapPicker(false);
+    setGpsStatus(`تم تثبيت الإحداثيات: (${lat.toFixed(4)}, ${lng.toFixed(4)}) ✓`);
+    toast.showToast('تم تأكيد وتثبيت موقعك الجغرافي بنجاح! 📍✓', 'success');
   };
 
   if (cart.length === 0 && !isSubmitting) {
@@ -488,6 +639,7 @@ export default function CheckoutPage() {
           city,
           address: address.trim(),
           locationTitle: locationTitle.trim() || undefined,
+          locationDesc: locationDesc.trim() || undefined,
           lat: coords.lat,
           lng: coords.lng,
           mapsUrl: coords.mapsUrl,
@@ -541,6 +693,20 @@ export default function CheckoutPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6 sm:pb-10 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] space-y-6 text-xs">
       
+      {/* Map Picker Modal — Req #3: draggable pin, confirm button */}
+      {showMapPicker && pendingCoords && (
+        <MapPickerModal
+          initialLat={pendingCoords.lat}
+          initialLng={pendingCoords.lng}
+          onConfirm={handleConfirmMapLocation}
+          onCancel={() => {
+            setShowMapPicker(false);
+            setPendingCoords(null);
+            setGpsStatus('تم إلغاء تحديد الموقع — يمكنك تحديد موقعك يدوياً أو إعادة المحاولة');
+          }}
+        />
+      )}
+
       {/* Checkout Clean Distraction-Free Header */}
       <div className="flex items-center justify-between bg-white px-4 py-3 sm:px-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <Link href="/" className="flex items-center gap-2">
@@ -1032,6 +1198,22 @@ export default function CheckoutPage() {
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue"
                     />
                   </div>
+                </div>
+
+                {/* وصف الموقع للسائق — Req #4 */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Navigation className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span>وصف المكان للسائق (اختياري — لتسهيل الوصول):</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={locationDesc}
+                    onChange={(e) => setLocationDesc(e.target.value)}
+                    placeholder="مثال: حي الحسين، مقابل جامع الإمام الصادق — البيت ذو البوابة الزرقاء"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-900 focus:outline-none focus:border-brand-blue resize-none"
+                  />
+                  <p className="text-[10px] text-slate-500">يُرسَل هذا الوصف للمندوب مع الطلبية لمساعدته في إيجاد موقعك بسهولة.</p>
                 </div>
 
                 {/* Save Address Checkbox (افتراضي غير محدد) */}
