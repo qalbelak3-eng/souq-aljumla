@@ -122,6 +122,14 @@ export default function DriverDashboardPage() {
       if (data.success) {
         setActiveOrders(data.activeOrders || []);
         setHistoryOrders(data.historyOrders || []);
+        // Sync arrived state from server — prevents reset on page refresh
+        setArrivedNotifiedOrders((prev) => {
+          const next = { ...prev };
+          for (const o of data.activeOrders || []) {
+            if (o.driverArrivedAt) next[o.id] = true;
+          }
+          return next;
+        });
         if (data.ratings) {
           setDriverRatings(data.ratings || []);
         }
@@ -337,15 +345,30 @@ export default function DriverDashboardPage() {
   };
 
   // Helper for GPS / Google Maps Link
+  // Priority 1: Verified GPS snapshot coordinates (most reliable — written at order time)
+  // Priority 2: Customer-submitted mapsUrl (less reliable)
+  // Priority 3: Text address query (last resort)
   const getGoogleMapsLink = (order: Order) => {
-    if (order.customer.mapsUrl) {
-      return order.customer.mapsUrl;
-    }
     if (order.customer.lat && order.customer.lng) {
       return `https://www.google.com/maps/dir/?api=1&destination=${order.customer.lat},${order.customer.lng}`;
     }
+    if (order.customer.mapsUrl) {
+      return order.customer.mapsUrl;
+    }
     const query = encodeURIComponent(`${order.customer.city} ${order.customer.address}`);
     return `https://www.google.com/maps/dir/?api=1&destination=${query}`;
+  };
+
+  // Helper: extract locationDesc from deliveryAddressSnap (embedded after '\n')
+  const getLocationDesc = (order: Order): string | null => {
+    const addr = order.customer.address || '';
+    const parts = addr.split('\n');
+    return parts.length > 1 ? parts.slice(1).join('\n').trim() || null : null;
+  };
+
+  // Helper: extract base address (part before '\n')
+  const getBaseAddress = (order: Order): string => {
+    return (order.customer.address || '').split('\n')[0].trim();
   };
 
   if (!driver) {
@@ -542,11 +565,32 @@ export default function DriverDashboardPage() {
                         )}
                       </div>
 
-                      {/* Address & City */}
+                      {/* Address & City — show base address only (locationDesc shown separately below) */}
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{order.customer.city} - {order.customer.address}</span>
+                        <span>{order.customer.city} - {getBaseAddress(order)}</span>
+                        {order.customer.lat && order.customer.lng ? (
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                            📍 GPS مثبت
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-500 border border-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0">
+                            بدون GPS
+                          </span>
+                        )}
                       </div>
+
+                      {/* علامة مميزة — locationDesc embedded in deliveryAddressSnap after '\n' */}
+                      {getLocationDesc(order) && (
+                        <div className="bg-purple-50 border border-purple-200 text-purple-900 text-xs p-3 rounded-2xl space-y-1 shadow-2xs">
+                          <span className="font-black text-purple-900 flex items-center gap-1.5">
+                            <span>🏷️ علامة مميزة / وصف المكان:</span>
+                          </span>
+                          <p className="bg-white/80 p-2 rounded-xl border border-purple-200 font-bold text-slate-800 leading-relaxed">
+                            {getLocationDesc(order)}
+                          </p>
+                        </div>
+                      )}
 
                       {/* ملاحظات الزبون للسائق */}
                       {(order.notes || order.customer.notes) && (
@@ -625,15 +669,28 @@ export default function DriverDashboardPage() {
 
                     {/* Action buttons (Maps & Call) */}
                     <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                      <a
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2 px-3 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5 text-xs transition"
-                      >
-                        <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>الخريطة والموقع 🗺️</span>
-                      </a>
+                      {order.customer.lat && order.customer.lng ? (
+                        <a
+                          href={mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white font-black py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition shadow-sm"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                          <span>📍 فتح الموقع (GPS)</span>
+                        </a>
+                      ) : (
+                        <a
+                          href={mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2 px-3 rounded-xl border border-slate-300 flex items-center justify-center gap-1.5 text-xs transition"
+                          title="لا يوجد GPS محدد — سيتم البحث بالعنوان النصي"
+                        >
+                          <Navigation className="w-3.5 h-3.5 text-slate-400" />
+                          <span>عنوان بدون GPS 🗺️</span>
+                        </a>
+                      )}
 
                       <a
                         href={`tel:${order.customer.phone}`}
@@ -705,25 +762,38 @@ export default function DriverDashboardPage() {
                         </div>
 
                         {/* زر إشعار الزبون بأن المندوب وصل لموقعه */}
-                        <button
-                          type="button"
-                          onClick={() => handleNotifyArrived(order.id)}
-                          disabled={notifyingArrivedId === order.id || arrivedNotifiedOrders[order.id]}
-                          className={`w-full py-3 px-4 rounded-2xl font-black text-xs border transition flex items-center justify-center gap-2 cursor-pointer ${
-                            arrivedNotifiedOrders[order.id]
-                              ? 'bg-amber-50 text-amber-900 border-amber-300'
-                              : 'bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 border-amber-600 shadow-sm'
-                          }`}
-                        >
-                          <span className="text-base">🛵</span>
-                          <span>
-                            {arrivedNotifiedOrders[order.id]
-                              ? '✓ تم إرسال إشعار (المندوب وصل) لهاتف الزبون'
-                              : notifyingArrivedId === order.id
-                              ? 'جاري إرسال التنبيه لهاتف الزبون...'
-                              : '📢 تنبيه الزبون: وصلت لموقعك بالخارج! (إشعار فوري)'}
-                          </span>
-                        </button>
+                        {(() => {
+                          // Persistent arrived state: local cache OR server-confirmed driverArrivedAt
+                          const hasArrived = arrivedNotifiedOrders[order.id] || !!order.driverArrivedAt;
+                          return (
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => handleNotifyArrived(order.id)}
+                                disabled={notifyingArrivedId === order.id || hasArrived}
+                                className={`w-full py-3 px-4 rounded-2xl font-black text-xs border transition flex items-center justify-center gap-2 ${
+                                  hasArrived
+                                    ? 'bg-amber-50 text-amber-900 border-amber-300 cursor-default'
+                                    : 'bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 border-amber-600 shadow-sm cursor-pointer'
+                                }`}
+                              >
+                                <span className="text-base">🛵</span>
+                                <span>
+                                  {hasArrived
+                                    ? '✓ تم الوصول — تم إشعار الزبون'
+                                    : notifyingArrivedId === order.id
+                                    ? 'جاري إرسال التنبيه لهاتف الزبون...'
+                                    : '📢 تنبيه الزبون: وصلت لموقعك بالخارج! (إشعار فوري)'}
+                                </span>
+                              </button>
+                              {order.driverArrivedAt && (
+                                <p className="text-[10px] text-center text-amber-700 font-bold">
+                                  وقت الوصول: {new Date(order.driverArrivedAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         <button
                           onClick={() => openDeliveryModal(order)}
