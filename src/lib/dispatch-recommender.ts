@@ -1,7 +1,25 @@
-import { Driver, Vehicle, Order } from '@/types';
+import { Driver, Vehicle, Order, DriverBaseStatus, DriverOperationalStatus } from '@/types';
 
 export const HIGH_CUSTODY_THRESHOLD = 500_000; // 500,000 IQD
 export const HIGH_CUSTODY_WARNING = '⚠️ عهدة مرتفعة — يفضّل إجراء تسوية قبل إسناد طلبات نقدية جديدة';
+
+/**
+ * احتساب الحالة التشغيلية الفعلية للسائق (Effective Operational Status)
+ * - إذا كان السائق في استراحة 'break' -> يبقى 'break' ☕
+ * - إذا كان السائق خارج الدوام 'off_duty' -> يبقى 'off_duty' ⚫
+ * - إذا كان السائق متاحاً 'available' ولديه طلبات نشطة (activeDeliveries > 0) -> يتحول تشغيلياً إلى 'busy' 🟠
+ * - إذا كان السائق متاحاً 'available' وبدون طلبات نشطة -> يبقى 'available' 🟢
+ */
+export function computeDriverOperationalStatus(
+  baseStatus?: DriverBaseStatus | string,
+  activeDeliveries: number = 0
+): DriverOperationalStatus {
+  const clean = String(baseStatus || '').toLowerCase().trim();
+  if (clean === 'break') return 'break';
+  if (clean === 'off_duty') return 'off_duty';
+  if (activeDeliveries > 0) return 'busy';
+  return 'available';
+}
 
 /**
  * فحص ما إذا كان الطلب يتطلب تحصيلاً نقدياً من قبل السائق
@@ -29,6 +47,8 @@ export interface RankedDriver<T extends Driver = Driver> {
   currentCashInHand: number;
   completedDeliveries: number;
   isHighCustody: boolean;
+  operationalStatus: DriverOperationalStatus;
+  effectiveStatus: DriverOperationalStatus;
   reasons: string[];
 }
 
@@ -52,10 +72,13 @@ export function driverHasActiveVehicle(driver: Driver, vehicles?: Vehicle[]): bo
 /**
  * خوارزمية الترتيب الذكي للسائقين (Smart Recommendation)
  * 1. استبعاد السائقين غير الفعالين (isActive === false).
- * 2. إعطاء أفضلية لمن لديه مركبة فعالة.
- * 3. الأقل في عدد الطلبات النشطة (activeDeliveries).
- * 4. للطلبات النقدية: الأقل في العهدة النقدية (currentCashInHand).
- *    للطلبات غير النقدية: لا تُعاقب العهدة النقدية، بل يُرجّح الأكثر خبرة (completedDeliveries).
+ * 2. استبعاد السائقين في حالة استراحة (break) أو خارج الدوام (off_duty).
+ * 3. إعطاء أفضلية للمتاح (available) على المشغول (busy).
+ * 4. تطبيق معايير التوزيع التشغيلي:
+ *    - أفضلية من لديه مركبة فعالة.
+ *    - الأقل في عدد الطلبات النشطة (activeDeliveries).
+ *    - للطلبات النقدية: الأقل في العهدة النقدية (currentCashInHand).
+ *      للطلبات غير النقدية: الأكثر خبرة وإنجازاً (completedDeliveries).
  * 5. كسر التعادل بمعيار قطعي ثابت (Deterministic Tiebreaker) باستخدام الاسم أو المعرف.
  */
 export function rankDriversForOrder<T extends Driver = Driver>(
@@ -63,18 +86,30 @@ export function rankDriversForOrder<T extends Driver = Driver>(
   order?: Partial<Order> | { paymentMethod?: string; collectionStatus?: string } | null,
   vehicles?: Vehicle[]
 ): RankedDriver<T>[] {
-  // 1. استبعاد السائقين غير الفعالين
+  // 1. استبعاد السائقين غير الفعالين إدارياً
   const activeDrivers = (allDrivers || []).filter((d) => d && d.isActive !== false);
   if (activeDrivers.length === 0) return [];
 
+  // 2. تصفية واستبعاد السائقين في استراحة أو خارج الدوام
+  const eligibleDrivers = activeDrivers.filter((driver) => {
+    const rawStatus = (driver as any).operationalStatus || (driver as any).effectiveStatus;
+    const activeDeliveries = Number((driver as any).activeDeliveries || 0);
+    const effStatus = computeDriverOperationalStatus(rawStatus, activeDeliveries);
+    return effStatus !== 'break' && effStatus !== 'off_duty';
+  });
+
+  if (eligibleDrivers.length === 0) return [];
+
   const isCash = isOrderCashCollection(order);
 
-  const decorated: RankedDriver<T>[] = activeDrivers.map((driver) => {
+  const decorated: RankedDriver<T>[] = eligibleDrivers.map((driver) => {
     const hasActiveVehicle = driverHasActiveVehicle(driver, vehicles);
     const activeDeliveries = Number((driver as any).activeDeliveries || 0);
     const currentCashInHand = Number(driver.currentCashInHand || 0);
     const completedDeliveries = Number((driver as any).completedDeliveries || 0);
     const isHighCustody = currentCashInHand >= HIGH_CUSTODY_THRESHOLD;
+    const baseStatus = ((driver as any).operationalStatus as DriverBaseStatus) || 'available';
+    const effectiveStatus = computeDriverOperationalStatus(baseStatus, activeDeliveries);
 
     return {
       driver,
@@ -84,23 +119,32 @@ export function rankDriversForOrder<T extends Driver = Driver>(
       currentCashInHand,
       completedDeliveries,
       isHighCustody,
+      operationalStatus: baseStatus,
+      effectiveStatus,
       reasons: [],
     };
   });
 
   // فرز السائقين حسب المعايير المحددة
   decorated.sort((a, b) => {
-    // معيار 1: أفضلية من لديه مركبة فعالة (1 قبل 0)
+    // معيار 1: أفضلية المتاح (available) على المشغول (busy)
+    const aIsAvail = a.effectiveStatus === 'available';
+    const bIsAvail = b.effectiveStatus === 'available';
+    if (aIsAvail !== bIsAvail) {
+      return aIsAvail ? -1 : 1;
+    }
+
+    // معيار 2: أفضلية من لديه مركبة فعالة (1 قبل 0)
     if (a.hasActiveVehicle !== b.hasActiveVehicle) {
       return a.hasActiveVehicle ? -1 : 1;
     }
 
-    // معيار 2: الأقل في عدد الطلبات النشطة (الأقل حملاً)
+    // معيار 3: الأقل في عدد الطلبات النشطة (الأقل حملاً)
     if (a.activeDeliveries !== b.activeDeliveries) {
       return a.activeDeliveries - b.activeDeliveries;
     }
 
-    // معيار 3: العهدة النقدية مقابل طبيعة الطلب
+    // معيار 4: العهدة النقدية مقابل طبيعة الطلب
     if (isCash) {
       // الطلب نقدي: الأقل عهدة نقدية أفضل لمنع تراكم الكاش
       if (a.currentCashInHand !== b.currentCashInHand) {
@@ -122,7 +166,7 @@ export function rankDriversForOrder<T extends Driver = Driver>(
       }
     }
 
-    // معيار 4: كسر التعادل القطعي الثابت (Deterministic Tiebreaker)
+    // معيار 5: كسر التعادل القطعي الثابت (Deterministic Tiebreaker)
     const nameDiff = String(a.driver.name || '').localeCompare(String(b.driver.name || ''), 'ar');
     if (nameDiff !== 0) return nameDiff;
 
@@ -133,6 +177,11 @@ export function rankDriversForOrder<T extends Driver = Driver>(
   if (decorated.length > 0) {
     decorated[0].isRecommended = true;
     const reasons: string[] = [];
+    if (decorated[0].effectiveStatus === 'available') {
+      reasons.push('متاح 🟢');
+    } else {
+      reasons.push('مشغول 🟠');
+    }
     if (decorated[0].hasActiveVehicle) reasons.push('مركبة فعالة');
     reasons.push(`${decorated[0].activeDeliveries} طلبات نشطة`);
     if (isCash) {

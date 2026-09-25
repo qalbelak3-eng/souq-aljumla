@@ -66,6 +66,8 @@ export async function GET(req: Request) {
             activeDeliveries: driverProfile.activeDeliveries,
             completedDeliveries: driverProfile.completedDeliveries,
             totalDeliveredRevenue: driverProfile.totalDeliveredRevenue,
+            operationalStatus: driverProfile.operationalStatus,
+            effectiveStatus: driverProfile.effectiveStatus,
           }
         : driver,
       ratings,

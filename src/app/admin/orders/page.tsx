@@ -268,6 +268,19 @@ export default function AdminOrdersPage() {
     try {
       // Find driver default vehicle if available
       const driver = drivers.find(d => d.id === driverId);
+
+      // Warning / Confirmation if driver is on break or off-duty
+      if (driverId && driverId !== 'none' && driver) {
+        const effStatus = driver.effectiveStatus || driver.operationalStatus;
+        if (effStatus === 'break' || effStatus === 'off_duty') {
+          const statusText = effStatus === 'break' ? 'في استراحة (☕)' : 'خارج الدوام (⚫)';
+          const proceed = window.confirm(
+            `⚠️ تنبيه تشغيلي: السائق (${driver.name}) حالته الحالية: ${statusText}.\n\nهل أنت متأكد من رغبتك في إسناد هذه الطلبية إليه؟`
+          );
+          if (!proceed) return;
+        }
+      }
+
       const defaultVehId = driver?.defaultVehicleId;
 
       const payload: { driverId: string; vehicleId?: string } = { driverId };
@@ -914,6 +927,9 @@ export default function AdminOrdersPage() {
                           const isAssignedHighCustody = assignedDriver && (assignedDriver.currentCashInHand || 0) >= HIGH_CUSTODY_THRESHOLD;
                           const isTerminal = order.status === 'delivered' || order.status === 'cancelled';
                           const isShipped = order.status === 'shipped';
+                          const otherActiveDrivers = drivers.filter(
+                            (d) => d && d.isActive !== false && !ranked.some((r) => r.driver.id === d.id)
+                          );
 
                           return (
                             <div className="flex flex-col gap-1">
@@ -943,15 +959,31 @@ export default function AdminOrdersPage() {
                                   const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
                                   const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
                                   const star = item.isRecommended ? '⭐ [مقترح] ' : '';
+                                  const statusIcon = item.effectiveStatus === 'busy' ? '🟠' : '🟢';
+                                  const statusLabel = item.effectiveStatus === 'busy' ? `مشغول (${item.activeDeliveries} طلب)` : 'متاح (0 طلبات)';
 
                                   return (
                                     <option key={drv.id} value={drv.id}>
-                                      {star}{drv.name} ({vehLabel} • {item.activeDeliveries} نشطة • {custodyLabel}{highCustodyMark})
+                                      {statusIcon} {star}{drv.name} — {statusLabel} • {vehLabel} • عهدة: {custodyLabel}{highCustodyMark}
                                     </option>
                                   );
                                 })}
 
-                                {order.driverId && !ranked.some((r) => r.driver.id === order.driverId) && (
+                                {otherActiveDrivers.map((drv) => {
+                                  const vehLabel = drv.vehicleInfo ? `🚗 ${drv.vehicleInfo}` : (drv.defaultVehicleId ? '🚗 مركبة افتراضية' : 'بدون مركبة');
+                                  const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
+                                  const isBreak = drv.operationalStatus === 'break';
+                                  const statusIcon = isBreak ? '☕' : '⚫';
+                                  const statusLabel = isBreak ? 'استراحة' : 'خارج الدوام';
+
+                                  return (
+                                    <option key={drv.id} value={drv.id}>
+                                      {statusIcon} {drv.name} — {statusLabel} • {vehLabel} • عهدة: {custodyLabel}
+                                    </option>
+                                  );
+                                })}
+
+                                {order.driverId && !drivers.some((d) => d.id === order.driverId && d.isActive !== false) && (
                                   <option value={order.driverId} disabled>
                                     [سابق/معطل] {assignedDriver?.name || order.driverName || 'سائق غير معروف'}
                                   </option>
@@ -1201,6 +1233,20 @@ export default function AdminOrdersPage() {
                       </div>
                     )}
 
+                    {/* Assigned Driver Break / Off-Duty Warning */}
+                    {assignedDriver && (assignedDriver.effectiveStatus === 'break' || assignedDriver.operationalStatus === 'break') && (
+                      <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-2.5 flex items-center gap-2 text-xs font-bold animate-fadeIn">
+                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>☕ السائق في حالة استراحة حالياً — تم إسناد الطلب إليه استثنائياً دون تغيير حالته سراً</span>
+                      </div>
+                    )}
+                    {assignedDriver && (assignedDriver.effectiveStatus === 'off_duty' || assignedDriver.operationalStatus === 'off_duty') && (
+                      <div className="bg-slate-100 border border-slate-300 text-slate-800 rounded-xl p-2.5 flex items-center gap-2 text-xs font-bold animate-fadeIn">
+                        <AlertCircle className="w-4 h-4 text-slate-600 shrink-0" />
+                        <span>⚫ السائق خارج الدوام حالياً — تم إسناد الطلب إليه استثنائياً دون تغيير حالته سراً</span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 flex-wrap">
                       <select
                         value={selectedOrder.driverId || 'none'}
@@ -1217,14 +1263,33 @@ export default function AdminOrdersPage() {
                           const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
                           const highCustodyMark = item.isHighCustody ? ' ⚠️' : '';
                           const star = item.isRecommended ? '⭐ [مقترح] ' : '';
+                          const statusIcon = item.effectiveStatus === 'busy' ? '🟠' : '🟢';
+                          const statusLabel = item.effectiveStatus === 'busy' ? `مشغول (${item.activeDeliveries} طلب)` : 'متاح (0 طلبات)';
 
                           return (
                             <option key={drv.id} value={drv.id}>
-                              {star}{drv.name} ({vehLabel} • {item.activeDeliveries} نشطة • {custodyLabel}{highCustodyMark})
+                              {statusIcon} {star}{drv.name} — {statusLabel} • {vehLabel} • عهدة: {custodyLabel}{highCustodyMark}
                             </option>
                           );
                         })}
-                        {selectedOrder.driverId && !ranked.some((r) => r.driver.id === selectedOrder.driverId) && (
+
+                        {drivers
+                          .filter((d) => d && d.isActive !== false && !ranked.some((r) => r.driver.id === d.id))
+                          .map((drv) => {
+                            const vehLabel = drv.vehicleInfo ? `🚗 ${drv.vehicleInfo}` : (drv.defaultVehicleId ? '🚗 مركبة افتراضية' : 'بدون مركبة');
+                            const custodyLabel = `${(drv.currentCashInHand || 0).toLocaleString()} د.ع`;
+                            const isBreak = drv.operationalStatus === 'break';
+                            const statusIcon = isBreak ? '☕' : '⚫';
+                            const statusLabel = isBreak ? 'استراحة' : 'خارج الدوام';
+
+                            return (
+                              <option key={drv.id} value={drv.id}>
+                                {statusIcon} {drv.name} — {statusLabel} • {vehLabel} • عهدة: {custodyLabel}
+                              </option>
+                            );
+                          })}
+
+                        {selectedOrder.driverId && !drivers.some((d) => d.id === selectedOrder.driverId && d.isActive !== false) && (
                           <option value={selectedOrder.driverId} disabled>
                             [سابق/معطل] {assignedDriver?.name || selectedOrder.driverName || 'سائق غير معروف'}
                           </option>

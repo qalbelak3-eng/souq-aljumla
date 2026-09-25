@@ -28,11 +28,13 @@ export const drivers = pgTable('drivers', {
     .references(() => vehicles.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 150 }).notNull(),
   phone: varchar('phone', { length: 20 }).notNull().unique(),
+  operationalStatus: varchar('operational_status', { length: 20 }).default('available').notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_drivers_phone').on(table.phone),
+  check('chk_driver_operational_status', sql`operational_status IN ('available', 'busy', 'break', 'off_duty')`),
 ]);
 
 export const driverSettlements = pgTable('driver_settlements', {

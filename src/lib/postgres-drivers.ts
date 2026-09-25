@@ -7,11 +7,13 @@ import {
   financialAccounts,
   orders,
   driverSettlements,
+  auditLogs,
   nextAccountCodeSql,
 } from '@/db/schema';
 import { normalizeIraqiPhone } from '@/db/phone';
 import { hashPassword } from '@/lib/auth';
-import { Driver, Vehicle } from '@/types';
+import { Driver, Vehicle, DriverBaseStatus, DriverOperationalStatus } from '@/types';
+import { computeDriverOperationalStatus } from '@/lib/dispatch-recommender';
 
 /* =========================================================
    Types & Interfaces
@@ -25,6 +27,8 @@ export interface DriverWithStats extends Driver {
   completedDeliveries: number;
   totalDeliveredRevenue: number;
   currentCashInHand: number;
+  operationalStatus: DriverOperationalStatus;
+  effectiveStatus: DriverOperationalStatus;
 }
 
 export interface DriverWithAuth extends DriverWithStats {
@@ -43,6 +47,7 @@ export interface CreateDriverInput {
   password?: string;
   vehicleInfo?: string;
   defaultVehicleId?: string;
+  operationalStatus?: DriverOperationalStatus;
   notes?: string;
   isActive?: boolean;
 }
@@ -53,6 +58,7 @@ export interface UpdateDriverInput {
   password?: string;
   vehicleInfo?: string;
   defaultVehicleId?: string;
+  operationalStatus?: DriverOperationalStatus;
   notes?: string;
   isActive?: boolean;
 }
@@ -389,10 +395,13 @@ export async function pgCreateDriver(input: CreateDriverInput): Promise<DriverWi
         defaultVehicleId: validVehicleId,
         name: cleanName,
         phone: cleanPhone,
+        operationalStatus: input.operationalStatus || 'available',
         isActive: input.isActive !== false,
         notes: input.notes?.trim() || null,
       })
       .returning();
+
+    const baseStatus = (newDriver.operationalStatus as DriverBaseStatus) || 'available';
 
     return {
       id: newDriver.id,
@@ -404,6 +413,8 @@ export async function pgCreateDriver(input: CreateDriverInput): Promise<DriverWi
       vehicleInfo: input.vehicleInfo?.trim() || undefined,
       isActive: newDriver.isActive,
       notes: newDriver.notes || undefined,
+      operationalStatus: baseStatus,
+      effectiveStatus: computeDriverOperationalStatus(baseStatus, 0),
       currentCashInHand: 0,
       activeDeliveries: 0,
       completedDeliveries: 0,
@@ -497,6 +508,9 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
     const totalSettled = settledMap.get(driver.id) || 0;
     const cashInHand = Math.max(0, s.collectedCash - totalSettled);
 
+    const baseStatus = (driver.operationalStatus as DriverBaseStatus) || 'available';
+    const effectiveStatus = computeDriverOperationalStatus(baseStatus, s.active);
+
     return {
       id: driver.id,
       authIdentityId: driver.authIdentityId,
@@ -508,6 +522,8 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
       isVehicleActive: vehicle ? vehicle.isActive : undefined,
       isActive: driver.isActive,
       notes: driver.notes || undefined,
+      operationalStatus: baseStatus,
+      effectiveStatus,
       currentCashInHand: cashInHand,
       activeDeliveries: s.active,
       completedDeliveries: s.completed,
@@ -586,6 +602,9 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
 
   const cashInHand = Math.max(0, totalCollected - totalSettled);
 
+  const baseStatus = (driver.operationalStatus as DriverBaseStatus) || 'available';
+  const effectiveStatus = computeDriverOperationalStatus(baseStatus, active);
+
   return {
     id: driver.id,
     authIdentityId: driver.authIdentityId,
@@ -598,6 +617,8 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
     isVehicleActive: vehicle ? vehicle.isActive : undefined,
     isActive: driver.isActive,
     notes: driver.notes || undefined,
+    operationalStatus: baseStatus,
+    effectiveStatus,
     currentCashInHand: cashInHand,
     activeDeliveries: active,
     completedDeliveries: completed,
@@ -629,6 +650,9 @@ export async function pgGetDriverByPhone(phone: string): Promise<DriverWithAuth 
   if (rows.length === 0) return null;
   const { driver, auth, vehicle } = rows[0];
 
+  const rawBaseStatus = (driver.operationalStatus as DriverBaseStatus) || 'available';
+  const effectiveStatus = computeDriverOperationalStatus(rawBaseStatus, 0);
+
   return {
     id: driver.id,
     authIdentityId: driver.authIdentityId,
@@ -639,6 +663,8 @@ export async function pgGetDriverByPhone(phone: string): Promise<DriverWithAuth 
     defaultVehicleId: driver.defaultVehicleId || undefined,
     vehicleInfo: vehicle ? `${vehicle.name} (${vehicle.plateNumber})` : undefined,
     isActive: driver.isActive && auth.isActive,
+    operationalStatus: rawBaseStatus,
+    effectiveStatus: effectiveStatus,
     notes: driver.notes || undefined,
     currentCashInHand: 0,
     activeDeliveries: 0,
@@ -756,6 +782,10 @@ export async function pgUpdateDriver(id: string, updates: UpdateDriverInput): Pr
         .where(eq(financialAccounts.id, current.financialAccountId));
     }
 
+    if (updates.operationalStatus !== undefined) {
+      driverUpdates.operationalStatus = updates.operationalStatus;
+    }
+
     if (Object.keys(driverUpdates).length > 0) {
       await tx.update(drivers).set(driverUpdates).where(eq(drivers.id, id));
     }
@@ -789,4 +819,115 @@ export async function pgDeleteDriver(id: string): Promise<{ success: boolean; de
     deactivated: true,
     message: 'تم إلغاء تفعيل حساب السائق بنجاح',
   };
+}
+
+export interface UpdateDriverOperationalStatusInput {
+  driverId: string;
+  operationalStatus: DriverBaseStatus;
+  operator?: {
+    id: string;
+    name: string;
+    phone?: string;
+    role?: string;
+  };
+}
+
+/**
+ * تحديث الحالة التشغيلية للسائق Server-side مع حماية الطلبات النشطة والـ Audit Log
+ * - الحالات المسموح باختيارها يدوياً: 'available' | 'break' | 'off_duty'
+ * - لا يسمح باختيار 'busy' يدوياً (حالة تشغيلية مشتقة من activeDeliveries)
+ * - يمنع 'off_duty' إذا كان بحوزة السائق طلب بحالة 'shipped' (خارج للتوصيل)
+ * - لا يسجل audit log متكرر إذا أرسل السائق نفس الحالة (Idempotent)
+ */
+export async function pgUpdateDriverOperationalStatus(
+  input: UpdateDriverOperationalStatusInput
+): Promise<DriverWithStats> {
+  const db = getDb();
+  const targetStatus = String(input.operationalStatus || '').toLowerCase().trim();
+
+  if (targetStatus === 'busy') {
+    throw new Error('حالة الانشغال (busy) تشغيلية تلقائية ولا يمكن اختيارها يدوياً');
+  }
+
+  if (!['available', 'break', 'off_duty'].includes(targetStatus)) {
+    throw new Error('الحالة التشغيلية المحددة غير صالحة');
+  }
+
+  const driverId = String(input.driverId || '').trim();
+  if (!driverId) {
+    throw new Error('معرف السائق مطلوب');
+  }
+
+  await db.transaction(async (tx) => {
+    // 1. Lock driver row
+    const [driverRow] = await tx
+      .select({
+        driver: drivers,
+        auth: authIdentities,
+      })
+      .from(drivers)
+      .innerJoin(authIdentities, eq(drivers.authIdentityId, authIdentities.id))
+      .where(eq(drivers.id, driverId))
+      .for('update')
+      .limit(1);
+
+    if (!driverRow) {
+      throw new Error('السائق غير موجود');
+    }
+
+    if (!driverRow.driver.isActive || !driverRow.auth.isActive) {
+      throw new Error('حساب السائق معطل ولا يمكن تعديل حالته التشغيلية');
+    }
+
+    const currentStatus = (driverRow.driver.operationalStatus as DriverBaseStatus) || 'available';
+
+    // 2. Protection: If transitioning to off_duty, check if driver has any shipped order
+    if (targetStatus === 'off_duty') {
+      const shippedOrders = await tx
+        .select({ id: orders.id, orderNumber: orders.orderNumber })
+        .from(orders)
+        .where(and(eq(orders.driverId, driverId), eq(orders.status, 'shipped')))
+        .limit(1);
+
+      if (shippedOrders.length > 0) {
+        throw new Error('لديك طلب خارج للتوصيل. أكمل الطلب أو أعده قبل إنهاء الدوام.');
+      }
+    }
+
+    // 3. Idempotency: If status is already the target status, do not insert duplicate audit log
+    if (currentStatus === targetStatus) {
+      const unchanged = await pgGetDriverById(driverId);
+      if (!unchanged) throw new Error('تعذر جلب بيانات السائق');
+      return unchanged;
+    }
+
+    // 4. Update status in database
+    await tx
+      .update(drivers)
+      .set({ operationalStatus: targetStatus as any })
+      .where(eq(drivers.id, driverId));
+
+    // 5. Insert audit log
+    await tx.insert(auditLogs).values({
+      actionType: 'driver_status_change',
+      actionLabel: 'تغيير الحالة التشغيلية للسائق',
+      category: 'operations',
+      categoryLabel: 'العمليات والتوصيل',
+      operatorSnapshot: input.operator || {
+        id: driverRow.driver.id,
+        name: driverRow.driver.name,
+        phone: driverRow.driver.phone,
+        role: 'driver',
+      },
+      targetType: 'driver',
+      targetId: driverRow.driver.id,
+      targetReferenceNumber: driverRow.driver.phone,
+      details: `تغيرت حالة السائق ${driverRow.driver.name} من (${currentStatus}) إلى (${targetStatus})`,
+      severity: 'info',
+    });
+  });
+
+  const updated = await pgGetDriverById(driverId);
+  if (!updated) throw new Error('تعذر جلب بيانات السائق بعد التحديث');
+  return updated;
 }

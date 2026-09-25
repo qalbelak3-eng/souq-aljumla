@@ -69,6 +69,40 @@ export default function DriverDashboardPage() {
   const [editPartialAmount, setEditPartialAmount] = useState<string>('');
   const [editDeliveryNotes, setEditDeliveryNotes] = useState('');
   const [isSavingEditCollection, setIsSavingEditCollection] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const handleUpdateOperationalStatus = async (newStatus: 'available' | 'break' | 'off_duty') => {
+    if (!driver || isUpdatingStatus) return;
+    setIsUpdatingStatus(true);
+    try {
+      const res = await fetch('/api/driver/status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDriver((prev) =>
+          prev
+            ? {
+                ...prev,
+                operationalStatus: data.operationalStatus,
+                effectiveStatus: data.effectiveStatus,
+              }
+            : null
+        );
+        toast.showToast(data.message || 'تم تحديث حالتك التشغيلية', 'success');
+        if (driver.id) fetchOrders(driver.id, true);
+      } else {
+        toast.showToast(data.error || 'فشل تحديث الحالة التشغيلية', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.showToast('حدث خطأ في الاتصال بالخادم', 'error');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   // Load Driver Session & Store Settings
   useEffect(() => {
@@ -400,9 +434,20 @@ export default function DriverDashboardPage() {
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h1 className="font-black text-sm text-slate-900">{driver.name}</h1>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md">
-                  نشط 🟢
-                </span>
+                {(() => {
+                  const baseStatus = driver.operationalStatus || 'available';
+                  const hasActive = activeOrders.length > 0;
+                  if (baseStatus === 'break') {
+                    return <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-md">استراحة ☕</span>;
+                  }
+                  if (baseStatus === 'off_duty') {
+                    return <span className="bg-slate-200 text-slate-800 text-[10px] font-black px-2 py-0.5 rounded-md">خارج الدوام ⚫</span>;
+                  }
+                  if (hasActive) {
+                    return <span className="bg-orange-100 text-orange-900 text-[10px] font-black px-2 py-0.5 rounded-md">مشغول 🟠</span>;
+                  }
+                  return <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md">متاح 🟢</span>;
+                })()}
                 <span className="bg-amber-50 border border-amber-300 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
                   <span>⭐ {driver.averageRating ? Number(driver.averageRating).toFixed(1) : '5.0'}</span>
                   <span>({driver.ratingTierLabel || (driver.ratingsCount ? 'ممتاز 🌟' : 'سائق معتمد 🌟')})</span>
@@ -459,6 +504,74 @@ export default function DriverDashboardPage() {
               {activeOrders.length}
             </span>
             <span className="text-[10px] text-emerald-100 font-bold block">قيد التوصيل</span>
+          </div>
+        </div>
+
+        {/* Operational Status Control (حالتي الآن) */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+              <span>حالتي الآن:</span>
+              {(() => {
+                const baseStatus = driver.operationalStatus || 'available';
+                const hasActive = activeOrders.length > 0;
+                if (baseStatus === 'break') {
+                  return <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded-lg text-[11px] font-bold">☕ في استراحة</span>;
+                }
+                if (baseStatus === 'off_duty') {
+                  return <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded-lg text-[11px] font-bold">⚫ خارج الدوام</span>;
+                }
+                if (hasActive) {
+                  return <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded-lg text-[11px] font-bold">🟠 مشغول ({activeOrders.length} طلب نشط)</span>;
+                }
+                return <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-lg text-[11px] font-bold">🟢 متاح لاستلام الطلبات</span>;
+              })()}
+            </span>
+            {isUpdatingStatus && <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={isUpdatingStatus}
+              onClick={() => handleUpdateOperationalStatus('available')}
+              className={`py-2 px-3 rounded-2xl font-black text-xs transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                (driver.operationalStatus || 'available') === 'available'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs scale-102'
+                  : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              <span>🟢</span>
+              <span>متاح</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isUpdatingStatus}
+              onClick={() => handleUpdateOperationalStatus('break')}
+              className={`py-2 px-3 rounded-2xl font-black text-xs transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                driver.operationalStatus === 'break'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs scale-102'
+                  : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <span>☕</span>
+              <span>استراحة</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isUpdatingStatus}
+              onClick={() => handleUpdateOperationalStatus('off_duty')}
+              className={`py-2 px-3 rounded-2xl font-black text-xs transition border flex items-center justify-center gap-1.5 cursor-pointer ${
+                driver.operationalStatus === 'off_duty'
+                  ? 'bg-slate-800 text-white border-slate-800 shadow-xs scale-102'
+                  : 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <span>⚫</span>
+              <span>إنهاء الدوام</span>
+            </button>
           </div>
         </div>
 

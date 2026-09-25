@@ -223,6 +223,9 @@ export interface DriverRating {
   createdAt: string;
 }
 
+export type DriverBaseStatus = 'available' | 'break' | 'off_duty';
+export type DriverOperationalStatus = 'available' | 'busy' | 'break' | 'off_duty';
+
 export interface Driver {
   id: string;
   name: string;
@@ -232,6 +235,8 @@ export interface Driver {
   defaultVehicleId?: string; // معرف السيارة الافتراضية
   isVehicleActive?: boolean; // حالة تفعيل المركبة الافتراضية
   isActive: boolean;
+  operationalStatus?: DriverOperationalStatus; // الحالة التشغيلية الأساسية المسجلة في النظام
+  effectiveStatus?: DriverOperationalStatus; // الحالة التشغيلية الفعلية المحتسبة (تأخذ بعين الاعتبار الانشغال busy)
   currentCashInHand?: number; // إجمالي الكاش الموجود في عهدة السائق حالياً
   activeDeliveries?: number; // عدد الطلبات النشطة حالياً
   completedDeliveries?: number; // عدد الطلبات المكتملة
