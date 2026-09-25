@@ -312,8 +312,13 @@ export interface Order {
   driverCashSettledAt?: string;
   paymentReceiptNumber?: string; // رقم سند القبض الذي تم إنشاؤه في حساب العميل
   settlementId?: string; // معرف حركة التصفية الرسمية في سجل تصفيات السائقين
-  settlementNumber?: string; // رقم التصفية الرسمي (مثال: SET-1001)
   inventoryRestored?: boolean; // حماية ضد مضاعفة إعادة المخزون للطلبات الراجعة
+  
+  // Delivery PIN Proof & Verification (إثبات التسليم ورمز الأمان)
+  deliveryPin?: string; // رمز الاستلام للزبون (يعرض للزبون صاحب الطلب أو الإدارة فقط)
+  deliveryProofMethod?: 'customer_pin' | 'admin_override'; // طريقة إثبات التسليم
+  deliveryVerifiedAt?: string; // وقت التحقق من الرمز أو إجراء التجاوز الإداري
+  deliveryOverrideReason?: string; // سبب تجاوز الإدارة للرمز
 
   createdAt: string;
   updatedAt: string;

@@ -62,10 +62,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
       }, { status: 401 });
     }
 
-    const settings = getSettings();
-    const whatsappUrl = generateWhatsAppLink(order, settings);
+    // Authorized caller gets order with deliveryPin included
+    const authorizedOrder = await pgGetOrderById(params.id, { includePin: true });
 
-    return NextResponse.json({ success: true, order, whatsappUrl });
+    const settings = getSettings();
+    const whatsappUrl = generateWhatsAppLink(authorizedOrder || order, settings);
+
+    return NextResponse.json({ success: true, order: authorizedOrder || order, whatsappUrl });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -85,7 +88,43 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const operator = { name: admin.name, username: admin.username, role: admin.role };
 
     const body = await request.json();
-    const { status, driverId, vehicleId, cancellationReason, driverNotes } = body;
+    const { status, driverId, vehicleId, cancellationReason, driverNotes, action, deliveryOverride, overrideReason, reason, collectionStatus, collectedAmount, notes } = body;
+
+    // Admin Override Delivery Verification (تجاوز إداري موثق لإثبات التسليم)
+    if (action === 'admin_override_delivery' || deliveryOverride === true) {
+      const { pgAdminOverrideDelivery } = await import('@/lib/postgres-delivery');
+      const validReason = String(overrideReason || reason || driverNotes || '').trim();
+      if (!validReason || validReason.length < 5) {
+        return NextResponse.json({
+          success: false,
+          error: 'سبب التجاوز الإداري إجباري ويجب ألا يقل عن 5 أحرف',
+        }, { status: 400 });
+      }
+      try {
+        const overridden = await pgAdminOverrideDelivery(
+          params.id,
+          {
+            userId: admin.id,
+            username: admin.username,
+            role: admin.role,
+            name: admin.name,
+          },
+          {
+            reason: validReason,
+            collectionStatus,
+            collectedAmount,
+            notes,
+          }
+        );
+        return NextResponse.json({
+          success: true,
+          order: overridden,
+          message: 'تم إجراء التجاوز الإداري الموثق وتأكيد تسليم الطلبية بنجاح 🛡️✓',
+        });
+      } catch (err: any) {
+        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+      }
+    }
 
     const prevOrder = await pgGetOrderById(params.id);
     if (!prevOrder) {

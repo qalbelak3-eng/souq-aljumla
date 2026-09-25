@@ -52,6 +52,7 @@ export default function DriverDashboardPage() {
   const [arrivedNotifiedOrders, setArrivedNotifiedOrders] = useState<Record<string, boolean>>({});
   const [photoModalUrl, setPhotoModalUrl] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [deliveryPin, setDeliveryPin] = useState('');
 
   // WhatsApp Post-Delivery Notification Modal
   const [completedDeliveryData, setCompletedDeliveryData] = useState<{
@@ -208,6 +209,7 @@ export default function DriverDashboardPage() {
     setCollectionStatus(order.paymentMethod === 'debt' ? 'debt_unpaid' : 'collected_cash');
     setPartialAmount('');
     setDeliveryNotes('');
+    setDeliveryPin('');
   };
 
   const openEditCollectionModal = (order: Order) => {
@@ -274,6 +276,14 @@ export default function DriverDashboardPage() {
   const handleCompleteDelivery = async () => {
     if (!selectedOrder || !driver) return;
 
+    if (collectionStatus !== 'returned') {
+      const cleanPin = deliveryPin.trim();
+      if (!cleanPin || cleanPin.length !== 4) {
+        toast.showToast('يرجى إدخال رمز استلام الزبون (PIN) المكون من 4 أرقام كاملاً', 'error');
+        return;
+      }
+    }
+
     let collectedAmount = 0;
     if (collectionStatus === 'collected_cash') {
       collectedAmount = selectedOrder.total;
@@ -298,6 +308,7 @@ export default function DriverDashboardPage() {
           collectionStatus,
           collectedAmount,
           notes: deliveryNotes,
+          deliveryPin: deliveryPin.trim(),
         }),
       });
 
@@ -1146,6 +1157,31 @@ export default function DriverDashboardPage() {
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 px-3 text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-brand-blue"
               />
             </div>
+
+            {/* Delivery Proof PIN Input (إثبات التسليم بـ PIN الزبون) */}
+            {collectionStatus !== 'returned' && (
+              <div className="bg-sky-50 border-2 border-sky-300 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🔐</span>
+                  <label className="text-xs font-black text-sky-950 block">
+                    رمز استلام الزبون (PIN - 4 أرقام): <span className="text-red-500">*</span>
+                  </label>
+                </div>
+                <p className="text-[11px] text-sky-800 font-medium">
+                  اطلب رمز الأمان المكون من 4 أرقام من الزبون عند تسليم البضاعة لإثبات الاستلام.
+                </p>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  dir="ltr"
+                  value={deliveryPin}
+                  onChange={(e) => setDeliveryPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="••••"
+                  className="w-full bg-white border-2 border-sky-400 rounded-xl py-3 px-4 text-center font-mono font-black text-xl tracking-[0.5em] text-slate-900 focus:outline-none focus:border-brand-blue"
+                />
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-3 pt-2">

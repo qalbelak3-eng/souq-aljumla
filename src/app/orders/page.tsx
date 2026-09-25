@@ -367,6 +367,18 @@ export default function OrdersPage() {
                             </div>
                           )}
 
+                          {/* Delivery PIN in customer orders list */}
+                          {order.deliveryPin && order.status !== 'cancelled' && (
+                            <div className="bg-amber-50/90 border border-amber-300 p-3 rounded-2xl flex items-center justify-between gap-2 flex-wrap text-xs mt-3">
+                              <span className="flex items-center gap-2 font-black text-amber-950">
+                                <span>🔐 رمز استلام الطلبية (PIN):</span>
+                              </span>
+                              <span className="font-mono font-black text-base tracking-widest bg-white border border-amber-400 text-amber-950 px-3 py-1 rounded-xl shadow-2xs">
+                                {order.deliveryPin}
+                              </span>
+                            </div>
+                          )}
+
                           {order.status === 'delivered' && (
                             <div className="bg-emerald-50/80 border border-emerald-200 text-emerald-950 px-3 py-2 rounded-2xl flex items-center justify-between text-xs font-bold mt-3">
                               <span className="flex items-center gap-1.5">

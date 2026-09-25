@@ -59,7 +59,7 @@ export async function GET(request: Request) {
       email: customer.email,
       limit,
       status,
-    });
+    }, { includePin: true });
 
     return NextResponse.json({ success: true, orders, count: orders.length });
   } catch (error: any) {

@@ -16,6 +16,7 @@ import {
   toNumber,
   isUuid,
 } from '@/lib/postgres-orders';
+import { verifyPin, generateOrderPinData } from '@/lib/delivery-pin';
 
 /* =========================================================
    Types & Interfaces
@@ -43,6 +44,7 @@ export interface DeliverOrderInput {
   collectionStatus?: 'collected_cash' | 'debt_unpaid' | 'partial';
   collectedAmount?: number;
   notes?: string;
+  deliveryPin?: string;
 }
 
 export type DeliveryFailureReason =
@@ -614,7 +616,7 @@ export async function pgDeliverDriverOrder(
   const trimmed = String(orderId || '').trim();
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const conditions = [eq(orders.orderNumber, trimmed)];
     if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
 
@@ -647,7 +649,68 @@ export async function pgDeliverDriverOrder(
       const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
       const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
       const [drv] = await tx.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
-      return formatOrderRecord(order, items, drv, undefined, acc);
+      return { failedPin: false, order: formatOrderRecord(order, items, drv, undefined, acc) };
+    }
+
+    // Lifecycle Check: Order must be in shipped status (Rule 8)
+    if (order.status !== 'shipped') {
+      throw new Error(`لا يمكن إتمام تسليم الطلبية إلا عندما تكون في حالة خروج للتوصيل (shipped). حالة الطلب الحالية: ${order.status}`);
+    }
+
+    // Brute-force Protection Check (Rule 12)
+    if (
+      (order.deliveryPinAttempts && order.deliveryPinAttempts >= 5) ||
+      (order.deliveryPinLockedUntil && new Date(order.deliveryPinLockedUntil) > new Date())
+    ) {
+      throw new Error('تم قفل التحقق من هذا الطلب لتجاوز الحد الأقصى للمحاولات الخاطئة (5 محاولات). يرجى مراجعة إدارة العمليات.');
+    }
+
+    // Verify Customer Delivery PIN
+    let pinHash = order.deliveryPinHash;
+    if (!pinHash) {
+      const pinData = generateOrderPinData(order.id);
+      pinHash = pinData.hash;
+      await tx.update(orders).set({
+        deliveryPinHash: pinData.hash,
+        deliveryPinSeed: pinData.seed,
+        deliveryPinAttempts: 0,
+      }).where(eq(orders.id, order.id));
+    }
+
+    const submittedPin = String(input?.deliveryPin || '').trim();
+    if (!submittedPin || submittedPin.length !== 4) {
+      throw new Error('رمز استلام الزبون (PIN) المكون من 4 أرقام مطلوب لإتمام التسليم');
+    }
+
+    const isValidPin = verifyPin(submittedPin, pinHash);
+    if (!isValidPin) {
+      const newAttempts = (order.deliveryPinAttempts || 0) + 1;
+      const isLocked = newAttempts >= 5;
+      await tx.update(orders).set({
+        deliveryPinAttempts: newAttempts,
+        deliveryPinLockedUntil: isLocked ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
+        updatedAt: new Date(),
+      }).where(eq(orders.id, order.id));
+
+      await tx.insert(auditLogs).values({
+        actionType: 'delivery_pin_failed',
+        actionLabel: 'محاولة خاطئة لإدخال رمز استلام الزبون',
+        category: 'security',
+        categoryLabel: 'الأمان والتحقق',
+        operatorSnapshot: { role: 'driver', ...driverOperator },
+        targetType: 'order',
+        targetId: order.id,
+        targetReferenceNumber: order.orderNumber,
+        details: `أدخل السائق ${driverOperator.name} رمز PIN غير مطابق للطلب ${order.orderNumber}. المحاولة رقم ${newAttempts} من 5.${isLocked ? ' تم قفل إدخال الرمز للطلب!' : ''}`,
+        severity: isLocked ? 'warning' : 'info',
+      });
+
+      const remaining = Math.max(0, 5 - newAttempts);
+      return {
+        failedPin: true,
+        isLocked,
+        remaining,
+      };
     }
 
     // Determine Collection Status & Amounts Server-Side (Do NOT trust total from client)
@@ -686,12 +749,16 @@ export async function pgDeliverDriverOrder(
 
     const deliveredAt = order.deliveredAt || new Date();
 
-    // Update order to delivered
+    // Update order to delivered with proof metadata
     const [updatedOrder] = await tx
       .update(orders)
       .set({
         status: 'delivered',
         deliveredAt,
+        deliveryVerifiedAt: new Date(),
+        deliveryProofMethod: 'customer_pin',
+        deliveryPinAttempts: 0,
+        deliveryPinLockedUntil: null,
         collectionStatus: finalCollectionStatus,
         collectedAmount: String(finalCollectedAmount.toFixed(2)),
         remainingDebtAmount: String(finalRemainingDebt.toFixed(2)),
@@ -707,7 +774,7 @@ export async function pgDeliverDriverOrder(
     // Audit Log
     await tx.insert(auditLogs).values({
       actionType: 'delivery_completed',
-      actionLabel: 'إتمام تسليم الطلبية للزبون',
+      actionLabel: 'إتمام تسليم الطلبية للزبون بالـ PIN',
       category: 'commerce',
       categoryLabel: 'الطلبات والتوصيل',
       operatorSnapshot: { role: 'driver', ...driverOperator },
@@ -721,14 +788,168 @@ export async function pgDeliverDriverOrder(
         collectionStatus: finalCollectionStatus,
         driverCashSettled: false,
       },
-      details: `تم تسليم الطلبية ${order.orderNumber} للزبون بنجاح بواسطة السائق ${driverOperator.name}. المبلغ المحصل: ${finalCollectedAmount.toLocaleString()} د.ع، المتبقي كدين: ${finalRemainingDebt.toLocaleString()} د.ع`,
+      details: `تم تسليم الطلبية ${order.orderNumber} للزبون بنجاح والتحقق من رمز الاستلام (PIN) بواسطة السائق ${driverOperator.name}. المبلغ المحصل: ${finalCollectedAmount.toLocaleString()} د.ع، المتبقي كدين: ${finalRemainingDebt.toLocaleString()} د.ع`,
       severity: 'info',
     });
 
     const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
     const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
     const [drv] = await tx.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
-    return formatOrderRecord(updatedOrder, items, drv, undefined, acc);
+    return { failedPin: false, order: formatOrderRecord(updatedOrder, items, drv, undefined, acc) };
+  });
+
+  if (result.failedPin) {
+    throw new Error(result.isLocked
+      ? 'تم قفل التحقق من هذا الطلب لتجاوز الحد الأقصى للمحاولات الخاطئة (5 محاولات). يرجى مراجعة إدارة العمليات.'
+      : `رمز استلام الزبون (PIN) غير صحيح. المتبقي ${result.remaining} محاولات متبقية.`
+    );
+  }
+
+  return result.order!;
+}
+
+/* =========================================================
+   6.1. pgAdminOverrideDelivery (Emergency / Offline Delivery Verification)
+   ========================================================= */
+
+export interface AdminOverrideDeliveryInput {
+  reason: string;
+  collectionStatus?: DeliveryCollectionStatus;
+  collectedAmount?: number;
+  notes?: string;
+}
+
+export async function pgAdminOverrideDelivery(
+  orderId: string,
+  adminOperator: {
+    userId?: string;
+    username: string;
+    role: string;
+    name?: string;
+  },
+  input: AdminOverrideDeliveryInput
+): Promise<Order> {
+  const db = getDb();
+  const trimmed = String(orderId || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب');
+
+  const trimmedReason = String(input?.reason || '').trim();
+  if (!trimmedReason || trimmedReason.length < 5) {
+    throw new Error('سبب التجاوز الإداري إجباري ويجب ألا يقل عن 5 أحرف');
+  }
+
+  return await db.transaction(async (tx) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const order = orderRows[0];
+
+    // Terminal State Checks
+    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+      throw new Error('الطلب ملغى أو راجع ولا يمكن إتمام تسليمه');
+    }
+
+    // Idempotency check
+    if (order.status === 'delivered') {
+      const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+      const [drv] = order.driverId ? await tx.select().from(drivers).where(eq(drivers.id, order.driverId)).limit(1) : [null];
+      return formatOrderRecord(order, items, drv || undefined, undefined, acc);
+    }
+
+    // Determine Collection Status & Amounts Server-Side
+    const orderTotal = toNumber(order.total);
+    let finalCollectionStatus: DeliveryCollectionStatus = 'collected_cash';
+    let finalCollectedAmount = 0;
+    let finalRemainingDebt = 0;
+
+    if (order.paymentMethod === 'cod' || order.paymentMethod === 'cash') {
+      if (input?.collectionStatus === 'debt_unpaid') {
+        finalCollectionStatus = 'debt_unpaid';
+        finalCollectedAmount = 0;
+        finalRemainingDebt = orderTotal;
+      } else if (input?.collectionStatus === 'partial') {
+        const rawCollected = toNumber(input.collectedAmount);
+        const validCollected = Math.min(orderTotal, Math.max(0, rawCollected));
+        finalCollectedAmount = validCollected;
+        finalRemainingDebt = Math.max(0, orderTotal - validCollected);
+        finalCollectionStatus = validCollected >= orderTotal ? 'collected_cash' : (validCollected > 0 ? 'partial' : 'debt_unpaid');
+      } else {
+        finalCollectionStatus = 'collected_cash';
+        finalCollectedAmount = orderTotal;
+        finalRemainingDebt = 0;
+      }
+    } else if (order.paymentMethod === 'debt') {
+      finalCollectionStatus = 'debt_unpaid';
+      finalCollectedAmount = 0;
+      finalRemainingDebt = orderTotal;
+    } else {
+      finalCollectionStatus = 'collected_cash';
+      finalCollectedAmount = 0;
+      finalRemainingDebt = 0;
+    }
+
+    const deliveredAt = order.deliveredAt || new Date();
+
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        status: 'delivered',
+        deliveredAt,
+        deliveryVerifiedAt: new Date(),
+        deliveryProofMethod: 'admin_override',
+        deliveryOverrideReason: trimmedReason,
+        deliveryOverrideBy: adminOperator.userId && isUuid(adminOperator.userId) ? adminOperator.userId : null,
+        deliveryOverrideByName: adminOperator.name || adminOperator.username,
+        deliveryPinAttempts: 0,
+        deliveryPinLockedUntil: null,
+        collectionStatus: finalCollectionStatus,
+        collectedAmount: String(finalCollectedAmount.toFixed(2)),
+        remainingDebtAmount: String(finalRemainingDebt.toFixed(2)),
+        driverCashSettled: false,
+        driverNotes: input?.notes
+          ? (order.driverNotes ? `${order.driverNotes} | [تجاوز إداري]: ${input.notes}` : `[تجاوز إداري]: ${input.notes}`)
+          : order.driverNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    // Audit Log
+    await tx.insert(auditLogs).values({
+      actionType: 'delivery_admin_override',
+      actionLabel: 'تجاوز إداري لرمز الاستلام وتأكيد تسليم الطلبية',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والتوصيل',
+      operatorSnapshot: { ...adminOperator },
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      financialImpact: {
+        total: orderTotal,
+        collectedAmount: finalCollectedAmount,
+        remainingDebt: finalRemainingDebt,
+        collectionStatus: finalCollectionStatus,
+        driverCashSettled: false,
+      },
+      details: `تم إجراء تجاوز إداري موثق (PIN Override) للطلب ${order.orderNumber} بواسطة المشرف ${adminOperator.name || adminOperator.username}. السبب الموثق: ${trimmedReason}. المبلغ المحصل: ${finalCollectedAmount.toLocaleString()} د.ع.`,
+      severity: 'warning',
+    });
+
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+    const [drv] = order.driverId ? await tx.select().from(drivers).where(eq(drivers.id, order.driverId)).limit(1) : [null];
+    return formatOrderRecord(updatedOrder, items, drv || undefined, undefined, acc);
   });
 }
 

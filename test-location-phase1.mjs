@@ -62,6 +62,7 @@ async function setup() {
     'drizzle/0004_tiresome_kid_colt.sql',
     'drizzle/0005_audit_hardening_triggers.sql',
     'drizzle/0006_driver_settlement_lifecycle.sql',
+    'drizzle/0007_delivery_pin_proof.sql',
   ];
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -76,7 +77,11 @@ async function teardown() {
   if (sql) await sql.end();
   if (ep) {
     await ep.stop();
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      // Ignored on Windows if postgres process holds temporary lock
+    }
   }
 }
 

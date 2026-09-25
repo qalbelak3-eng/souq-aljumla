@@ -459,6 +459,64 @@ export default function OrderSuccessPage() {
             </div>
           )}
 
+          {/* Customer Delivery Confirmation PIN Card (إثبات التسليم ورمز الأمان) */}
+          {order.deliveryPin && order.status !== 'cancelled' && (
+            <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/60 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md">
+                    <span className="text-xl">🔐</span>
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-slate-900">
+                      رمز تأكيد استلام الطلبية (PIN)
+                    </h4>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">
+                      {order.status === 'delivered'
+                        ? 'تم استخدام هذا الرمز لتأكيد اكتمال التسليم بنجاح'
+                        : 'أعطِ هذا الرمز للمندوب عند وصوله واستلام المواد لتأكيد التسليم'}
+                    </p>
+                  </div>
+                </div>
+
+                {order.status === 'delivered' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-xl">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>✓ تم إثبات الاستلام {order.deliveryProofMethod === 'admin_override' ? '(إشراف الإدارة)' : '(رمز الزبون)'}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-xl">
+                    <span>سري وخاص بك</span>
+                  </span>
+                )}
+              </div>
+
+              {/* 4 Digit PIN Display */}
+              <div className="flex items-center justify-center gap-2.5 sm:gap-3 py-2" dir="ltr">
+                {order.deliveryPin.split('').map((digit, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-12 h-14 sm:w-14 sm:h-16 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl font-black font-mono shadow-sm transition ${
+                      order.status === 'delivered'
+                        ? 'bg-emerald-50 border-2 border-emerald-400 text-emerald-900'
+                        : 'bg-white border-2 border-amber-400 text-slate-900'
+                    }`}
+                  >
+                    {digit}
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-amber-100/60 border border-amber-200/80 rounded-2xl p-2.5 text-center">
+                <p className="text-xs text-amber-950 font-bold">
+                  {order.status === 'delivered'
+                    ? `تم تأكيد استلام الشحنة رسمياً في ${order.deliveryVerifiedAt ? new Date(order.deliveryVerifiedAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }) : 'وقت التسليم'}`
+                    : '🛡️ حماية أمنية مشددة: لا يمكن للمندوب إغلاق الفاتورة إلا بعد إدخال هذا الرمز عند بابك'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Live In-Transit Driver Tracking Banner */}
           {order.status === 'shipped' && (
             <div className="bg-gradient-to-r from-indigo-50 to-sky-50 border-2 border-indigo-200 p-4 sm:p-5 rounded-3xl shadow-sm space-y-3">

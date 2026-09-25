@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { financialAccounts } from './accounts';
 import { products } from './catalog';
 import { drivers, vehicles, driverSettlements } from './vehicles_drivers';
+import { authIdentities } from './auth';
 
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -46,6 +47,18 @@ export const orders = pgTable('orders', {
   settlementId: uuid('settlement_id')
     .references(() => driverSettlements.id, { onDelete: 'set null' }),
   inventoryRestored: boolean('inventory_restored').default(false).notNull(),
+
+  // Delivery PIN Proof & Verification
+  deliveryPinHash: varchar('delivery_pin_hash', { length: 255 }),
+  deliveryPinSeed: varchar('delivery_pin_seed', { length: 64 }),
+  deliveryPinAttempts: integer('delivery_pin_attempts').default(0).notNull(),
+  deliveryPinLockedUntil: timestamp('delivery_pin_locked_until', { withTimezone: true }),
+  deliveryProofMethod: varchar('delivery_proof_method', { length: 30 }), // 'customer_pin' | 'admin_override'
+  deliveryVerifiedAt: timestamp('delivery_verified_at', { withTimezone: true }),
+  deliveryOverrideReason: text('delivery_override_reason'),
+  deliveryOverrideBy: uuid('delivery_override_by')
+    .references(() => authIdentities.id, { onDelete: 'set null' }),
+  deliveryOverrideByName: varchar('delivery_override_by_name', { length: 150 }),
   
   // Timestamps and Notes
   notes: text('notes'),
@@ -61,10 +74,13 @@ export const orders = pgTable('orders', {
   index('idx_orders_status').on(table.status),
   index('idx_orders_driver_id').on(table.driverId),
   index('idx_orders_created_at').on(table.createdAt),
+  index('idx_orders_delivery_verified_at').on(table.deliveryVerifiedAt),
   check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),
   check('chk_order_settled_amount_non_negative', sql`${table.settledAmount} >= 0`),
+  check('chk_order_delivery_proof_method', sql`${table.deliveryProofMethod} IS NULL OR ${table.deliveryProofMethod} IN ('customer_pin', 'admin_override')`),
+  check('chk_order_delivery_pin_attempts_non_negative', sql`${table.deliveryPinAttempts} >= 0`),
 ]);
 
 export const orderItems = pgTable('order_items', {

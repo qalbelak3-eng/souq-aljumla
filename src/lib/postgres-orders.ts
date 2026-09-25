@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import crypto from 'crypto';
 import { getDb } from '@/db/client';
 import {
   orders,
@@ -12,6 +13,7 @@ import {
   vehicles,
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
+import { deriveOrderPin, generateOrderPinData } from '@/lib/delivery-pin';
 
 /* =========================================================
    Types & Interfaces
@@ -87,7 +89,8 @@ export function formatOrderRecord(
   itemsRows: any[],
   driverRow?: any,
   vehicleRow?: any,
-  accountRow?: any
+  accountRow?: any,
+  includePin?: boolean
 ): Order {
   return {
     id: String(orderRow.id),
@@ -146,6 +149,10 @@ export function formatOrderRecord(
     driverCashSettled: Boolean(orderRow.driverCashSettled),
     settlementId: orderRow.settlementId ? String(orderRow.settlementId) : undefined,
     inventoryRestored: Boolean(orderRow.inventoryRestored),
+    deliveryProofMethod: orderRow.deliveryProofMethod || undefined,
+    deliveryVerifiedAt: orderRow.deliveryVerifiedAt ? new Date(orderRow.deliveryVerifiedAt).toISOString() : undefined,
+    deliveryOverrideReason: orderRow.deliveryOverrideReason || undefined,
+    deliveryPin: includePin && orderRow.deliveryPinSeed ? deriveOrderPin(String(orderRow.id), orderRow.deliveryPinSeed) : undefined,
     createdAt: new Date(orderRow.createdAt).toISOString(),
     updatedAt: new Date(orderRow.updatedAt).toISOString(),
   };
@@ -155,7 +162,7 @@ export function formatOrderRecord(
    1. pgGetOrders
    ========================================================= */
 
-export async function pgGetOrders(filters?: PgOrderFilters): Promise<Order[]> {
+export async function pgGetOrders(filters?: PgOrderFilters, options?: { includePin?: boolean }): Promise<Order[]> {
   const db = getDb();
 
   const conditions = [];
@@ -217,7 +224,7 @@ export async function pgGetOrders(filters?: PgOrderFilters): Promise<Order[]> {
   }
 
   return orderRows.map(({ order, account, driver, vehicle }) =>
-    formatOrderRecord(order, itemsByOrderId.get(order.id) || [], driver, vehicle, account)
+    formatOrderRecord(order, itemsByOrderId.get(order.id) || [], driver, vehicle, account, options?.includePin)
   );
 }
 
@@ -225,7 +232,7 @@ export async function pgGetOrders(filters?: PgOrderFilters): Promise<Order[]> {
    2. pgGetOrderById
    ========================================================= */
 
-export async function pgGetOrderById(idOrOrderNumber: string): Promise<Order | null> {
+export async function pgGetOrderById(idOrOrderNumber: string, options?: { includePin?: boolean }): Promise<Order | null> {
   const db = getDb();
   const trimmed = String(idOrOrderNumber || '').trim();
   if (!trimmed) return null;
@@ -260,7 +267,7 @@ export async function pgGetOrderById(idOrOrderNumber: string): Promise<Order | n
     .from(orderItems)
     .where(eq(orderItems.orderId, order.id));
 
-  return formatOrderRecord(order, items, driver, vehicle, account);
+  return formatOrderRecord(order, items, driver, vehicle, account, options?.includePin);
 }
 
 /* =========================================================
@@ -474,9 +481,13 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     // -------------------------------------------------------------
     // Step D: Insert Order
     // -------------------------------------------------------------
+    const newOrderId = crypto.randomUUID();
+    const pinData = generateOrderPinData(newOrderId);
+
     const [insertedOrder] = await tx
       .insert(orders)
       .values({
+        id: newOrderId,
         orderNumber,
         accountId: customerAccount.id,
         customerNameSnap: data.customer.name.trim(),
@@ -506,6 +517,9 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         remainingDebtAmount: String(total.toFixed(2)),
         driverCashSettled: false,
         inventoryRestored: false,
+        deliveryPinHash: pinData.hash,
+        deliveryPinSeed: pinData.seed,
+        deliveryPinAttempts: 0,
         notes: data.notes?.trim() || null,
       })
       .returning();

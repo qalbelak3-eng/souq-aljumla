@@ -235,6 +235,7 @@ export async function POST(req: Request) {
       collectionStatus: collectionStatus || 'collected_cash',
       collectedAmount,
       notes,
+      deliveryPin: body.deliveryPin,
     });
 
     // Send Push notification to customer
@@ -263,7 +264,9 @@ export async function POST(req: Request) {
       ? 403
       : message.includes('غير موجود')
       ? 404
-      : message.includes('لا تسمح') || message.includes('ملغاة') || message.includes('بالفعل')
+      : message.includes('تم قفل')
+      ? 423
+      : message.includes('PIN') || message.includes('رمز') || message.includes('لا تسمح') || message.includes('ملغاة') || message.includes('بالفعل') || message.includes('مطلوب') || message.includes('حالة')
       ? 400
       : 500;
     return NextResponse.json({ success: false, error: message }, { status });
