@@ -130,6 +130,7 @@ export async function POST(request: Request) {
         name: customerSession.name,
         accountType: customerSession.accountType || 'individual',
         merchantStatus: customerSession.merchantStatus,
+        merchantTier: customerSession.merchantTier,
         pricingTier: customerSession.pricingTier,
         isActive: true,
       };
@@ -394,6 +395,7 @@ export async function POST(request: Request) {
       discount: verifiedDiscount,
       couponCode: couponCode && String(couponCode).trim() ? String(couponCode).trim() : undefined,
       userAccountType: effectiveAccountType,
+      userMerchantTier: trustedUser?.merchantTier,
       usedCashbackDiscount: verifiedCashbackDiscount > 0 ? verifiedCashbackDiscount : undefined,
       earnedCashback: totalEarnedCashback > 0 ? totalEarnedCashback : undefined,
       total: finalTotal,

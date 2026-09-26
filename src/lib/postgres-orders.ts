@@ -13,7 +13,7 @@ import {
   drivers,
   vehicles,
 } from '@/db/schema';
-import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
+import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgConsumeCoupon } from '@/lib/postgres-coupons';
 import {
@@ -22,7 +22,7 @@ import {
   pgReverseOrderRedeemedCashback,
   pgGetAccountCashbackBalance,
 } from '@/lib/postgres-cashback';
-import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
+import { getProductPriceForUser, validateOrderItemQuantity, normalizePricingIdentity } from '@/lib/pricing';
 
 /* =========================================================
    Types & Interfaces
@@ -42,6 +42,7 @@ export interface PgCreateOrderInput {
   discount?: number;
   couponCode?: string;
   userAccountType?: string;
+  userMerchantTier?: MerchantTier;
   usedCashbackDiscount?: number;
   earnedCashback?: number;
   total?: number;
@@ -528,11 +529,13 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         vipPrice: baseVipPrice,
       };
 
-      const effectiveUser = {
-        accountType: data.userAccountType || customerAccount?.pricingTier || (data.customer as any)?.accountType || 'individual',
-        merchantTier: (customerAccount as any)?.merchantTier || (data.customer as any)?.merchantTier,
-        role: 'customer' as const,
-      };
+      // Server-authoritative semantic normalization of customer pricing identity:
+      // Never trust client request body. Strictly derive from server-side trusted session / operator or PostgreSQL account:
+      const effectiveUser = normalizePricingIdentity({
+        accountType: data.userAccountType,
+        pricingTier: customerAccount?.pricingTier,
+        merchantTier: data.userMerchantTier,
+      });
 
       const officialPricingRes = getProductPriceForUser(
         overlayProduct,

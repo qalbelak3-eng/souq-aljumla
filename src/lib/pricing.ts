@@ -57,10 +57,79 @@ export function validateOrderItemQuantity(
   return { valid: true, quantity: numVal };
 }
 
+export interface NormalizedPricingUser {
+  accountType: 'individual' | 'market' | 'wholesale';
+  merchantTier?: MerchantTier;
+  role: 'customer' | 'merchant';
+}
+
+/**
+ * دالة موحدة ومركزية لتطبيع هوية التسعير بين مفاهيم User وجدول financial_accounts ودوال التسعير:
+ * - accountType يحدد مسار التسعير (individual للمستهلك، market للماركت، wholesale للجملة).
+ * - pricingTier هو الحقل المحاسبي القادم من financial_accounts ('retail' | 'general' | 'market' | 'wholesale' | 'special').
+ *   يتم تحويله دلالياً:
+ *   * 'retail' و 'general' -> 'individual'
+ *   * 'market' -> 'market'
+ *   * 'wholesale' -> 'wholesale'
+ *   * 'special' -> توافق Legacy مؤقت موثق: يعامل كـ wholesale مع merchantTier = 'silver' فقط في حال عدم تحديد merchantTier صريح.
+ * - merchantTier هو الفئة الصريحة لتاجر الجملة ('bronze' | 'silver' | 'gold').
+ * - لا يتم الثقة أبداً بأي مدخلات غير موثوقة من Payload العميل.
+ */
+export function normalizePricingIdentity(input: {
+  accountType?: string | null;
+  pricingTier?: string | null;
+  merchantTier?: string | null;
+}): NormalizedPricingUser {
+  const rawAccountType = String(input.accountType || '').trim().toLowerCase();
+  const rawPricingTier = String(input.pricingTier || '').trim().toLowerCase();
+  const rawMerchantTier = String(input.merchantTier || '').trim().toLowerCase();
+
+  let resolvedAccountType: 'individual' | 'market' | 'wholesale' = 'individual';
+  let resolvedMerchantTier: MerchantTier | undefined = undefined;
+
+  // 1. Resolve Account Type:
+  if (rawAccountType === 'market' || rawPricingTier === 'market') {
+    resolvedAccountType = 'market';
+  } else if (
+    rawAccountType === 'wholesale' ||
+    rawAccountType === 'merchant' ||
+    rawPricingTier === 'wholesale' ||
+    rawPricingTier === 'special'
+  ) {
+    resolvedAccountType = 'wholesale';
+  } else {
+    // 'individual', 'retail', 'general', empty or unknown fallback to individual consumer
+    resolvedAccountType = 'individual';
+  }
+
+  // 2. Resolve Merchant Tier (Bronze / Silver / Gold):
+  if (resolvedAccountType === 'wholesale') {
+    if (rawMerchantTier === 'gold') {
+      resolvedMerchantTier = 'gold';
+    } else if (rawMerchantTier === 'silver') {
+      resolvedMerchantTier = 'silver';
+    } else if (rawMerchantTier === 'bronze') {
+      resolvedMerchantTier = 'bronze';
+    } else if (rawPricingTier === 'special') {
+      // Documented Legacy Compatibility ONLY:
+      // If legacy financial account has pricingTier === 'special' without explicit merchantTier, treat as silver
+      resolvedMerchantTier = 'silver';
+    } else {
+      resolvedMerchantTier = 'bronze';
+    }
+  }
+
+  return {
+    accountType: resolvedAccountType,
+    merchantTier: resolvedMerchantTier,
+    role: resolvedAccountType === 'wholesale' ? 'merchant' : 'customer',
+  };
+}
+
 export function getProductPriceForUser(
   product: Product,
   saleType: SaleType = 'retail',
-  user?: User | null
+  user?: User | NormalizedPricingUser | null
 ): { price: number; tierLabel: string; tier: MerchantTier | 'retail' | 'market' } {
   if (saleType === 'retail') {
     return { price: product.price, tierLabel: 'سعر المفرد', tier: 'retail' };
@@ -81,18 +150,23 @@ export function getProductPriceForUser(
   // 3. Wholesale Merchant (تاجر جملة معتمد)
   if (user.accountType === 'wholesale' || user.accountType === 'merchant' || user.role === 'merchant') {
     const tier: MerchantTier = user.merchantTier || 'bronze';
+    const baseWholesale = Number(product.wholesalePrice);
 
     if (tier === 'gold') {
-      const price = Number(product.vipPrice) > 0 ? Number(product.vipPrice) : (Number(product.specialPrice) || Number(product.wholesalePrice));
+      const regularVip = Number(product.vipPrice) > 0 ? Number(product.vipPrice) : (Number(product.specialPrice) || baseWholesale);
+      // Commercial rule: Gold VIP tier must never pay more than promotional wholesale price
+      const price = baseWholesale > 0 && baseWholesale < regularVip ? baseWholesale : regularVip;
       return { price, tierLabel: 'سعر جملة ذهبي', tier: 'gold' };
     }
 
     if (tier === 'silver') {
-      const price = Number(product.specialPrice) > 0 ? Number(product.specialPrice) : Number(product.wholesalePrice);
+      const regularSpecial = Number(product.specialPrice) > 0 ? Number(product.specialPrice) : baseWholesale;
+      // Commercial rule: Silver tier must never pay more than promotional wholesale price
+      const price = baseWholesale > 0 && baseWholesale < regularSpecial ? baseWholesale : regularSpecial;
       return { price, tierLabel: 'سعر جملة فضي', tier: 'silver' };
     }
 
-    return { price: Number(product.wholesalePrice), tierLabel: 'سعر جملة برونزي', tier: 'bronze' };
+    return { price: baseWholesale, tierLabel: 'سعر جملة برونزي', tier: 'bronze' };
   }
 
   const fallbackPrice = Number(product.boxPrice) > 0 ? Number(product.boxPrice) : Number(product.wholesalePrice);

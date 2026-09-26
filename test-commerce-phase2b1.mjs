@@ -108,6 +108,7 @@ async function runCommercePhase2b1Tests() {
 
   const {
     getProductPriceForUser,
+    normalizePricingIdentity,
   } = await import('./src/lib/pricing.ts');
 
   const { POST: offersPostHandler, GET: offersGetHandler } = await import('./src/app/api/offers/route.ts');
@@ -718,6 +719,193 @@ async function runCommercePhase2b1Tests() {
   const prodWithWholesaleOffer = await pgGetProductById(prod1.id);
   const pBronzeWithOffer = getProductPriceForUser(prodWithWholesaleOffer, 'wholesale', wsBronzeUser);
   assert(pBronzeWithOffer.price === 70000, `When offerWholesalePrice is set (70,000), wholesale receives offer wholesale price: got ${pBronzeWithOffer.price}`);
+
+  // =========================================================================
+  // SCENARIO 14: Semantic Pricing Identity & Multi-Tier Resolution Test
+  // =========================================================================
+  console.log('\n--- Scenario 14: Semantic Pricing Identity & Multi-Tier Resolution Test ---');
+
+  // A. Direct semantic normalization matrix tests
+  const n1 = normalizePricingIdentity({ accountType: 'individual' });
+  assert(n1.accountType === 'individual' && n1.merchantTier === undefined, 'individual -> individual (retail)');
+
+  const n2 = normalizePricingIdentity({ pricingTier: 'retail' });
+  assert(n2.accountType === 'individual' && n2.merchantTier === undefined, 'pricingTier=retail -> individual (does NOT turn into wholesale)');
+
+  const n3 = normalizePricingIdentity({ pricingTier: 'general' });
+  assert(n3.accountType === 'individual' && n3.merchantTier === undefined, 'pricingTier=general -> individual (does NOT turn into wholesale)');
+
+  const n4 = normalizePricingIdentity({ accountType: 'market' });
+  assert(n4.accountType === 'market' && n4.merchantTier === undefined, 'accountType=market -> market');
+
+  const n5 = normalizePricingIdentity({ pricingTier: 'market' });
+  assert(n5.accountType === 'market' && n5.merchantTier === undefined, 'pricingTier=market -> market');
+
+  const n6 = normalizePricingIdentity({ accountType: 'wholesale', merchantTier: 'bronze' });
+  assert(n6.accountType === 'wholesale' && n6.merchantTier === 'bronze', 'wholesale bronze -> wholesale bronze');
+
+  const n7 = normalizePricingIdentity({ accountType: 'wholesale', merchantTier: 'silver' });
+  assert(n7.accountType === 'wholesale' && n7.merchantTier === 'silver', 'wholesale silver -> wholesale silver');
+
+  const n8 = normalizePricingIdentity({ accountType: 'wholesale', merchantTier: 'gold' });
+  assert(n8.accountType === 'wholesale' && n8.merchantTier === 'gold', 'wholesale gold -> wholesale gold');
+
+  const n9 = normalizePricingIdentity({ pricingTier: 'special' });
+  assert(n9.accountType === 'wholesale' && n9.merchantTier === 'silver', 'Legacy pricingTier=special -> wholesale silver');
+
+  const n10 = normalizePricingIdentity({ accountType: 'individual', merchantTier: 'gold' });
+  assert(n10.accountType === 'individual' && n10.merchantTier === undefined, 'Customer spoofing merchantTier=gold does NOT grant wholesale VIP');
+
+  // B. End-to-End: Gold calculated in /api/orders STAYS Gold in pgCreateOrder & Transaction
+  // Archive existing offers on prod1 to test baseline tier pricing
+  await sql`UPDATE product_offers SET is_active = false, is_archived = true WHERE product_id = ${prod1.id}`;
+
+  const [goldAccount] = await sql`
+    INSERT INTO financial_accounts (
+      account_code, name, phone, category, pricing_tier, city, address
+    ) VALUES (
+      'ACC-GOLD-MERCHANT', 'تاجر ذهبي معتمد', '07704444444', 'customer', 'wholesale', 'كربلاء', 'سوق الجملة'
+    ) RETURNING *;
+  `;
+
+  inMemDb.users.push({
+    id: goldAccount.id,
+    name: goldAccount.name,
+    phone: goldAccount.phone,
+    role: 'customer',
+    accountType: 'wholesale',
+    merchantStatus: 'approved',
+    merchantTier: 'gold',
+    isActive: true,
+  });
+
+  const goldCookie = signCustomerSession({
+    userId: goldAccount.id,
+    phone: goldAccount.phone,
+    name: goldAccount.name,
+    role: 'customer',
+    accountType: 'wholesale',
+    merchantStatus: 'approved',
+    merchantTier: 'gold',
+    exp: Math.floor(Date.now() / 1000) + 86400,
+  });
+
+  // Gold user buys 1 carton (10 pieces) of prod1
+  const goldOrderReq = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${goldCookie}`,
+    },
+    body: JSON.stringify({
+      customer: {
+        name: goldAccount.name,
+        phone: goldAccount.phone,
+        city: 'كربلاء',
+        address: 'سوق الجملة',
+      },
+      items: [
+        {
+          productId: prod1.id,
+          name: prod1.name,
+          quantity: 1,
+          saleType: 'wholesale',
+          unitLabel: 'كرتون',
+        },
+      ],
+    }),
+  });
+
+  const goldOrderRes = await ordersPostHandler(goldOrderReq);
+  const goldOrderData = await goldOrderRes.json();
+  assert(goldOrderRes.status === 201, `Gold order created: status ${goldOrderRes.status}`);
+  assert(goldOrderData.order.subtotal === 75000, `Gold user charged vipPrice 75,000 in /api/orders (got ${goldOrderData.order.subtotal})`);
+
+  // Verify that inside PostgreSQL Transaction, unit_price_snap in order_items is 75,000 NOT 80,000 (did NOT revert to Bronze!)
+  const [dbGoldOrderItem] = await sql`
+    SELECT * FROM order_items WHERE order_id = ${goldOrderData.order.id};
+  `;
+  assert(Number(dbGoldOrderItem.unit_price_snap) === 75000, `PostgreSQL Transaction preserved Gold VIP price: unit_price_snap is 75000.00 (got ${dbGoldOrderItem.unit_price_snap})`);
+
+  // C. Customer payload spoofing attempt: individual attempts to inject merchantTier='gold'
+  const spoofReq = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${customerCookie}`, // individual customer
+    },
+    body: JSON.stringify({
+      customer: {
+        name: customerAccount.name,
+        phone: customerAccount.phone,
+        city: 'كربلاء',
+        address: 'حي الوفاء',
+        accountType: 'wholesale', // Spoofed!
+        merchantTier: 'gold', // Spoofed!
+      },
+      items: [
+        {
+          productId: prod1.id,
+          name: prod1.name,
+          quantity: 1,
+          saleType: 'wholesale',
+          unitLabel: 'كرتون',
+        },
+      ],
+    }),
+  });
+
+  const spoofRes = await ordersPostHandler(spoofReq);
+  const spoofData = await spoofRes.json();
+  assert(spoofRes.status === 201, `Spoofed order processed with safe pricing: status ${spoofRes.status}`);
+  assert(spoofData.order.subtotal === 45000, `Spoofed customer billed consumer carton price (boxPrice 45,000), not VIP price (got ${spoofData.order.subtotal})`);
+
+  // D. Same verification with Active Offer:
+  // Create an active offer on prod1: offerPrice = 8000, offerWholesalePrice = 70000
+  const activeOfferForGold = await pgCreateOffer({
+    productId: prod1.id,
+    offerPrice: 8000,
+    offerWholesalePrice: 70000,
+    endDate: new Date(Date.now() + 86400000).toISOString(),
+    badge: 'عرض التاجر الذهبي',
+    isActive: true,
+  });
+
+  const goldOfferReq = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${CUSTOMER_SESSION_COOKIE_NAME}=${goldCookie}`,
+    },
+    body: JSON.stringify({
+      customer: {
+        name: goldAccount.name,
+        phone: goldAccount.phone,
+        city: 'كربلاء',
+        address: 'سوق الجملة',
+      },
+      items: [
+        {
+          productId: prod1.id,
+          name: prod1.name,
+          quantity: 1,
+          saleType: 'wholesale',
+          unitLabel: 'كرتون',
+        },
+      ],
+    }),
+  });
+
+  const goldOfferRes = await ordersPostHandler(goldOfferReq);
+  const goldOfferData = await goldOfferRes.json();
+  assert(goldOfferRes.status === 201, `Gold order with active offer created: status ${goldOfferRes.status}`);
+  assert(goldOfferData.order.subtotal === 70000, `Gold order receives offer wholesale price 70,000 (got ${goldOfferData.order.subtotal})`);
+
+  const [dbGoldOfferItem] = await sql`
+    SELECT * FROM order_items WHERE order_id = ${goldOfferData.order.id};
+  `;
+  assert(Number(dbGoldOfferItem.unit_price_snap) === 70000, `unit_price_snap in DB with active offer is 70,000 (got ${dbGoldOfferItem.unit_price_snap})`);
+  assert(dbGoldOfferItem.offer_id_snap === activeOfferForGold.id, `offer_id_snap in DB matches active offer: ${dbGoldOfferItem.offer_id_snap}`);
 
   console.log('\n================================================================');
   console.log(`  ALL COMMERCE-2B1 TESTS PASSED! (${passed} checks passed, 0 failed)`);

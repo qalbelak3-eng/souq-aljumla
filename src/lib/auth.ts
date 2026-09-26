@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ensureDbExists } from '@/lib/db';
+import type { MerchantTier } from '@/types';
 
 export const SESSION_COOKIE_NAME = 'etihad_admin_session';
 export const CUSTOMER_SESSION_COOKIE_NAME = 'etihad_customer_session';
@@ -186,6 +187,7 @@ export interface AuthenticatedCustomer {
   role?: string;
   merchantStatus?: string;
   pricingTier?: string;
+  merchantTier?: MerchantTier;
   isActive: boolean;
 }
 
@@ -277,6 +279,7 @@ export function getAuthenticatedCustomer(request: Request): AuthenticatedCustome
     role: user.role,
     merchantStatus: user.merchantStatus,
     pricingTier: user.pricingTier,
+    merchantTier: user.merchantTier,
     isActive: (user as any).isActive !== false,
   };
 }
