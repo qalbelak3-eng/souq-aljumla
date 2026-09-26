@@ -97,7 +97,7 @@ async function runCommercePhase1Tests() {
     DELETE: couponsDeleteHandler,
   } = await import('./src/app/api/coupons/route.ts');
   const { POST: couponsValidateHandler } = await import('./src/app/api/coupons/validate/route.ts');
-  const { getProductPriceForUser } = await import('./src/lib/pricing.ts');
+  const { getProductPriceForUser, validateOrderItemQuantity, MAX_ORDER_ITEM_QUANTITY } = await import('./src/lib/pricing.ts');
 
   let passed = 0;
   let failed = 0;
@@ -782,6 +782,211 @@ async function runCommercePhase1Tests() {
 
     const [deletedRow] = await sql`SELECT id FROM coupons WHERE code = 'UNUSED99'`;
     assert(deletedRow == null, 'Unused coupon physically deleted from database');
+  }
+
+  // -------------------------------------------------------------
+  // Scenario 18: Strict Quantity Hardening across Coupon Validate, Orders API, pgCreateOrder & Inventory Deduction
+  // -------------------------------------------------------------
+  {
+    console.log('\n--- Scenario 18: Strict Quantity Hardening across All Layers ---');
+
+    // 1. Direct validation tests for validateOrderItemQuantity
+    assert(validateOrderItemQuantity(0).valid === false, 'Quantity 0 is rejected');
+    assert(validateOrderItemQuantity(-1).valid === false, 'Negative quantity -1 is rejected');
+    assert(validateOrderItemQuantity(-100).valid === false, 'Negative quantity -100 is rejected');
+    assert(validateOrderItemQuantity(2.5).valid === false, 'Decimal quantity 2.5 is rejected');
+    assert(validateOrderItemQuantity('2.5').valid === false, 'String decimal "2.5" is rejected');
+    assert(validateOrderItemQuantity(3.14159).valid === false, 'Float quantity 3.14159 is rejected');
+    assert(validateOrderItemQuantity('abc').valid === false, 'String "abc" is rejected');
+    assert(validateOrderItemQuantity(NaN).valid === false, 'NaN quantity is rejected');
+    assert(validateOrderItemQuantity(Infinity).valid === false, 'Infinity quantity is rejected');
+    assert(validateOrderItemQuantity(null).valid === false, 'Null quantity is rejected');
+    assert(validateOrderItemQuantity(undefined).valid === false, 'Undefined quantity is rejected');
+    assert(validateOrderItemQuantity(true).valid === false, 'Boolean quantity is rejected');
+    assert(validateOrderItemQuantity(999999999).valid === false, 'Huge quantity 999,999,999 is rejected (> 50,000 max limit)');
+    
+    const validQtyRes = validateOrderItemQuantity(2);
+    assert(validQtyRes.valid === true, 'Positive integer 2 is accepted');
+    assert(validQtyRes.quantity === 2, 'Parsed integer value is exactly 2');
+
+    // Seed a dedicated product for quantity tests
+    const [qCat] = await sql`
+      INSERT INTO categories (name, slug) VALUES ('قسم كميات تجريبية', 'qty-test-cat') RETURNING id;
+    `;
+    const [qProd] = await sql`
+      INSERT INTO products (
+        name, category_id, current_stock_pieces,
+        boxes_per_carton, items_per_box, pieces_per_carton,
+        retail_unit, wholesale_unit,
+        price, box_price, wholesale_price
+      ) VALUES (
+        'منتج فحص الكميات الموحد', ${qCat.id}, 100,
+        1, 10, 10,
+        'قطعة', 'كرتون',
+        10000, 20000, 18000
+      ) RETURNING id, name, price, current_stock_pieces, pieces_per_carton;
+    `;
+
+    await pgCreateCoupon({
+      code: 'QTYTEST10',
+      discountType: 'percentage',
+      discountValue: 10,
+      minOrderAmount: 5000,
+      isActive: true,
+    });
+
+    // 2. /api/coupons/validate: rejects decimal 2.5
+    const reqValDec = new Request('http://localhost/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'QTYTEST10',
+        items: [{ productId: qProd.id, quantity: 2.5, saleType: 'retail' }],
+      }),
+    });
+    const resValDec = await couponsValidateHandler(reqValDec);
+    assert(resValDec.status === 400, 'Coupon validate rejects decimal quantity 2.5 with HTTP 400');
+    const dataValDec = await resValDec.json();
+    assert(dataValDec.error.includes('كمية غير صالحة'), 'Error message clearly specifies invalid quantity');
+
+    // 3. /api/coupons/validate: rejects 0, -5, "abc", 999999999
+    const reqValZero = new Request('http://localhost/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'QTYTEST10',
+        items: [{ productId: qProd.id, quantity: 0, saleType: 'retail' }],
+      }),
+    });
+    const resValZero = await couponsValidateHandler(reqValZero);
+    assert(resValZero.status === 400, 'Coupon validate rejects quantity 0 with HTTP 400');
+
+    const reqValHuge = new Request('http://localhost/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'QTYTEST10',
+        items: [{ productId: qProd.id, quantity: 999999999, saleType: 'retail' }],
+      }),
+    });
+    const resValHuge = await couponsValidateHandler(reqValHuge);
+    assert(resValHuge.status === 400, 'Coupon validate rejects huge quantity 999,999,999 with HTTP 400');
+
+    // 4. /api/orders: rejects decimal quantity 2.5 before stock deduction
+    const reqOrderDec = new Request('http://localhost/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'زبون تجريبي',
+          phone: '07705554433',
+          city: 'كربلاء',
+          address: 'حي العباس',
+        },
+        items: [{ productId: qProd.id, quantity: 2.5, saleType: 'retail' }],
+      }),
+    });
+    const resOrderDec = await ordersPostHandler(reqOrderDec);
+    assert(resOrderDec.status === 400, 'Orders API rejects decimal quantity 2.5 with HTTP 400');
+    const dataOrderDec = await resOrderDec.json();
+    assert(dataOrderDec.error.includes('كمية غير صالحة'), 'Orders API error message specifies invalid quantity');
+
+    // Verify stock was NOT touched after rejected decimal order
+    const [stockAfterRejected] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${qProd.id}`;
+    assert(Number(stockAfterRejected.current_stock_pieces) === 100, 'Stock pieces remained 100 (never deducted on invalid quantity)');
+
+    // 5. /api/orders: rejects quantity 0 and 999,999,999
+    const reqOrderHuge = new Request('http://localhost/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'زبون تجريبي',
+          phone: '07705554433',
+          city: 'كربلاء',
+          address: 'حي العباس',
+        },
+        items: [{ productId: qProd.id, quantity: 999999999, saleType: 'retail' }],
+      }),
+    });
+    const resOrderHuge = await ordersPostHandler(reqOrderHuge);
+    assert(resOrderHuge.status === 400, 'Orders API rejects huge quantity 999,999,999 with HTTP 400 before stock check');
+
+    // 6. pgCreateOrder repository rejects invalid quantities directly
+    let directRepoFailed = false;
+    try {
+      await pgCreateOrder({
+        customer: {
+          name: 'عميل مستودع مباشر',
+          phone: '07709998877',
+          city: 'كربلاء',
+          address: 'شارع السناتر',
+        },
+        items: [{ productId: qProd.id, quantity: 2.5, saleType: 'retail', price: 1000 }],
+        subtotal: 2500,
+        total: 2500,
+        operator: { name: 'Admin', role: 'admin' },
+      });
+    } catch (err) {
+      directRepoFailed = true;
+      assert(err.message.includes('كمية غير صالحة'), 'pgCreateOrder throws Error on decimal quantity');
+    }
+    assert(directRepoFailed === true, 'pgCreateOrder threw on decimal quantity');
+
+    // 7. Full 100% Parity test with valid integer quantity = 2
+    // A) Validate coupon with quantity = 2
+    const reqValValid = new Request('http://localhost/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'QTYTEST10',
+        items: [{ productId: qProd.id, quantity: 2, saleType: 'retail' }],
+      }),
+    });
+    const resValValid = await couponsValidateHandler(reqValValid);
+    assert(resValValid.status === 200, 'Coupon validate succeeds for valid quantity 2');
+    const dataValValid = await resValValid.json();
+    assert(dataValValid.success === true, 'Coupon validate returns success');
+    // Subtotal for 2 items = 2 * 10000 = 20000
+    // QTYTEST10 gives 10% = 2000
+    assert(dataValValid.discount === 2000, 'Coupon validate discount is exactly 2,000 (10% of 20,000)');
+
+    // B) Orders API with quantity = 2
+    const reqOrderValid = new Request('http://localhost/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          name: 'زبون تكاملي',
+          phone: '07708881122',
+          city: 'كربلاء',
+          address: 'شارع ميثم التمار',
+        },
+        couponCode: 'QTYTEST10',
+        items: [{ productId: qProd.id, quantity: 2, saleType: 'retail' }],
+      }),
+    });
+    const resOrderValid = await ordersPostHandler(reqOrderValid);
+    const dataOrderValid = await resOrderValid.json();
+    assert(resOrderValid.status === 201, 'Orders API succeeds for valid integer quantity 2 (HTTP 201 Created)');
+    assert(dataOrderValid.success === true, 'Order created successfully');
+    assert(dataOrderValid.order.subtotal === 20000, 'Order subtotal is exactly 20,000 (10,000 * 2)');
+    assert(dataOrderValid.order.discount === 2000, 'Order discount is exactly 2,000');
+
+    // C) Verify database order_items and stock deduction
+    const [dbOrderItem] = await sql`
+      SELECT sold_quantity, conversion_factor_snap, base_quantity_deducted, unit_price_snap
+      FROM order_items
+      WHERE order_id = ${dataOrderValid.order.id} AND product_id = ${qProd.id};
+    `;
+    assert(dbOrderItem.sold_quantity === 2, 'order_items.sold_quantity is exactly 2');
+    assert(dbOrderItem.conversion_factor_snap === 1, 'order_items.conversion_factor_snap is 1');
+    assert(dbOrderItem.base_quantity_deducted === 2, 'order_items.base_quantity_deducted is 2');
+    assert(Number(dbOrderItem.unit_price_snap) === 10000, 'order_items.unit_price_snap is 10000');
+
+    // D) Verify inventory deduction: was 100, now exactly 98
+    const [finalStockRow] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${qProd.id}`;
+    assert(Number(finalStockRow.current_stock_pieces) === 98, 'Product stock pieces exactly deducted from 100 to 98 (100 - 2)');
   }
 
   console.log('\n===============================================================');

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgGetProducts } from '@/lib/postgres-catalog';
-import { getProductPriceForUser } from '@/lib/pricing';
+import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,14 @@ export async function POST(request: Request) {
             error: 'السلة تحتوي على منتج غير متوفر أو معطل حالياً',
           }, { status: 400 });
         }
-        const qty = Math.max(1, Number(item.quantity) || 1);
+        const qtyRes = validateOrderItemQuantity(item.quantity);
+        if (!qtyRes.valid) {
+          return NextResponse.json({
+            success: false,
+            error: `كمية غير صالحة للصنف (${prod.name}): ${qtyRes.error}`,
+          }, { status: 400 });
+        }
+        const qty = qtyRes.quantity!;
         const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
         const pricingRes = getProductPriceForUser(prod, saleType as any, customer as any);
         calculated += pricingRes.price * qty;

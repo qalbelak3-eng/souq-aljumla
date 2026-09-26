@@ -1,5 +1,62 @@
 import { Product, SaleType, User, MerchantTier, StoreSettings } from '@/types';
 
+export const MAX_ORDER_ITEM_QUANTITY = 50000;
+
+export interface QuantityValidationResult {
+  valid: boolean;
+  quantity?: number;
+  error?: string;
+}
+
+/**
+ * دالة موحدة لفحص وتأكيد سلامة كمية الأصناف في السلة والطلبات والكوبونات والمستودع:
+ * - تقبل فقط الأعداد الصحيحة الموجبة (positive integer >= 1)
+ * - تمنع تماماً الكسور (decimals مثل 2.5)، الصفر، السالب، النصوص، NaN، و Infinity
+ * - تمنع القيم الخارجة عن نطاق الأمان أو المتجاوزة للحد الأقصى للطلب الواحد (50,000)
+ */
+export function validateOrderItemQuantity(
+  rawQty: any,
+  maxAllowed: number = MAX_ORDER_ITEM_QUANTITY
+): QuantityValidationResult {
+  if (rawQty === undefined || rawQty === null || rawQty === '' || typeof rawQty === 'boolean') {
+    return { valid: false, error: 'الكمية مطلوبة ويجب أن تكون رقماً صحيحاً' };
+  }
+
+  let numVal: number;
+  if (typeof rawQty === 'string') {
+    const trimmed = rawQty.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+      return { valid: false, error: 'الكمية غير صالحة: يجب إدخال عدد صحيح بدون كسور أو نصوص' };
+    }
+    numVal = Number(trimmed);
+  } else if (typeof rawQty === 'number') {
+    numVal = rawQty;
+  } else {
+    return { valid: false, error: 'نوع بيانات الكمية غير صالح' };
+  }
+
+  if (isNaN(numVal) || !isFinite(numVal)) {
+    return { valid: false, error: 'الكمية غير صالحة' };
+  }
+
+  if (!Number.isSafeInteger(numVal)) {
+    return { valid: false, error: 'الكمية يجب أن تكون عدداً صحيحاً داخل النطاق الآمن' };
+  }
+
+  if (numVal < 1) {
+    return { valid: false, error: 'الكمية يجب أن تكون عدداً صحيحاً موجباً (1 على الأقل)' };
+  }
+
+  if (numVal > maxAllowed) {
+    return {
+      valid: false,
+      error: `الكمية المطلوبة (${numVal.toLocaleString()}) تتجاوز الحد الأقصى المسموح به للطلب الواحد (${maxAllowed.toLocaleString()})`,
+    };
+  }
+
+  return { valid: true, quantity: numVal };
+}
+
 export function getProductPriceForUser(
   product: Product,
   saleType: SaleType = 'retail',

@@ -4,7 +4,7 @@ import { pgGetStoreSettings } from '@/lib/postgres-settings';
 import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
-import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
+import { getProductPriceForUser, getProductCashbackRate, validateOrderItemQuantity } from '@/lib/pricing';
 import { getEffectiveDeliveryFee } from '@/lib/delivery';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
-    // Strict product validation: reject non-existent or inactive products (Requirement 5)
+    // Strict product and quantity validation: reject non-existent, inactive products or invalid quantities (Defense-in-depth)
     for (const item of items) {
       const prodId = item.productId || item.id;
       if (!prodId) {
@@ -180,11 +180,19 @@ export async function POST(request: Request) {
           error: `المنتج "${item.name || item.title || prodId}" غير موجود أو غير متوفر حالياً.`,
         }, { status: 400 });
       }
+      const qtyRes = validateOrderItemQuantity(item.quantity);
+      if (!qtyRes.valid) {
+        return NextResponse.json({
+          success: false,
+          error: `كمية غير صالحة للصنف (${prod.name}): ${qtyRes.error}`,
+        }, { status: 400 });
+      }
     }
 
     const verifiedItems = items.map((item: any) => {
       const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id)!;
-      const qty = Math.max(1, Number(item.quantity) || 1);
+      const qtyRes = validateOrderItemQuantity(item.quantity);
+      const qty = qtyRes.quantity!;
       const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
 
       // Strictly derive price from PostgreSQL product and trusted session tier (Requirement 6)

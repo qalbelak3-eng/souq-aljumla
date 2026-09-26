@@ -15,7 +15,7 @@ import {
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgConsumeCoupon } from '@/lib/postgres-coupons';
-import { getProductPriceForUser } from '@/lib/pricing';
+import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
 
 /* =========================================================
    Types & Interfaces
@@ -451,7 +451,11 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         unitLabelSnap = item.unitLabel || prod.retailUnit || 'قطعة';
       }
 
-      const soldQuantity = Math.max(1, Math.round(Number(item.quantity) || 1));
+      const qtyRes = validateOrderItemQuantity(item.quantity);
+      if (!qtyRes.valid) {
+        throw new Error(`كمية غير صالحة للمنتج (${prod.name}): ${qtyRes.error}`);
+      }
+      const soldQuantity = qtyRes.quantity!;
       const baseQuantityDeducted = soldQuantity * conversionFactorSnap;
 
       const currentStockPieces = Number(prod.currentStockPieces) || 0;
@@ -1013,7 +1017,11 @@ export async function pgUpdateOrder(
           unitLabelSnap = item.unitLabel || 'علبة';
         }
 
-        const soldQuantity = Math.max(1, Math.round(Number(item.quantity) || 1));
+        const qtyRes = validateOrderItemQuantity(item.quantity);
+        if (!qtyRes.valid) {
+          throw new Error(`كمية غير صالحة للمنتج (${prod.name}): ${qtyRes.error}`);
+        }
+        const soldQuantity = qtyRes.quantity!;
         const baseQuantityDeducted = soldQuantity * conversionFactorSnap;
         const unitPrice = toNumber(item.price);
         const unitCost = toNumber(prod.pieceCostPrice);

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { CartItem, Product, Coupon, SaleType, User } from '@/types';
-import { getProductPriceForUser } from '@/lib/pricing';
+import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -193,6 +193,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addToCart = (product: Product, quantity = 1, saleType: SaleType = 'retail') => {
     if (!product || !product.id) return;
+    const qtyRes = validateOrderItemQuantity(quantity);
+    if (!qtyRes.valid) return;
+    const safeQty = qtyRes.quantity!;
 
     let activeUser = user;
     if (!activeUser) {
@@ -213,11 +216,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (existingIndex > -1) {
         const newCart = [...validPrev];
-        newCart[existingIndex].quantity += quantity;
+        newCart[existingIndex].quantity += safeQty;
         newCart[existingIndex].pricePerUnit = pricePerUnit;
         return newCart;
       } else {
-        return [...validPrev, { product, quantity, saleType, pricePerUnit, unitLabel }];
+        return [...validPrev, { product, quantity: safeQty, saleType, pricePerUnit, unitLabel }];
       }
     });
   };
@@ -233,11 +236,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeFromCart(productId, saleType);
       return;
     }
+    const qtyRes = validateOrderItemQuantity(quantity);
+    if (!qtyRes.valid) return;
+    const safeQty = qtyRes.quantity!;
 
     setCart((prev) =>
       prev.map((item) => {
         if (item && item.product && item.product.id === productId && item.saleType === saleType) {
-          return { ...item, quantity };
+          return { ...item, quantity: safeQty };
         }
         return item;
       })
