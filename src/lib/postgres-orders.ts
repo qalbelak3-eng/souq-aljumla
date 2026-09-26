@@ -14,6 +14,7 @@ import {
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
+import { pgConsumeCoupon } from '@/lib/postgres-coupons';
 
 /* =========================================================
    Types & Interfaces
@@ -31,6 +32,8 @@ export interface PgCreateOrderInput {
   subtotal?: number;
   deliveryFee?: number;
   discount?: number;
+  couponCode?: string;
+  userAccountType?: string;
   usedCashbackDiscount?: number;
   earnedCashback?: number;
   total?: number;
@@ -473,16 +476,29 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       });
     }
 
-    const subtotal = data.subtotal !== undefined ? toNumber(data.subtotal) : calculatedSubtotal;
+    const subtotal = calculatedSubtotal;
+    let discount = 0;
+    if (data.couponCode && data.couponCode.trim()) {
+      const cleanCoupon = data.couponCode.trim();
+      const accountType = data.userAccountType || customerAccount?.pricingTier || (data.customer as any)?.accountType || 'individual';
+      const couponRes = await pgConsumeCoupon(cleanCoupon, subtotal, accountType, tx);
+      discount = couponRes.discount;
+    } else if (data.discount !== undefined && data.discount !== null && Number(data.discount) > 0) {
+      if (data.operator?.role === 'admin' || data.operator?.role === 'staff') {
+        discount = Math.min(subtotal, Math.max(0, toNumber(data.discount)));
+      } else {
+        discount = 0;
+      }
+    }
+
     const deliveryFee = toNumber(data.deliveryFee);
-    const discount = toNumber(data.discount);
     const usedCashbackDiscount = toNumber(data.usedCashbackDiscount);
     const earnedCashback = data.earnedCashback !== undefined
       ? toNumber(data.earnedCashback)
       : processedItems.reduce((acc, it) => acc + it.earnedCashback, 0);
 
     const calculatedTotal = Math.max(0, subtotal + deliveryFee - discount - usedCashbackDiscount);
-    const total = data.total !== undefined ? Math.max(0, toNumber(data.total)) : calculatedTotal;
+    const total = calculatedTotal;
 
     // -------------------------------------------------------------
     // Step D: Insert Order

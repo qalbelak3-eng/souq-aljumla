@@ -1,14 +1,48 @@
 import { NextResponse } from 'next/server';
-import { validateCoupon } from '@/lib/db';
+import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
+import { pgValidateCoupon } from '@/lib/postgres-coupons';
+import { pgGetProducts } from '@/lib/postgres-catalog';
+import { getProductPriceForUser } from '@/lib/pricing';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { code, subtotal, userAccountType } = await request.json();
+    const body = await request.json();
+    const { code, items } = body;
+    let subtotal = Number(body.subtotal || 0);
+
     if (!code) {
       return NextResponse.json({ success: false, error: 'يرجى إدخال كود الخصم' }, { status: 400 });
     }
 
-    const result = validateCoupon(code, Number(subtotal || 0), userAccountType);
+    // Server-side session authentication: determine trusted account type
+    const customer = getAuthenticatedCustomer(request);
+    const admin = getAuthenticatedAdmin(request);
+
+    const trustedAccountType = admin
+      ? (body.userAccountType || 'individual')
+      : (customer ? (customer.accountType || 'individual') : 'individual');
+
+    // If items are passed, calculate trusted subtotal strictly from verified PostgreSQL products
+    if (items && Array.isArray(items) && items.length > 0) {
+      const allProducts = await pgGetProducts();
+      let calculated = 0;
+      for (const item of items) {
+        const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id);
+        if (prod && (prod as any).isActive !== false) {
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
+          const pricingRes = getProductPriceForUser(prod, saleType as any, customer as any);
+          calculated += pricingRes.price * qty;
+        }
+      }
+      if (calculated > 0) {
+        subtotal = calculated;
+      }
+    }
+
+    const result = await pgValidateCoupon(code, subtotal, trustedAccountType);
     if (!result.valid) {
       return NextResponse.json({ success: false, error: result.message }, { status: 400 });
     }

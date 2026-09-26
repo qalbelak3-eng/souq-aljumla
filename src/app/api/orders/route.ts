@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getUsers, validateCoupon } from '@/lib/db';
+import { getUsers } from '@/lib/db';
 import { pgGetStoreSettings } from '@/lib/postgres-settings';
 import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
+import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { getProductPriceForUser, getProductCashbackRate } from '@/lib/pricing';
+import { getEffectiveDeliveryFee } from '@/lib/delivery';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
 import {
@@ -111,18 +113,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'سلة المشتريات فارغة' }, { status: 400 });
     }
 
-    // Check if customer is a pending merchant or market
-    const allUsers = getUsers();
-    const existingUser = customer.userId
-      ? allUsers.find((u) => u.id === customer.userId)
-      : allUsers.find((u) => u.phone && u.phone.replace(/\D/g, '') === customer.phone.replace(/\D/g, ''));
+    // Session-derived operator and trusted identity resolution (Requirement 4)
+    const admin = getAuthenticatedAdmin(request);
+    const customerSession = getAuthenticatedCustomer(request);
 
+    const allUsers = getUsers();
+    let trustedUser: any = null;
+
+    if (admin && customer.userId) {
+      trustedUser = allUsers.find((u) => u.id === customer.userId) || null;
+    } else if (customerSession) {
+      trustedUser = allUsers.find((u) => u.id === customerSession.id) || {
+        id: customerSession.id,
+        phone: customerSession.phone,
+        name: customerSession.name,
+        accountType: customerSession.accountType || 'individual',
+        merchantStatus: customerSession.merchantStatus,
+        pricingTier: customerSession.pricingTier,
+        isActive: true,
+      };
+      customer.userId = customerSession.id;
+      if (!customer.phone || customer.phone.trim() === '') {
+        customer.phone = customerSession.phone;
+      }
+    } else {
+      // Unauthenticated / guest customer: strictly individual account
+      trustedUser = null;
+      customer.userId = undefined;
+    }
+
+    const effectiveAccountType = trustedUser?.accountType || 'individual';
+
+    // Check if customer is a pending merchant or market
     if (
-      existingUser &&
-      (existingUser.accountType === 'market' ||
-        existingUser.accountType === 'wholesale' ||
-        existingUser.accountType === 'merchant') &&
-      existingUser.merchantStatus === 'pending'
+      trustedUser &&
+      (effectiveAccountType === 'market' ||
+        effectiveAccountType === 'wholesale' ||
+        effectiveAccountType === 'merchant') &&
+      trustedUser.merchantStatus === 'pending'
     ) {
       return NextResponse.json(
         {
@@ -139,38 +167,51 @@ export async function POST(request: Request) {
     const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
+    // Strict product validation: reject non-existent or inactive products (Requirement 5)
+    for (const item of items) {
+      const prodId = item.productId || item.id;
+      if (!prodId) {
+        return NextResponse.json({ success: false, error: 'أحد الأصناف لا يحتوي على معرّف منتج صالح' }, { status: 400 });
+      }
+      const prod = allProducts.find((p) => p.id === prodId);
+      if (!prod || (prod as any).isActive === false || (prod as any).status === 'inactive' || (prod as any).status === 'archived') {
+        return NextResponse.json({
+          success: false,
+          error: `المنتج "${item.name || item.title || prodId}" غير موجود أو غير متوفر حالياً.`,
+        }, { status: 400 });
+      }
+    }
+
     const verifiedItems = items.map((item: any) => {
-      const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id);
+      const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id)!;
       const qty = Math.max(1, Number(item.quantity) || 1);
       const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
 
-      let officialPrice = Number(item.price);
-      if (prod) {
-        const pricingRes = getProductPriceForUser(prod, saleType as any, existingUser);
-        officialPrice = pricingRes.price;
-      }
+      // Strictly derive price from PostgreSQL product and trusted session tier (Requirement 6)
+      const pricingRes = getProductPriceForUser(prod, saleType as any, trustedUser);
+      const officialPrice = pricingRes.price;
 
       const itemTotal = officialPrice * qty;
       calculatedSubtotal += itemTotal;
 
-      const cashbackRate = prod ? getProductCashbackRate(prod, existingUser, settings, saleType as any) : 0;
+      const cashbackRate = getProductCashbackRate(prod, trustedUser, settings, saleType as any);
       const earnedCashback = cashbackRate * qty;
 
       return {
         ...item,
-        productId: prod?.id || item.productId || item.id,
-        name: prod?.name || item.name || item.title || 'صنف',
-        title: prod?.name || item.title || item.name || 'صنف',
+        productId: prod.id,
+        name: prod.name,
+        title: prod.name,
         price: officialPrice,
         quantity: qty,
         saleType,
         unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : saleType === 'box' ? 'علبة' : 'مفرد'),
-        image: (prod?.images?.[0] && !prod.images[0].startsWith('data:image/'))
+        image: (prod.images?.[0] && !prod.images[0].startsWith('data:image/'))
           ? prod.images[0]
           : (item.image && !item.image.startsWith('data:image/'))
           ? item.image
           : '',
-        costPrice: prod?.pieceCostPrice || prod?.costPrice,
+        costPrice: prod.pieceCostPrice || prod.costPrice,
         cashbackPerUnit: cashbackRate,
         earnedCashback,
       };
@@ -213,18 +254,25 @@ export async function POST(request: Request) {
       }
     }
 
-    const freeDeliveryThreshold = Number(settings.freeDeliveryThreshold) || 100000;
-    const defaultDeliveryFee = Number(settings.deliveryFee) || 5000;
-    const verifiedDeliveryFee = calculatedSubtotal >= freeDeliveryThreshold ? 0 : (deliveryFee !== undefined ? Number(deliveryFee) : defaultDeliveryFee);
+    // Strictly recomputed server-side without trusting client deliveryFee (Requirement 8)
+    const verifiedDeliveryFee = getEffectiveDeliveryFee(calculatedSubtotal, settings, customer);
 
-    // Server-side coupon verification
+    // Server-side coupon verification (Requirement 3, 7, 10)
     let verifiedDiscount = 0;
-    if (couponCode) {
-      const couponRes = validateCoupon(couponCode, calculatedSubtotal);
-      if (couponRes.valid) {
-        verifiedDiscount = couponRes.discount;
+    if (couponCode && String(couponCode).trim()) {
+      const couponRes = await pgValidateCoupon(String(couponCode).trim(), calculatedSubtotal, effectiveAccountType);
+      if (!couponRes.valid) {
+        return NextResponse.json({ success: false, error: couponRes.message }, { status: 400 });
       }
-    } else if (discount) {
+      verifiedDiscount = couponRes.discount;
+    } else if (discount !== undefined && discount !== null && Number(discount) > 0) {
+      // Disallow arbitrary discounts from customers (Requirement 7)
+      if (!admin || !hasPermission(admin, 'orders')) {
+        return NextResponse.json(
+          { success: false, error: 'غير مصرح للعميل بتحديد خصم مباشر. يجب استخدام كود خصم معتمد.' },
+          { status: 400 }
+        );
+      }
       verifiedDiscount = Math.min(calculatedSubtotal, Math.max(0, Number(discount)));
     }
 
@@ -234,22 +282,10 @@ export async function POST(request: Request) {
     // Calculate final trusted total
     const finalTotal = Math.max(0, calculatedSubtotal + verifiedDeliveryFee - verifiedDiscount - verifiedCashbackDiscount);
 
-    // Session-derived operator and identity binding
-    const admin = getAuthenticatedAdmin(request);
-    const customerSession = getAuthenticatedCustomer(request);
-
-    // If an authenticated customer is placing an order, bind the order to their verified account
-    if (customerSession && !admin) {
-      customer.userId = customerSession.id;
-      if (!customer.phone || customer.phone.trim() === '') {
-        customer.phone = customerSession.phone;
-      }
-    }
-
     const operator = admin
-      ? { name: admin.name, username: admin.username, role: admin.role }
+      ? { name: admin.name, username: admin.username, role: admin.role, id: admin.id }
       : customerSession
-      ? { name: customerSession.name || customer.name, username: customerSession.phone, role: 'customer' }
+      ? { name: customerSession.name || customer.name, username: customerSession.phone, role: 'customer', id: customerSession.id }
       : { name: customer.name, username: customer.phone, role: 'guest' };
 
     const newOrder = await pgCreateOrder({
@@ -258,6 +294,8 @@ export async function POST(request: Request) {
       subtotal: calculatedSubtotal,
       deliveryFee: verifiedDeliveryFee,
       discount: verifiedDiscount,
+      couponCode: couponCode && String(couponCode).trim() ? String(couponCode).trim() : undefined,
+      userAccountType: effectiveAccountType,
       usedCashbackDiscount: verifiedCashbackDiscount > 0 ? verifiedCashbackDiscount : undefined,
       earnedCashback: totalEarnedCashback > 0 ? totalEarnedCashback : undefined,
       total: finalTotal,
