@@ -4,6 +4,7 @@ import { pgGetStoreSettings } from '@/lib/postgres-settings';
 import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
+import { pgResolveCustomerAccount, pgGetAccountCashbackBalance } from '@/lib/postgres-cashback';
 import { getProductPriceForUser, getProductCashbackRate, validateOrderItemQuantity } from '@/lib/pricing';
 import { getEffectiveDeliveryFee } from '@/lib/delivery';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
@@ -284,8 +285,57 @@ export async function POST(request: Request) {
       verifiedDiscount = Math.min(calculatedSubtotal, Math.max(0, Number(discount)));
     }
 
-    // Server-side cashback discount
-    const verifiedCashbackDiscount = Math.max(0, Number(usedCashbackDiscount) || 0);
+    // Server-side cashback discount verification (Commerce-2A Server-Authoritative)
+    let verifiedCashbackDiscount = 0;
+    const requestedCashback = Number(usedCashbackDiscount);
+
+    if (!isNaN(requestedCashback) && requestedCashback > 0) {
+      // 1. Authentication check: Guest cannot redeem cashback
+      if (!customerSession && !admin) {
+        return NextResponse.json(
+          { success: false, error: 'غير مصرح للزائر باستخدام رصيد الأرباح. يرجى تسجيل الدخول بحسابك أولاً.' },
+          { status: 400 }
+        );
+      }
+
+      // 2. Resolve customer's trusted financial account
+      const customerAccount = await pgResolveCustomerAccount({
+        accountId,
+        userId: customerSession?.id || (admin ? customer.userId : undefined),
+        phone: customerSession?.phone || customer.phone,
+      });
+
+      if (!customerAccount) {
+        return NextResponse.json(
+          { success: false, error: 'لم يتم العثور على حساب مالي موثوق مرتبط بك لاستخدام رصيد الأرباح' },
+          { status: 400 }
+        );
+      }
+
+      // 3. Fetch real spendable balance from PostgreSQL cashback_ledger
+      const availableBalance = await pgGetAccountCashbackBalance(customerAccount.id);
+
+      if (availableBalance <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'رصيد الأرباح المتاح لديك هو 0 د.ع ولا يمكن استخدام رصيد أرباح في هذا الطلب' },
+          { status: 400 }
+        );
+      }
+
+      if (requestedCashback > availableBalance) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `رصيد الأرباح المتاح لديك (${availableBalance.toLocaleString()} د.ع) أقل من المبلغ المطلوب (${requestedCashback.toLocaleString()} د.ع).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // 4. Stacking bounds: Cashback discount cannot exceed remaining subtotal after coupon discount
+      const maxAllowableCashback = Math.max(0, calculatedSubtotal - verifiedDiscount);
+      verifiedCashbackDiscount = Math.min(requestedCashback, availableBalance, maxAllowableCashback);
+    }
 
     // Calculate final trusted total
     const finalTotal = Math.max(0, calculatedSubtotal + verifiedDeliveryFee - verifiedDiscount - verifiedCashbackDiscount);

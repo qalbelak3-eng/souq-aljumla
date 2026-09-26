@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -33,7 +33,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PaymentMethod, StoreSettings } from '@/types';
 import EtihadLogo from '@/components/EtihadLogo';
-import { getUserCashbackRate, calculateUserCashbackFromOrders } from '@/lib/pricing';
+import { getUserCashbackRate, calculateUserCashbackFromOrders, getProductCashbackRate } from '@/lib/pricing';
 import {
   calculateDeliveryFeeByDistance,
   calculateDistanceKm,
@@ -276,6 +276,14 @@ export default function CheckoutPage() {
   const [useCashback, setUseCashback] = useState<boolean>(false);
   const [cashbackRate, setCashbackRate] = useState<number>(150);
 
+  // Expected cashback to be earned from current cart items upon successful delivery
+  const expectedCashback = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      const rate = getProductCashbackRate(item.product, user, null, item.saleType);
+      return sum + rate * item.quantity;
+    }, 0);
+  }, [cart, user]);
+
   // Form states
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -401,6 +409,16 @@ export default function CheckoutPage() {
             const { netBalance } = calculateUserCashbackFromOrders(userOrders, user, productsData?.products);
             setAvailableCashback(netBalance);
           }
+
+          // Authoritative Server Balance Check from cashback_ledger
+          fetch('/api/cashback')
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success && typeof data.availableBalance === 'number') {
+                setAvailableCashback(data.availableBalance);
+              }
+            })
+            .catch(console.error);
         })
         .catch(console.error);
     }
@@ -1454,7 +1472,7 @@ export default function CheckoutPage() {
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-600 font-bold block mt-0.5">
-                        رصيدك المتاح: <span className="font-black text-slate-900 font-mono">{availableCashback.toLocaleString()} د.ع</span>
+                        رصيدك المتاح للصرف: <span className="font-black text-slate-900 font-mono">{availableCashback.toLocaleString()} د.ع</span>
                       </span>
                     </div>
                   </div>
@@ -1488,9 +1506,25 @@ export default function CheckoutPage() {
                 ) : (
                   <div className="bg-white/80 border border-slate-200 rounded-xl p-2 text-[10px] text-slate-600 font-bold flex items-center gap-1.5">
                     <span>💡</span>
-                    <span>انقر لتفعيل الخصم وتخفيض سعر الطلبية فوراً من رصيد أرباحك.</span>
+                    <span>انقر لتفعيل الخصم وتخفيض سعر الطلبية فوراً من رصيدك المتاح.</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Expected cashback from current order banner */}
+            {expectedCashback > 0 && (
+              <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-2xl p-3 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-black text-emerald-950 block text-[11px]">مكافأة أرباح هذا الطلب:</span>
+                    <span className="text-[10px] text-emerald-700 font-medium">تُضاف لرصيدك المتاح بعد استلام الطلبية بنجاح</span>
+                  </div>
+                </div>
+                <span className="font-black text-emerald-700 font-mono text-xs shrink-0">+ {expectedCashback.toLocaleString()} د.ع</span>
               </div>
             )}
 

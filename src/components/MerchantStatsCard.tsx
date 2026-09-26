@@ -45,10 +45,15 @@ export default function MerchantStatsCard() {
           .then((res) => res.json())
           .catch(() => ({ success: false }))
       );
+      promises.push(
+        fetch('/api/cashback')
+          .then((res) => res.json())
+          .catch(() => ({ success: false }))
+      );
     }
 
     Promise.all(promises)
-      .then(([ordersData, settingsData, statementData]) => {
+      .then(([ordersData, settingsData, statementData, cashbackData]) => {
         if (settingsData?.success && settingsData?.settings) {
           const rate = getUserCashbackRate(user, settingsData.settings);
           setCashbackRate(rate);
@@ -76,6 +81,10 @@ export default function MerchantStatsCard() {
           setStatementBalance(0);
         }
 
+        if (cashbackData?.success && typeof cashbackData.availableBalance === 'number') {
+          setAuthoritativeCashback(cashbackData.availableBalance);
+        }
+
         setIsLoading(false);
       })
       .catch((err) => {
@@ -83,6 +92,8 @@ export default function MerchantStatsCard() {
         setIsLoading(false);
       });
   }, [user]);
+
+  const [authoritativeCashback, setAuthoritativeCashback] = useState<number | null>(null);
 
   // Calculate live order stats
   const today = new Date().toDateString();
@@ -101,7 +112,8 @@ export default function MerchantStatsCard() {
   );
   const totalEarnedCashback = totalItemsSold * cashbackRate;
   const totalUsedCashback = validOrders.reduce((sum, o) => sum + Number(o.usedCashbackDiscount || 0), 0);
-  const profitBalance = Math.max(0, totalEarnedCashback - totalUsedCashback);
+  const derivedBalance = Math.max(0, totalEarnedCashback - totalUsedCashback);
+  const profitBalance = authoritativeCashback !== null ? authoritativeCashback : derivedBalance;
 
   const statementUrl = user?.phone
     ? `/statement?phone=${encodeURIComponent(user.phone)}`

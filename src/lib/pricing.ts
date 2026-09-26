@@ -186,9 +186,16 @@ export function calculateUserCashbackFromOrders(
   orders: any[],
   user?: User | null,
   products?: Product[] | null
-): { totalEarned: number; totalUsed: number; netBalance: number; totalItemsCount: number } {
+): {
+  totalEarned: number;
+  pendingEarned: number;
+  totalUsed: number;
+  netBalance: number;
+  pendingBalance: number;
+  totalItemsCount: number;
+} {
   if (!orders || !Array.isArray(orders) || orders.length === 0) {
-    return { totalEarned: 0, totalUsed: 0, netBalance: 0, totalItemsCount: 0 };
+    return { totalEarned: 0, pendingEarned: 0, totalUsed: 0, netBalance: 0, pendingBalance: 0, totalItemsCount: 0 };
   }
 
   const productsMap: Record<string, Product> = {};
@@ -200,32 +207,48 @@ export function calculateUserCashbackFromOrders(
 
   const validOrders = orders.filter((o) => o && o.status !== 'cancelled');
 
-  let totalEarned = 0;
+  let totalEarned = 0;      // Delivered orders only (spendable)
+  let pendingEarned = 0;    // In-flight orders (pending, processing, shipped)
   let totalUsed = 0;
   let totalItemsCount = 0;
 
   for (const order of validOrders) {
     totalUsed += Number(order.usedCashbackDiscount || 0);
+    const isDelivered = order.status === 'delivered';
 
     for (const item of (order.items || [])) {
       const qty = Number(item.quantity) || 0;
       totalItemsCount += qty;
 
+      let itemEarned = 0;
       if (typeof item.earnedCashback === 'number' && !isNaN(item.earnedCashback)) {
-        totalEarned += item.earnedCashback;
+        itemEarned = item.earnedCashback;
       } else if (typeof item.cashbackPerUnit === 'number' && !isNaN(item.cashbackPerUnit)) {
-        totalEarned += item.cashbackPerUnit * qty;
+        itemEarned = item.cashbackPerUnit * qty;
       } else {
         // Fallback: look up product from catalog if available
         const prod = productsMap[item.productId];
         if (prod) {
           const rate = getProductCashbackRate(prod, user, null, item.saleType);
-          totalEarned += rate * qty;
+          itemEarned = rate * qty;
         }
+      }
+
+      if (isDelivered) {
+        totalEarned += itemEarned;
+      } else {
+        pendingEarned += itemEarned;
       }
     }
   }
 
   const netBalance = Math.max(0, totalEarned - totalUsed);
-  return { totalEarned, totalUsed, netBalance, totalItemsCount };
+  return {
+    totalEarned,
+    pendingEarned,
+    totalUsed,
+    netBalance,
+    pendingBalance: pendingEarned,
+    totalItemsCount,
+  };
 }

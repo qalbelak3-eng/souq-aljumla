@@ -15,6 +15,12 @@ import {
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgConsumeCoupon } from '@/lib/postgres-coupons';
+import {
+  pgRedeemCashbackInOrder,
+  pgCreditOrderDeliveredCashback,
+  pgReverseOrderRedeemedCashback,
+  pgGetAccountCashbackBalance,
+} from '@/lib/postgres-cashback';
 import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
 
 /* =========================================================
@@ -547,12 +553,38 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     }
 
     const deliveryFee = toNumber(data.deliveryFee);
-    const usedCashbackDiscount = toNumber(data.usedCashbackDiscount);
+    const requestedCashback = toNumber(data.usedCashbackDiscount);
     const earnedCashback = data.earnedCashback !== undefined
       ? toNumber(data.earnedCashback)
       : processedItems.reduce((acc, it) => acc + it.earnedCashback, 0);
 
-    const calculatedTotal = Math.max(0, subtotal + deliveryFee - discount - usedCashbackDiscount);
+    const newOrderId = crypto.randomUUID();
+
+    // -------------------------------------------------------------
+    // Step C.2: Atomically Lock Account & Validate Cashback (FOR UPDATE)
+    // -------------------------------------------------------------
+    let verifiedCashbackDiscount = 0;
+    if (requestedCashback > 0) {
+      await tx
+        .select({ id: financialAccounts.id })
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, customerAccount.id))
+        .for('update');
+
+      const currentBalance = await pgGetAccountCashbackBalance(customerAccount.id, tx);
+      if (currentBalance <= 0) {
+        throw new Error('رصيد الأرباح المتاح لديك هو 0 د.ع ولا يمكن استخدام رصيد أرباح في هذا الطلب');
+      }
+      if (requestedCashback > currentBalance) {
+        throw new Error(
+          `رصيد الأرباح المتاح لديك (${currentBalance.toLocaleString()} د.ع) غير كافٍ للمبلغ المطلوب (${requestedCashback.toLocaleString()} د.ع)`
+        );
+      }
+      const maxAllowable = Math.max(0, subtotal - discount);
+      verifiedCashbackDiscount = Math.min(requestedCashback, currentBalance, maxAllowable);
+    }
+
+    const calculatedTotal = Math.max(0, subtotal + deliveryFee - discount - verifiedCashbackDiscount);
     const total = calculatedTotal;
 
     // -------------------------------------------------------------
@@ -567,7 +599,6 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       `);
     } catch {}
 
-    const newOrderId = crypto.randomUUID();
     const pinData = generateOrderPinData();
 
     const [insertedOrder] = await tx
@@ -595,7 +626,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         couponDiscountValueSnap: consumedCouponSnapshot?.discountValue !== undefined
           ? String(consumedCouponSnapshot.discountValue.toFixed(2))
           : null,
-        usedCashbackDiscount: String(usedCashbackDiscount.toFixed(2)),
+        usedCashbackDiscount: String(verifiedCashbackDiscount.toFixed(2)),
         earnedCashback: String(earnedCashback.toFixed(2)),
         total: String(total.toFixed(2)),
         status: data.status && ['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(data.status)
@@ -680,6 +711,25 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       details: `إنشاء طلبية ${insertedOrder.orderNumber} للزبون ${data.customer.name} بمبلغ ${total.toLocaleString()} د.ع`,
       severity: 'info',
     });
+
+    // -------------------------------------------------------------
+    // Step E.2: Redeem Cashback in Ledger (Foreign Key to orders satisfied)
+    // -------------------------------------------------------------
+    if (verifiedCashbackDiscount > 0) {
+      await pgRedeemCashbackInOrder(tx, {
+        accountId: customerAccount.id,
+        orderId: insertedOrder.id,
+        orderNumber: insertedOrder.orderNumber,
+        requestedAmount: verifiedCashbackDiscount,
+        subtotal: Math.max(0, subtotal - discount),
+        notes: `استخدام رصيد أرباح في الطلبية رقم ${insertedOrder.orderNumber}`,
+      });
+    }
+
+    // If created directly in delivered status, credit cashback idempotently
+    if (insertedOrder.status === 'delivered') {
+      await pgCreditOrderDeliveredCashback(tx, insertedOrder.id);
+    }
 
     const itemsFromDb = await tx
       .select()
@@ -818,6 +868,9 @@ export async function pgCancelOrder(
       .where(eq(orders.id, order.id))
       .returning();
 
+    // Safely and idempotently reverse any used cashback discount back to the customer's ledger
+    await pgReverseOrderRedeemedCashback(tx, order.id, options?.reason);
+
     await tx.insert(auditLogs).values({
       actionType: 'order_cancelled',
       actionLabel: options?.isReturn ? 'إرجاع طلبية واسترجاع المخزون' : 'إلغاء طلبية واسترجاع المخزون',
@@ -905,6 +958,10 @@ export async function pgUpdateOrderStatus(
       })
       .where(eq(orders.id, current.id))
       .returning();
+
+    if (newStatus === 'delivered') {
+      await pgCreditOrderDeliveredCashback(tx, current.id);
+    }
 
     await tx.insert(auditLogs).values({
       actionType: 'order_status_updated',
@@ -1157,6 +1214,10 @@ export async function pgUpdateOrder(
       .set(updateFields)
       .where(eq(orders.id, current.id))
       .returning();
+
+    if (updates.status === 'delivered' && current.status !== 'delivered') {
+      await pgCreditOrderDeliveredCashback(tx, current.id);
+    }
 
     await tx.insert(auditLogs).values({
       actionType: 'order_updated',

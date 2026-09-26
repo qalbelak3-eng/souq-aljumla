@@ -17,6 +17,7 @@ export default function WalletStatsCard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [statementBalance, setStatementBalance] = useState<number>(0);
+  const [authoritativeCashback, setAuthoritativeCashback] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -31,10 +32,15 @@ export default function WalletStatsCard() {
           .then((res) => res.json())
           .catch(() => ({ success: false }))
       );
+      promises.push(
+        fetch('/api/cashback')
+          .then((res) => res.json())
+          .catch(() => ({ success: false }))
+      );
     }
 
     Promise.all(promises)
-      .then(([ordersData, productsData, statementData]) => {
+      .then(([ordersData, productsData, statementData, cashbackData]) => {
         if (productsData?.success && Array.isArray(productsData.products)) {
           setProducts(productsData.products);
         }
@@ -61,6 +67,10 @@ export default function WalletStatsCard() {
           setStatementBalance(0);
         }
 
+        if (cashbackData?.success && typeof cashbackData.availableBalance === 'number') {
+          setAuthoritativeCashback(cashbackData.availableBalance);
+        }
+
         setIsLoading(false);
       })
       .catch((err) => {
@@ -69,7 +79,8 @@ export default function WalletStatsCard() {
       });
   }, [user]);
 
-  const { netBalance: profitBalance } = calculateUserCashbackFromOrders(orders, user, products);
+  const { netBalance: derivedBalance } = calculateUserCashbackFromOrders(orders, user, products);
+  const profitBalance = authoritativeCashback !== null ? authoritativeCashback : derivedBalance;
 
   const statementUrl = user?.phone
     ? `/statement?phone=${encodeURIComponent(user.phone)}`

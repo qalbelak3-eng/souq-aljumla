@@ -17,6 +17,7 @@ import {
   isUuid,
 } from '@/lib/postgres-orders';
 import { verifyPin, generateOrderPinData } from '@/lib/delivery-pin';
+import { pgCreditOrderDeliveredCashback } from '@/lib/postgres-cashback';
 
 /* =========================================================
    Types & Interfaces
@@ -772,6 +773,9 @@ export async function pgDeliverDriverOrder(
       .where(eq(orders.id, order.id))
       .returning();
 
+    // Credit earned cashback idempotently to customer's ledger upon delivery
+    await pgCreditOrderDeliveredCashback(tx, order.id);
+
     // Audit Log
     await tx.insert(auditLogs).values({
       actionType: 'delivery_completed',
@@ -926,6 +930,9 @@ export async function pgAdminOverrideDelivery(
       })
       .where(eq(orders.id, order.id))
       .returning();
+
+    // Credit earned cashback idempotently to customer's ledger upon delivery
+    await pgCreditOrderDeliveredCashback(tx, order.id);
 
     // Audit Log
     await tx.insert(auditLogs).values({

@@ -207,6 +207,8 @@ function ProfileContent() {
   }, [user, isLoading, router]);
 
   const [cashbackRate, setCashbackRate] = useState<number>(150);
+  const [authoritativeCashback, setAuthoritativeCashback] = useState<number | null>(null);
+  const [pendingCashback, setPendingCashback] = useState<number>(0);
 
   useEffect(() => {
     if (user) {
@@ -233,8 +235,9 @@ function ProfileContent() {
       Promise.all([
         fetch(`/api/orders?${params.toString()}`).then((res) => res.json()).catch(() => ({ success: false })),
         fetch('/api/products').then((res) => res.json()).catch(() => ({ success: false })),
+        fetch('/api/cashback').then((res) => res.json()).catch(() => ({ success: false })),
       ])
-        .then(([ordersData, productsData]) => {
+        .then(([ordersData, productsData, cashbackData]) => {
           if (productsData?.success && Array.isArray(productsData.products)) {
             setProducts(productsData.products);
           }
@@ -243,6 +246,10 @@ function ProfileContent() {
             if (typeof window !== 'undefined' && user.id) {
               localStorage.setItem(`souq_user_orders_${user.id}`, JSON.stringify(ordersData.orders));
             }
+          }
+          if (cashbackData?.success && typeof cashbackData.availableBalance === 'number') {
+            setAuthoritativeCashback(cashbackData.availableBalance);
+            setPendingCashback(cashbackData.pendingCashback || 0);
           }
         })
         .catch((err) => {
@@ -444,9 +451,11 @@ function ProfileContent() {
   const {
     totalEarned: totalEarnedRewards,
     totalUsed: totalUsedRewards,
-    netBalance: rewardCashbackAmount,
+    netBalance: derivedRewardBalance,
     totalItemsCount: totalPiecesCount
   } = calculateUserCashbackFromOrders(orders, user, products);
+
+  const rewardCashbackAmount = authoritativeCashback !== null ? authoritativeCashback : derivedRewardBalance;
 
   const statusLabels: Record<string, { label: string; color: string }> = {
     pending: { label: 'قيد المراجعة', color: 'bg-amber-50 text-amber-800 border-amber-200' },
