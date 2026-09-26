@@ -45,6 +45,7 @@ export interface Product {
   originalWholesalePrice?: number; // سعر الجملة السابق قبل الخصم
   offerBadge?: string; // شارة العرض (مثال: "🔥 عرض خاص")
   isOnOffer?: boolean; // هل المنتج عليه عرض حالياً
+  offerId?: string; // معرّف العرض الترويجي المرتبط
   retailUnit: string; // مثال: "كيس عائلي (85 جم)" أو "قطعة مفردة"
   wholesalePrice: number; // سعر كرتون الجملة (التاجر البرونزي 🥉)
   marketPrice?: number; // سعر كرتون الجملة لأصحاب الماركتات والمحلات 🏪
@@ -123,6 +124,8 @@ export interface ProductOffer {
   startDate?: string;
   endDate: string; // تاريخ ووقت انتهاء العرض
   isActive: boolean;
+  isArchived?: boolean;
+  archivedAt?: string;
   createdAt: string;
 }
 
@@ -184,6 +187,9 @@ export interface OrderItem {
   productId: string;
   name: string;
   price: number;
+  originalPrice?: number; // السعر الأساسي للوحدة قبل العرض
+  offerId?: string; // معرّف العرض الترويجي المسجل في الفاتورة
+  offerDiscount?: number; // مقدار التوفير الممنوح لكل وحدة (originalPrice - price)
   costPrice?: number;
   quantity: number;
   saleType: SaleType;

@@ -107,8 +107,11 @@ export const productOffers = pgTable('product_offers', {
   startDate: timestamp('start_date', { withTimezone: true }),
   endDate: timestamp('end_date', { withTimezone: true }).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
+  isArchived: boolean('is_archived').default(false).notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_offers_product_id').on(table.productId),
+  index('idx_offers_is_archived').on(table.isArchived),
   check('chk_offer_price_lower', sql`${table.offerPrice} < ${table.originalPrice}`),
 ]);

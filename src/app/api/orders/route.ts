@@ -168,7 +168,7 @@ export async function POST(request: Request) {
     const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
-    // Strict product and quantity validation: reject non-existent, inactive products or invalid quantities (Defense-in-depth)
+    // Strict product, quantity, and stale cart price validation (Defense-in-depth & Phase 2B1)
     for (const item of items) {
       const prodId = item.productId || item.id;
       if (!prodId) {
@@ -188,6 +188,23 @@ export async function POST(request: Request) {
           error: `كمية غير صالحة للصنف (${prod.name}): ${qtyRes.error}`,
         }, { status: 400 });
       }
+
+      // Stale cart price detection (Requirement 9 & Phase 2B1):
+      // When client requests price change protection (rejectStaleCartPrice: true), reject if price changed
+      const shouldRejectStale = body.rejectStaleCartPrice === true || body.enforceExactCartPrices === true || item.enforceExactPrice === true;
+      if (!admin && shouldRejectStale && item.price !== undefined && item.price !== null && item.price !== '') {
+        const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
+        const pricingRes = getProductPriceForUser(prod, saleType as any, trustedUser);
+        const officialPrice = pricingRes.price;
+        const submittedPrice = Number(item.price);
+        if (!isNaN(submittedPrice) && Math.abs(submittedPrice - officialPrice) >= 0.01) {
+          return NextResponse.json({
+            success: false,
+            code: 'STALE_CART_PRICE',
+            error: `تغير سعر المنتج "${prod.name}" من ${submittedPrice.toLocaleString()} د.ع إلى ${officialPrice.toLocaleString()} د.ع، يرجى مراجعة وتحديث السلة والمتابعة.`,
+          }, { status: 400 });
+        }
+      }
     }
 
     const verifiedItems = items.map((item: any) => {
@@ -206,12 +223,35 @@ export async function POST(request: Request) {
       const cashbackRate = getProductCashbackRate(prod, trustedUser, settings, saleType as any);
       const earnedCashback = cashbackRate * qty;
 
+      // Offer snapshot calculation for audit & historical invoice immutability
+      let originalPriceSnap = officialPrice;
+      let offerIdSnap: string | undefined = undefined;
+      let offerDiscountSnap = 0;
+
+      if (prod.isOnOffer && prod.offerId) {
+        if (saleType === 'retail') {
+          originalPriceSnap = prod.originalPrice || prod.price;
+          offerIdSnap = prod.offerId;
+          offerDiscountSnap = Math.max(0, originalPriceSnap - officialPrice);
+        } else if (saleType === 'wholesale' && prod.originalWholesalePrice && prod.wholesalePrice < prod.originalWholesalePrice) {
+          originalPriceSnap = prod.originalWholesalePrice;
+          offerIdSnap = prod.offerId;
+          offerDiscountSnap = Math.max(0, originalPriceSnap - officialPrice);
+        }
+      }
+
       return {
         ...item,
         productId: prod.id,
         name: prod.name,
         title: prod.name,
         price: officialPrice,
+        originalPrice: originalPriceSnap,
+        offerId: offerIdSnap,
+        offerDiscount: offerDiscountSnap,
+        originalPriceSnap,
+        offerIdSnap,
+        offerDiscountSnap,
         quantity: qty,
         saleType,
         unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : saleType === 'box' ? 'علبة' : 'مفرد'),

@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, numeric, integer, boolean, timestamp, text, index, primaryKey, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { financialAccounts } from './accounts';
-import { products } from './catalog';
+import { products, productOffers } from './catalog';
 import { drivers, vehicles, driverSettlements } from './vehicles_drivers';
 import { authIdentities } from './auth';
 import { coupons } from './operations';
@@ -109,12 +109,16 @@ export const orderItems = pgTable('order_items', {
   conversionFactorSnap: integer('conversion_factor_snap').notNull(), // e.g. 144 for carton, 24 for box, 1 for piece
   baseQuantityDeducted: integer('base_quantity_deducted').notNull(), // soldQuantity * conversionFactorSnap
   unitPriceSnap: numeric('unit_price_snap', { precision: 14, scale: 2 }).notNull(),
+  originalPriceSnap: numeric('original_price_snap', { precision: 14, scale: 2 }),
+  offerIdSnap: uuid('offer_id_snap').references(() => productOffers.id, { onDelete: 'restrict' }),
+  offerDiscountSnap: numeric('offer_discount_snap', { precision: 14, scale: 2 }).default('0.00').notNull(),
   unitCostSnap: numeric('unit_cost_pieces_snap', { precision: 14, scale: 4 }).notNull(),
   earnedCashback: numeric('earned_cashback', { precision: 14, scale: 2 }).default('0.00').notNull(),
   image: text('image'),
 }, (table) => [
   index('idx_order_items_order_id').on(table.orderId),
   index('idx_order_items_product_id').on(table.productId),
+  index('idx_order_items_offer_id_snap').on(table.offerIdSnap),
   check('chk_order_item_sold_qty', sql`${table.soldQuantity} > 0`),
   check('chk_order_item_conversion_factor', sql`${table.conversionFactorSnap} > 0`),
   check('chk_order_item_base_deducted', sql`${table.baseQuantityDeducted} > 0`),

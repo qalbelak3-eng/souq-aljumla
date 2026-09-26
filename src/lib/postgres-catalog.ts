@@ -313,8 +313,10 @@ function mapPgProductRowToProduct(r: any): Product {
   const hasActiveOffer = Boolean(
     r.offer_id &&
     r.offer_is_active &&
+    (!r.offer_is_archived || r.offer_is_archived === false) &&
     r.offer_end_date &&
-    new Date(r.offer_end_date) > now
+    new Date(r.offer_end_date) > now &&
+    (!r.offer_start_date || new Date(r.offer_start_date) <= now)
   );
 
   let prod: Product = {
@@ -390,11 +392,12 @@ function mapPgProductRowToProduct(r: any): Product {
     prod = {
       ...prod,
       isOnOffer: true,
+      offerId: String(r.offer_id),
       price: offerPrice,
       originalPrice: Number(r.offer_original_price) || basePrice,
       wholesalePrice: offerWholesale && offerWholesale > 0 ? offerWholesale : baseWholesalePrice,
       originalWholesalePrice: offerWholesale && offerWholesale > 0 ? (Number(r.offer_original_wholesale_price) || baseWholesalePrice) : undefined,
-      offerBadge: r.offer_badge || '🔥 عرض خاص',
+      offerBadge: r.offer_badge || 'عرض خاص',
       offerEndDate: new Date(r.offer_end_date).toISOString(),
     };
   }
@@ -416,20 +419,24 @@ export async function pgGetProducts(filters?: ProductFilters): Promise<Product[]
       c.name as category_name,
       comp.name as company_name,
       comp.logo as company_logo,
-      -- Active Offer Overlay fields (joined only when active and unexpired)
+      -- Active Offer Overlay fields (joined only when active, unarchived, and unexpired)
       o.id as offer_id,
       o.offer_price,
       o.offer_wholesale_price,
       o.original_price as offer_original_price,
       o.original_wholesale_price as offer_original_wholesale_price,
       o.badge as offer_badge,
+      o.start_date as offer_start_date,
       o.end_date as offer_end_date,
-      o.is_active as offer_is_active
+      o.is_active as offer_is_active,
+      o.is_archived as offer_is_archived
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN companies comp ON p.company_id = comp.id
     LEFT JOIN product_offers o ON p.id = o.product_id 
       AND o.is_active = true 
+      AND (o.is_archived IS NULL OR o.is_archived = false)
+      AND (o.start_date IS NULL OR o.start_date <= NOW())
       AND o.end_date > NOW()
     ORDER BY p.created_at DESC;
   `;
@@ -481,13 +488,17 @@ export async function pgGetProductById(id: string): Promise<Product | null> {
         o.original_price as offer_original_price,
         o.original_wholesale_price as offer_original_wholesale_price,
         o.badge as offer_badge,
+        o.start_date as offer_start_date,
         o.end_date as offer_end_date,
-        o.is_active as offer_is_active
+        o.is_active as offer_is_active,
+        o.is_archived as offer_is_archived
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN companies comp ON p.company_id = comp.id
       LEFT JOIN product_offers o ON p.id = o.product_id 
         AND o.is_active = true 
+        AND (o.is_archived IS NULL OR o.is_archived = false)
+        AND (o.start_date IS NULL OR o.start_date <= NOW())
         AND o.end_date > NOW()
       WHERE p.id = ${id} OR p.barcode = ${id}
       LIMIT 1;
@@ -506,13 +517,17 @@ export async function pgGetProductById(id: string): Promise<Product | null> {
         o.original_price as offer_original_price,
         o.original_wholesale_price as offer_original_wholesale_price,
         o.badge as offer_badge,
+        o.start_date as offer_start_date,
         o.end_date as offer_end_date,
-        o.is_active as offer_is_active
+        o.is_active as offer_is_active,
+        o.is_archived as offer_is_archived
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN companies comp ON p.company_id = comp.id
       LEFT JOIN product_offers o ON p.id = o.product_id 
         AND o.is_active = true 
+        AND (o.is_archived IS NULL OR o.is_archived = false)
+        AND (o.start_date IS NULL OR o.start_date <= NOW())
         AND o.end_date > NOW()
       WHERE p.barcode = ${id}
       LIMIT 1;
