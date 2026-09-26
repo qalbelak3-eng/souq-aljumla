@@ -542,14 +542,16 @@ export function buildDriverDeliveryQueue<T = any>(
   const finalQueue = [...sequencedShipped, ...sequencedProcessing];
 
   // 5. تعيين الترقيم التسلسلي ووسم الطلب الأول المقترح ⭐
+  // إذا لم تتوفر نقطة انطلاق موثوقة (المخزن غير محدد ولا يوجد تسليم سابق)، لا نضع اقتراحاً كاذباً
+  const hasOrigin = originInfo.coords !== null;
   finalQueue.forEach((item, idx) => {
     item.sequence = idx + 1;
-    item.isNextSuggested = (idx === 0);
+    item.isNextSuggested = hasOrigin && (idx === 0);
   });
 
   return {
     queue: finalQueue,
-    nextSuggestedOrder: finalQueue[0] || null,
+    nextSuggestedOrder: hasOrigin ? (finalQueue[0] || null) : null,
     originUsed: originInfo.coords
       ? {
           lat: originInfo.coords.lat,

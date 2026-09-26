@@ -39,8 +39,27 @@ export function calculateDeliveryFeeByDistance(
 ): { fee: number; distanceKm: number; method: 'gps' } | null {
   const { warehouseLat, warehouseLng, pricePerKm, minDeliveryFee, maxDeliveryFee } = settings;
 
-  // تحقق من توفر بيانات المخزن وسعر الكيلومتر
-  if (!warehouseLat || !warehouseLng || !pricePerKm) return null;
+  // تحقق من توفر بيانات المخزن وصلاحية الإحداثيات الجغرافية وسعر الكيلومتر
+  if (
+    warehouseLat === undefined ||
+    warehouseLat === null ||
+    isNaN(warehouseLat) ||
+    warehouseLat < -90 ||
+    warehouseLat > 90 ||
+    warehouseLng === undefined ||
+    warehouseLng === null ||
+    isNaN(warehouseLng) ||
+    warehouseLng < -180 ||
+    warehouseLng > 180 ||
+    !pricePerKm ||
+    pricePerKm <= 0 ||
+    customerLat < -90 ||
+    customerLat > 90 ||
+    customerLng < -180 ||
+    customerLng > 180
+  ) {
+    return null;
+  }
 
   const distanceKm = calculateDistanceKm(warehouseLat, warehouseLng, customerLat, customerLng);
 
@@ -116,8 +135,26 @@ export function getEffectiveDeliveryFee(
   }
   if (subtotal === 0) return 0;
 
+  const pricingMode = settings?.deliveryPricingMode || 'fixed';
+  const hasValidWarehouse =
+    settings?.warehouseLat !== undefined &&
+    settings?.warehouseLat !== null &&
+    !isNaN(Number(settings.warehouseLat)) &&
+    Number(settings.warehouseLat) >= -90 &&
+    Number(settings.warehouseLat) <= 90 &&
+    settings?.warehouseLng !== undefined &&
+    settings?.warehouseLng !== null &&
+    !isNaN(Number(settings.warehouseLng)) &&
+    Number(settings.warehouseLng) >= -180 &&
+    Number(settings.warehouseLng) <= 180;
+
+  // منع أي Fallback صامت لكروة ثابتة أو 3000 إذا كان الوضع يعتمد على المسافة والمستودع غير مضبوط
+  if ((pricingMode === 'distance_tiered' || pricingMode === 'per_km') && !hasValidWarehouse) {
+    return 0;
+  }
+
   // 1. حساب بالكيلومتر GPS إذا كان موقع الزبون والمخزن متوفراً
-  if (user?.lat && user?.lng && settings && settings.warehouseLat && settings.warehouseLng && settings.pricePerKm) {
+  if (user?.lat && user?.lng && settings && hasValidWarehouse && settings.pricePerKm) {
     const gpsRes = calculateDeliveryFeeByDistance(user.lat, user.lng, settings as StoreSettings);
     if (gpsRes) return gpsRes.fee;
   }

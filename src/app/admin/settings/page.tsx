@@ -92,6 +92,24 @@ export default function AdminSettingsPage() {
     e.preventDefault();
     if (!settings) return;
 
+    // التحقق المسبق في الواجهة من متطلبات وضع التسعير
+    const mode = settings.deliveryPricingMode || 'fixed';
+    if (mode === 'distance_tiered' || mode === 'per_km') {
+      const lat = settings.warehouseLat;
+      const lng = settings.warehouseLng;
+      const numLat = Number(lat);
+      const numLng = Number(lng);
+      const isLatValid = lat !== undefined && lat !== null && !isNaN(numLat) && numLat >= -90 && numLat <= 90;
+      const isLngValid = lng !== undefined && lng !== null && !isNaN(numLng) && numLng >= -180 && numLng <= 180;
+
+      if (!isLatValid || !isLngValid) {
+        toast.error('⚠️ لا يمكن حفظ نظام التوصيل المعتمد على المسافة دون تحديد إحداثيات المستودع الفعلي (-90..90 و -180..180). يرجى إدخال موقع المخزن أولاً.');
+        const el = document.getElementById('warehouse-location-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    }
+
     setIsSaving(true);
     setSavedSuccess(false);
 
@@ -108,11 +126,11 @@ export default function AdminSettingsPage() {
         toast.success('تم حفظ كافة إعدادات المتجر بنجاح! ✅');
         setTimeout(() => setSavedSuccess(false), 3500);
       } else {
-        toast.error('حدث خطأ أثناء حفظ الإعدادات');
+        toast.error(data.error || 'حدث خطأ أثناء حفظ الإعدادات');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error('حدث خطأ في الاتصال أثناء الحفظ');
+      toast.error(e?.message || 'حدث خطأ في الاتصال أثناء الحفظ');
     }
     setIsSaving(false);
   };
@@ -558,6 +576,33 @@ export default function AdminSettingsPage() {
             </div>
           </div>
 
+          {/* تحذير وتنبيه فوري عند اختيار نظام المسافة بدون إحداثيات مخزن صالحة */}
+          {((settings.deliveryPricingMode || 'fixed') === 'distance_tiered' || (settings.deliveryPricingMode || 'fixed') === 'per_km') &&
+            !(settings.warehouseLat !== undefined && settings.warehouseLat !== null && !isNaN(Number(settings.warehouseLat)) && Number(settings.warehouseLat) >= -90 && Number(settings.warehouseLat) <= 90 && settings.warehouseLng !== undefined && settings.warehouseLng !== null && !isNaN(Number(settings.warehouseLng)) && Number(settings.warehouseLng) >= -180 && Number(settings.warehouseLng) <= 180) && (
+              <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-xl shrink-0 mt-0.5">⚠️</span>
+                  <div>
+                    <p className="font-black text-amber-950 text-sm">مطلوب للمشرف: تحديد موقع المخزن لاعتماد هذا الخيار</p>
+                    <p className="text-[11px] text-amber-800 mt-1 font-normal leading-relaxed">
+                      لقد اخترت نظام التسعير المعتمد على المسافة. يفرض النظام تحديد إحداثيات المخزن الفعلي في الأسفل قبل السماح بالحفظ والتشغيل.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('warehouse-location-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shadow-xs cursor-pointer transition shrink-0 self-start sm:self-center flex items-center gap-1.5"
+                >
+                  <span>الانتقال لتحديد موقع المخزن</span>
+                  <span>📍</span>
+                </button>
+              </div>
+            )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="font-black text-slate-800 text-xs block">
@@ -618,11 +663,22 @@ export default function AdminSettingsPage() {
           </div>
 
           {/* ===== قسم موقع المخزن وتسعير الكيلومتر ===== */}
-          <div className="pt-4 border-t border-slate-100 space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">📦</span>
-              <h3 className="font-black text-sm text-slate-900">موقع المخزن / نقطة انطلاق المندوب</h3>
-              <span className="text-[10px] bg-blue-100 text-blue-800 font-black px-2 py-0.5 rounded-lg">تسعير بالكيلومتر GPS</span>
+          <div id="warehouse-location-section" className="pt-4 border-t border-slate-100 space-y-4 scroll-mt-6">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📦</span>
+                <h3 className="font-black text-sm text-slate-900">موقع المخزن / نقطة انطلاق المندوب</h3>
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-black px-2 py-0.5 rounded-lg">تسعير بالكيلومتر GPS</span>
+              </div>
+              {settings.warehouseLat && settings.warehouseLng ? (
+                <span className="text-[11px] bg-emerald-100 text-emerald-800 font-black px-2.5 py-1 rounded-xl flex items-center gap-1">
+                  <span>✅ جاهز ومعتمد في النظام</span>
+                </span>
+              ) : (
+                <span className="text-[11px] bg-amber-100 text-amber-900 font-black px-2.5 py-1 rounded-xl flex items-center gap-1">
+                  <span>⚠️ إحداثيات المخزن غير محددة</span>
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
               حدد موقع المخزن بدقة لكي يتم حساب كروة التوصيل تلقائياً بناءً على المسافة الفعلية بالكيلومتر من المخزن إلى موقع العميل.
@@ -643,25 +699,47 @@ export default function AdminSettingsPage() {
             {/* إحداثيات المخزن */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-black text-slate-700">خط العرض (Latitude)</label>
+                <label className="text-xs font-black text-slate-700 flex items-center justify-between">
+                  <span>خط العرض (Latitude)</span>
+                  {((settings.deliveryPricingMode || 'fixed') === 'distance_tiered' || (settings.deliveryPricingMode || 'fixed') === 'per_km') && !settings.warehouseLat && (
+                    <span className="text-[10px] text-amber-700 font-bold">مطلوب ⚠️</span>
+                  )}
+                </label>
                 <input
                   type="number"
                   step="0.000001"
+                  min="-90"
+                  max="90"
                   value={settings.warehouseLat ?? ''}
-                  onChange={(e) => setSettings({ ...settings, warehouseLat: Number(e.target.value) || undefined })}
+                  onChange={(e) => setSettings({ ...settings, warehouseLat: e.target.value === '' ? undefined : Number(e.target.value) })}
                   placeholder="32.6068"
-                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                  className={`w-full bg-white border-2 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:outline-none transition ${
+                    ((settings.deliveryPricingMode || 'fixed') === 'distance_tiered' || (settings.deliveryPricingMode || 'fixed') === 'per_km') && !settings.warehouseLat
+                      ? 'border-amber-400 bg-amber-50/20 focus:border-amber-600'
+                      : 'border-slate-200 focus:border-blue-400'
+                  }`}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-black text-slate-700">خط الطول (Longitude)</label>
+                <label className="text-xs font-black text-slate-700 flex items-center justify-between">
+                  <span>خط الطول (Longitude)</span>
+                  {((settings.deliveryPricingMode || 'fixed') === 'distance_tiered' || (settings.deliveryPricingMode || 'fixed') === 'per_km') && !settings.warehouseLng && (
+                    <span className="text-[10px] text-amber-700 font-bold">مطلوب ⚠️</span>
+                  )}
+                </label>
                 <input
                   type="number"
                   step="0.000001"
+                  min="-180"
+                  max="180"
                   value={settings.warehouseLng ?? ''}
-                  onChange={(e) => setSettings({ ...settings, warehouseLng: Number(e.target.value) || undefined })}
+                  onChange={(e) => setSettings({ ...settings, warehouseLng: e.target.value === '' ? undefined : Number(e.target.value) })}
                   placeholder="44.0186"
-                  className="w-full bg-white border-2 border-slate-200 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:border-blue-400 focus:outline-none"
+                  className={`w-full bg-white border-2 rounded-xl py-2.5 px-3 text-sm font-mono font-black text-slate-900 focus:outline-none transition ${
+                    ((settings.deliveryPricingMode || 'fixed') === 'distance_tiered' || (settings.deliveryPricingMode || 'fixed') === 'per_km') && !settings.warehouseLng
+                      ? 'border-amber-400 bg-amber-50/20 focus:border-amber-600'
+                      : 'border-slate-200 focus:border-blue-400'
+                  }`}
                 />
               </div>
             </div>

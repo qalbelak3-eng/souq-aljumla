@@ -28,6 +28,46 @@ function sanitizeForPostgres<T>(obj: T): T {
   return obj;
 }
 
+/**
+ * التحقق من صلاحية الإحداثيات الجغرافية لموقع المستودع
+ */
+export function isValidWarehouseCoord(lat: any, lng: any): boolean {
+  if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') {
+    return false;
+  }
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  if (isNaN(numLat) || isNaN(numLng)) {
+    return false;
+  }
+  return numLat >= -90 && numLat <= 90 && numLng >= -180 && numLng <= 180;
+}
+
+/**
+ * احتساب حالة الجاهزية التشغيلية لنظام التوصيل (قيمة مشتقة دون تعديل المخطط)
+ */
+export function getDeliveryReadiness(settings: Partial<StoreSettings>): {
+  deliveryReady: boolean;
+  deliveryReadinessIssues: string[];
+} {
+  const mode = settings.deliveryPricingMode || 'fixed';
+  const issues: string[] = [];
+
+  if (mode === 'distance_tiered' || mode === 'per_km') {
+    if (!isValidWarehouseCoord(settings.warehouseLat, settings.warehouseLng)) {
+      issues.push('إحداثيات المستودع الفعلي (خط العرض وخط الطول) غير محددة أو خارج النطاق الجغرافي السليم (-90..90, -180..180).');
+    }
+    if (mode === 'per_km' && (!settings.pricePerKm || typeof settings.pricePerKm !== 'number' || settings.pricePerKm <= 0)) {
+      issues.push('سعر الكيلومتر الواحد غير محدد بقيمة صالحة.');
+    }
+  }
+
+  return {
+    deliveryReady: issues.length === 0,
+    deliveryReadinessIssues: issues,
+  };
+}
+
 function mapDbRowToStoreSettings(row: any): StoreSettings {
   const delivery = (row.deliveryConfig as any) || {};
   const cashback = (row.cashbackConfig as any) || {};
@@ -35,7 +75,7 @@ function mapDbRowToStoreSettings(row: any): StoreSettings {
   const competitions = (row.competitionsConfig as any) || null;
   const popupAds = (row.popupAdsConfig as any) || {};
 
-  return {
+  const mapped: StoreSettings = {
     storeName: row.storeName || 'سوق الجملة',
     phone: row.phone || '07700000000',
     whatsapp: row.whatsapp || undefined,
@@ -99,6 +139,12 @@ function mapDbRowToStoreSettings(row: any): StoreSettings {
     popupAd: popupAds.popupAd,
     popupAds: popupAds.popupAds,
   };
+
+  const readiness = getDeliveryReadiness(mapped);
+  mapped.deliveryReady = readiness.deliveryReady;
+  mapped.deliveryReadinessIssues = readiness.deliveryReadinessIssues;
+
+  return mapped;
 }
 
 async function pgInitializeStoreSettings(): Promise<StoreSettings> {
@@ -197,7 +243,12 @@ export async function pgGetStoreSettings(): Promise<StoreSettings> {
     return mapDbRowToStoreSettings(rows[0]);
   } catch (err: any) {
     console.error('Warning: pgGetStoreSettings error, returning initial fallback:', err?.message || err);
-    return initialSettings;
+    const readiness = getDeliveryReadiness(initialSettings);
+    return {
+      ...initialSettings,
+      deliveryReady: readiness.deliveryReady,
+      deliveryReadinessIssues: readiness.deliveryReadinessIssues,
+    };
   }
 }
 
@@ -208,18 +259,61 @@ export async function pgUpdateStoreSettings(input: Partial<StoreSettings>): Prom
   const db = getDb();
   const existing = await pgGetStoreSettings();
 
+  // 1. فحص والتحقق من النطاق الجغرافي الصالح إذا تم تمرير إحداثيات
+  if (input.warehouseLat !== undefined && input.warehouseLat !== null && (input.warehouseLat as any) !== '') {
+    const numLat = Number(input.warehouseLat);
+    if (isNaN(numLat) || numLat < -90 || numLat > 90) {
+      throw new Error('خط العرض للمستودع (warehouseLat) غير صالح — يجب أن يكون رقماً بين -90 و 90');
+    }
+  }
+
+  if (input.warehouseLng !== undefined && input.warehouseLng !== null && (input.warehouseLng as any) !== '') {
+    const numLng = Number(input.warehouseLng);
+    if (isNaN(numLng) || numLng < -180 || numLng > 180) {
+      throw new Error('خط الطول للمستودع (warehouseLng) غير صالح — يجب أن يكون رقماً بين -180 و 180');
+    }
+  }
+
+  // احتساب الإحداثيات الناتجة بعد الدمج
+  const mergedLat: number | null =
+    input.warehouseLat !== undefined
+      ? (input.warehouseLat !== null && (input.warehouseLat as any) !== '' && !isNaN(Number(input.warehouseLat)) ? Number(input.warehouseLat) : null)
+      : (existing.warehouseLat ?? null);
+
+  const mergedLng: number | null =
+    input.warehouseLng !== undefined
+      ? (input.warehouseLng !== null && (input.warehouseLng as any) !== '' && !isNaN(Number(input.warehouseLng)) ? Number(input.warehouseLng) : null)
+      : (existing.warehouseLng ?? null);
+
+  // إذا تم إدخال أحد الإحداثيين وترك الآخر فارغاً
+  if ((mergedLat !== null && mergedLng === null) || (mergedLat === null && mergedLng !== null)) {
+    throw new Error('يجب تحديد كل من خط العرض وخط الطول معاً لموقع المستودع بشكل كامل وسليم.');
+  }
+
+  // 2. التحقق الصارم من متطلبات وضع التسعير (deliveryPricingMode)
+  const targetMode = input.deliveryPricingMode ?? existing.deliveryPricingMode ?? 'fixed';
+
+  if (targetMode === 'distance_tiered' || targetMode === 'per_km') {
+    if (!isValidWarehouseCoord(mergedLat, mergedLng)) {
+      throw new Error(
+        `لا يمكن تفعيل أو حفظ نظام التوصيل المعتمد على المسافة (${targetMode === 'distance_tiered' ? 'حسب المنطقة والمسافة' : 'حسب الكيلومتر'}) قبل تحديد وحفظ إحداثيات المستودع الفعلي (خط العرض وخط الطول) بشكل صحيح ضمن النطاق الجغرافي.`
+      );
+    }
+
+    if (targetMode === 'per_km') {
+      const targetPriceKm = input.pricePerKm !== undefined ? input.pricePerKm : existing.pricePerKm;
+      if (!targetPriceKm || typeof targetPriceKm !== 'number' || isNaN(targetPriceKm) || targetPriceKm <= 0) {
+        throw new Error('لا يمكن تفعيل نظام التوصيل بالكيلومتر دون تحديد سعر الكيلومتر الواحد (pricePerKm) بقيمة موجبة أكبر من الصفر.');
+      }
+    }
+  }
+
   const mergedDeliveryConfig = {
-    deliveryPricingMode: input.deliveryPricingMode ?? existing.deliveryPricingMode ?? 'fixed',
+    deliveryPricingMode: targetMode,
     deliveryZones: input.deliveryZones !== undefined ? input.deliveryZones : (existing.deliveryZones || []),
     // Real persisted coordinates or null (no fake placeholders)
-    warehouseLat:
-      input.warehouseLat !== undefined
-        ? (input.warehouseLat !== null && !isNaN(Number(input.warehouseLat)) ? Number(input.warehouseLat) : null)
-        : (existing.warehouseLat ?? null),
-    warehouseLng:
-      input.warehouseLng !== undefined
-        ? (input.warehouseLng !== null && !isNaN(Number(input.warehouseLng)) ? Number(input.warehouseLng) : null)
-        : (existing.warehouseLng ?? null),
+    warehouseLat: mergedLat,
+    warehouseLng: mergedLng,
     warehouseName: input.warehouseName !== undefined ? (input.warehouseName || null) : (existing.warehouseName || null),
     warehouseMapsUrl: input.warehouseMapsUrl !== undefined ? (input.warehouseMapsUrl || null) : (existing.warehouseMapsUrl || null),
     pricePerKm: input.pricePerKm !== undefined ? (typeof input.pricePerKm === 'number' ? input.pricePerKm : null) : (existing.pricePerKm ?? null),

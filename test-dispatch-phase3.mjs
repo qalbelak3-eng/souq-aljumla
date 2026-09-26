@@ -245,6 +245,9 @@ async function runDispatchPhase3Tests() {
   assert(resA7.queue[0].distanceKm === null, 'A.7: First order distanceKm is null (not invented)');
   assert(resA7.queue[0].cumulativeDistanceKm === null, 'A.7: First order cumulativeDistanceKm is null');
   assert(resA7.queue[1].distanceKm === null, 'A.7: Second order distanceKm is null');
+  assert(resA7.nextSuggestedOrder === null, 'A.7: nextSuggestedOrder is strictly null when origin is missing (no fake suggestion ⭐)');
+  assert(resA7.queue[0].isNextSuggested === false, 'A.7: First queue item isNextSuggested is false');
+  assert(resA7.queue[1].isNextSuggested === false, 'A.7: Second queue item isNextSuggested is false');
 
   // =========================================================================
   // SECTION B: Database & API Integration Tests
@@ -266,8 +269,9 @@ async function runDispatchPhase3Tests() {
     pgGetDriverOrders,
   } = await import('./src/lib/postgres-delivery.ts');
   const { GET: getDriverOrdersRoute } = await import('./src/app/api/driver/orders/route.ts');
-  const { pgGetStoreSettings, pgUpdateStoreSettings } = await import('./src/lib/postgres-settings.ts');
+  const { pgGetStoreSettings, pgUpdateStoreSettings, isValidWarehouseCoord, getDeliveryReadiness } = await import('./src/lib/postgres-settings.ts');
   const { GET: getSettingsRoute, POST: postSettingsRoute } = await import('./src/app/api/settings/route.ts');
+  const { POST: postOrdersRoute } = await import('./src/app/api/orders/route.ts');
 
   // Seed Admin Operator
   const adminOp = {
@@ -443,12 +447,154 @@ async function runDispatchPhase3Tests() {
   assert(dataABefore.success === true, 'B.1b: GET /api/driver/orders succeeded before warehouse configured');
   assert(dataABefore.deliveryQueue.originUsed === null, 'B.1b: deliveryQueue.originUsed is null (no fake warehouse used)');
   assert(dataABefore.deliveryQueue.totalDistanceKm === 0, 'B.1b: totalDistanceKm is 0 when warehouse not configured');
+  assert(dataABefore.deliveryQueue.nextSuggestedOrder === null, 'B.1b: nextSuggestedOrder is strictly null before warehouse is set');
+  assert(dataABefore.deliveryQueue.queue.every(item => item.isNextSuggested === false), 'B.1b: all queue items have isNextSuggested === false before warehouse is set');
 
-  // Test B.1c: Admin configures real warehouse in PostgreSQL via POST /api/settings
+  // --- Test B.1c-1: Coordinate Bounds and Readiness Unit Tests ---
+  assert(isValidWarehouseCoord(32.6068, 44.0186) === true, 'B.1c-1: isValidWarehouseCoord accepts valid Karbala coordinates');
+  assert(isValidWarehouseCoord(90, 180) === true, 'B.1c-1: isValidWarehouseCoord accepts boundary values (90, 180)');
+  assert(isValidWarehouseCoord(-90, -180) === true, 'B.1c-1: isValidWarehouseCoord accepts negative boundary values (-90, -180)');
+  assert(isValidWarehouseCoord(0, 0) === true, 'B.1c-1: isValidWarehouseCoord accepts 0 coordinate (Null Island valid number)');
+  assert(isValidWarehouseCoord(91, 44.0186) === false, 'B.1c-1: isValidWarehouseCoord rejects latitude > 90');
+  assert(isValidWarehouseCoord(-91, 44.0186) === false, 'B.1c-1: isValidWarehouseCoord rejects latitude < -90');
+  assert(isValidWarehouseCoord(32.6068, 181) === false, 'B.1c-1: isValidWarehouseCoord rejects longitude > 180');
+  assert(isValidWarehouseCoord(32.6068, -181) === false, 'B.1c-1: isValidWarehouseCoord rejects longitude < -180');
+  assert(isValidWarehouseCoord(null, 44.0186) === false, 'B.1c-1: isValidWarehouseCoord rejects null latitude');
+  assert(isValidWarehouseCoord(32.6068, undefined) === false, 'B.1c-1: isValidWarehouseCoord rejects undefined longitude');
+  assert(isValidWarehouseCoord('abc', 44.0186) === false, 'B.1c-1: isValidWarehouseCoord rejects NaN string');
+
+  const readyFixed = getDeliveryReadiness({ deliveryPricingMode: 'fixed' });
+  assert(readyFixed.deliveryReady === true, 'B.1c-1: getDeliveryReadiness is ready for fixed mode without warehouse');
+  assert(readyFixed.deliveryReadinessIssues.length === 0, 'B.1c-1: fixed mode has no readiness issues');
+
+  const readyDistMissing = getDeliveryReadiness({ deliveryPricingMode: 'distance_tiered', warehouseLat: null, warehouseLng: null });
+  assert(readyDistMissing.deliveryReady === false, 'B.1c-1: getDeliveryReadiness is false for distance_tiered when warehouse is null');
+  assert(readyDistMissing.deliveryReadinessIssues.length > 0, 'B.1c-1: distance_tiered has readiness issues explaining missing coordinates');
+
+  const readyDistOk = getDeliveryReadiness({ deliveryPricingMode: 'distance_tiered', warehouseLat: 32.6068, warehouseLng: 44.0186 });
+  assert(readyDistOk.deliveryReady === true, 'B.1c-1: getDeliveryReadiness is true for distance_tiered with valid coordinates');
+
+  const readyPerKmMissingPrice = getDeliveryReadiness({ deliveryPricingMode: 'per_km', warehouseLat: 32.6068, warehouseLng: 44.0186, pricePerKm: 0 });
+  assert(readyPerKmMissingPrice.deliveryReady === false, 'B.1c-1: getDeliveryReadiness is false for per_km when pricePerKm is 0');
+
+  // --- Test B.1c-2: POST /api/settings Backend Validation & Rejection ---
+  // Scenario 1: Reject saving distance_tiered without warehouse coordinates
+  const reqRejectMissing = new Request('http://localhost:3000/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deliveryPricingMode: 'distance_tiered',
+      warehouseLat: null,
+      warehouseLng: null,
+    }),
+  });
+  const resRejectMissing = await postSettingsRoute(reqRejectMissing);
+  const dataRejectMissing = await resRejectMissing.json();
+  assert(resRejectMissing.status === 400, 'B.1c-2: POST /api/settings rejects distance_tiered with missing coordinates (HTTP 400)');
+  assert(dataRejectMissing.success === false, 'B.1c-2: dataRejectMissing.success is false');
+  assert(dataRejectMissing.error.includes('المستودع'), 'B.1c-2: Explicit Arabic error returned when warehouse coordinates missing');
+
+  // Scenario 2: Reject out-of-bounds latitude
+  const reqRejectLat = new Request('http://localhost:3000/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deliveryPricingMode: 'distance_tiered',
+      warehouseLat: 120,
+      warehouseLng: 44.0186,
+    }),
+  });
+  const resRejectLat = await postSettingsRoute(reqRejectLat);
+  const dataRejectLat = await resRejectLat.json();
+  assert(resRejectLat.status === 400, 'B.1c-2: POST /api/settings rejects out-of-bounds latitude (120)');
+  assert(dataRejectLat.success === false, 'B.1c-2: dataRejectLat.success is false');
+
+  // Scenario 3: Reject partial coordinate (latitude provided without longitude)
+  const reqRejectPartial = new Request('http://localhost:3000/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      warehouseLat: 32.6068,
+      warehouseLng: null,
+    }),
+  });
+  const resRejectPartial = await postSettingsRoute(reqRejectPartial);
+  assert(resRejectPartial.status === 400, 'B.1c-2: POST /api/settings rejects partial coordinate (lat without lng)');
+
+  // Scenario 4: Allow mode 'fixed' without warehouse coordinates
+  const reqAllowFixed = new Request('http://localhost:3000/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deliveryPricingMode: 'fixed',
+      deliveryFee: 4000,
+    }),
+  });
+  const resAllowFixed = await postSettingsRoute(reqAllowFixed);
+  const dataAllowFixed = await resAllowFixed.json();
+  assert(resAllowFixed.status === 200, 'B.1c-2: POST /api/settings accepts mode fixed without warehouse');
+  assert(dataAllowFixed.success === true, 'B.1c-2: dataAllowFixed.success is true');
+  assert(dataAllowFixed.settings.deliveryPricingMode === 'fixed', 'B.1c-2: mode updated to fixed');
+  assert(dataAllowFixed.settings.deliveryReady === true, 'B.1c-2: deliveryReady is true for fixed mode');
+
+  // --- Test B.1c-3: Second Line of Defense: Order Creation Rejection (No Silent Fallback) ---
+  // Temporarily force distance mode with null warehouse in database directly
+  await sql`
+    UPDATE store_settings
+    SET delivery_config = jsonb_set(
+      jsonb_set(
+        jsonb_set(delivery_config, '{deliveryPricingMode}', '"distance_tiered"'),
+        '{warehouseLat}', 'null'
+      ),
+      '{warehouseLng}', 'null'
+    )
+    WHERE id = 1
+  `;
+
+  // Attempt to place an order in distance mode without warehouse configured
+  const orderPayload = {
+    customer: {
+      name: 'زبون اختبار التوصيل الصارم',
+      phone: '07709998811',
+      city: 'كربلاء المقدسة',
+      address: 'حي المعلمين - قرب المستشفى',
+      lat: 32.615,
+      lng: 44.025,
+    },
+    items: [
+      {
+        productId: prod.id,
+        name: 'عصير برتقال طبيعي',
+        price: 25000,
+        quantity: 1,
+        saleType: 'retail',
+      },
+    ],
+    subtotal: 25000,
+    deliveryFee: 3000,
+    paymentMethod: 'cash',
+  };
+
+  const reqOrderBlocked = new Request('http://localhost:3000/api/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(orderPayload),
+  });
+  const resOrderBlocked = await postOrdersRoute(reqOrderBlocked);
+  const dataOrderBlocked = await resOrderBlocked.json();
+  assert(resOrderBlocked.status === 400, 'B.1c-3: Order creation strictly rejected with HTTP 400 when distance mode lacks warehouse');
+  assert(dataOrderBlocked.success === false, 'B.1c-3: Order creation response success is false');
+  assert(
+    dataOrderBlocked.error && dataOrderBlocked.error.includes('المستودع'),
+    'B.1c-3: Explicit Arabic error returned, STRICTLY NO silent fallback to 3000 or fixed fee'
+  );
+
+  // --- Test B.1c-4: Admin configures real warehouse in PostgreSQL via POST /api/settings ---
   const updateSettingsReq = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      deliveryPricingMode: 'distance_tiered',
       warehouseLat: 32.6068,
       warehouseLng: 44.0186,
       warehouseName: 'مستودع كربلاء المركزي المعتمد',
@@ -457,16 +603,18 @@ async function runDispatchPhase3Tests() {
   });
   const updateRes = await postSettingsRoute(updateSettingsReq);
   const updateData = await updateRes.json();
-  assert(updateData.success === true, 'B.1c: POST /api/settings succeeded updating warehouse in PostgreSQL');
-  assert(updateData.settings.warehouseLat === 32.6068, 'B.1c: PostgreSQL saved real warehouseLat (32.6068)');
-  assert(updateData.settings.warehouseLng === 44.0186, 'B.1c: PostgreSQL saved real warehouseLng (44.0186)');
+  assert(updateData.success === true, 'B.1c-4: POST /api/settings succeeded updating warehouse in PostgreSQL');
+  assert(updateData.settings.warehouseLat === 32.6068, 'B.1c-4: PostgreSQL saved real warehouseLat (32.6068)');
+  assert(updateData.settings.warehouseLng === 44.0186, 'B.1c-4: PostgreSQL saved real warehouseLng (44.0186)');
+  assert(updateData.settings.deliveryReady === true, 'B.1c-4: deliveryReady is true after warehouse configuration');
 
   // Verify GET /api/settings reads persisted settings from PostgreSQL
   const getSettingsReq = new Request('http://localhost:3000/api/settings');
   const getSettingsRes = await getSettingsRoute(getSettingsReq);
   const getSettingsData = await getSettingsRes.json();
-  assert(getSettingsData.settings.warehouseLat === 32.6068, 'B.1c: GET /api/settings confirms persisted warehouseLat');
-  assert(getSettingsData.settings.warehouseLng === 44.0186, 'B.1c: GET /api/settings confirms persisted warehouseLng');
+  assert(getSettingsData.settings.warehouseLat === 32.6068, 'B.1c-4: GET /api/settings confirms persisted warehouseLat');
+  assert(getSettingsData.settings.warehouseLng === 44.0186, 'B.1c-4: GET /api/settings confirms persisted warehouseLng');
+  assert(getSettingsData.settings.deliveryReady === true, 'B.1c-4: GET /api/settings confirms deliveryReady is true');
 
   // Test B.2: Call GET /api/driver/orders for Driver A with configured warehouse
   const reqA = new Request(`http://localhost:3000/api/driver/orders?driverId=${driverA.id}`, {

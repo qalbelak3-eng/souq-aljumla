@@ -316,21 +316,41 @@ export default function CheckoutPage() {
   const freeThreshold = storeSettings?.freeDeliveryThreshold ?? 50000;
   const isFreeDeliveryQualified = subtotal >= freeThreshold && subtotal > 0;
 
+  // فحص جاهزية موقع المخزن لنظام المسافة (منع الـ Silent Fallback)
+  const deliveryPricingMode = storeSettings?.deliveryPricingMode || 'fixed';
+  const isDistanceBasedMode = deliveryPricingMode === 'distance_tiered' || deliveryPricingMode === 'per_km';
+  const hasValidWarehouseCoords = Boolean(
+    storeSettings?.warehouseLat !== undefined &&
+    storeSettings?.warehouseLat !== null &&
+    !isNaN(Number(storeSettings?.warehouseLat)) &&
+    Number(storeSettings?.warehouseLat) >= -90 &&
+    Number(storeSettings?.warehouseLat) <= 90 &&
+    storeSettings?.warehouseLng !== undefined &&
+    storeSettings?.warehouseLng !== null &&
+    !isNaN(Number(storeSettings?.warehouseLng)) &&
+    Number(storeSettings?.warehouseLng) >= -180 &&
+    Number(storeSettings?.warehouseLng) <= 180
+  );
+  const isDistanceConfigIncomplete = isDistanceBasedMode && !hasValidWarehouseCoords;
+
   // حساب الكروة: أولاً بالكيلومتر (GPS) إذا متوفر، وإلا بالمنطقة
   let calculatedDeliveryFee = 3000;
   let gpsDeliveryInfo: { distanceKm: number; fee: number } | null = null;
 
-  if (isFreeDeliveryQualified) {
+  if (isDistanceConfigIncomplete) {
+    // ⛔ منع Silent Fallback لكروة 3000 أو الكروة الثابتة عند غياب موقع المخزن
     calculatedDeliveryFee = 0;
-  } else if (coords.lat && coords.lng && storeSettings?.warehouseLat && storeSettings?.pricePerKm) {
+  } else if (isFreeDeliveryQualified) {
+    calculatedDeliveryFee = 0;
+  } else if (coords.lat && coords.lng && hasValidWarehouseCoords && storeSettings?.pricePerKm) {
     // ✅ حساب بالكيلومتر الفعلي من موقع المخزن
     const result = calculateDeliveryFeeByDistance(coords.lat, coords.lng, storeSettings);
     if (result) {
       calculatedDeliveryFee = result.fee;
       gpsDeliveryInfo = { distanceKm: result.distanceKm, fee: result.fee };
     }
-  } else if ((storeSettings?.deliveryPricingMode || 'distance_tiered') === 'distance_tiered' && storeSettings?.deliveryZones) {
-    // 📍 احتياطي: المناطق المحددة
+  } else if (deliveryPricingMode === 'distance_tiered' && storeSettings?.deliveryZones) {
+    // 📍 احتياطي: المناطق المحددة (إذا تم اعتماد موقع المخزن)
     const matchedZone = storeSettings.deliveryZones.find((z) => z.id === selectedAreaObj.zoneId);
     if (matchedZone && typeof matchedZone.fee === 'number') {
       calculatedDeliveryFee = matchedZone.fee;
@@ -581,6 +601,13 @@ export default function CheckoutPage() {
 
     if (isPendingApproval) {
       setErrorMessage('حسابك (ماركت/تاجر) قيد المراجعة والتدقيق حالياً من قبل الإدارة. لا يمكن إرسال فاتورة الشراء إلا بعد قيام الإدارة بالاتصال بك والتأكد واعتماد حسابك.');
+      return;
+    }
+
+    if (isDistanceConfigIncomplete) {
+      setErrorMessage(
+        'لا يمكن إتمام الطلب بنظام حساب المسافة لعدم ضبط إحداثيات المستودع في إعدادات المتجر. يرجى مراجعة إدارة المتجر لاستكمال الإعدادات.'
+      );
       return;
     }
 
@@ -1489,12 +1516,24 @@ export default function CheckoutPage() {
                   </span>
                 </div>
               )}
-              <div className="flex justify-between items-center">
-                <span>كروة التوصيل ({selectedAreaObj.tierLabel}):</span>
-                <span className="font-bold text-slate-900">
-                  {calculatedDeliveryFee === 0 ? <span className="text-emerald-600 font-black">مجاناً ⚡</span> : `${calculatedDeliveryFee.toLocaleString()} د.ع`}
-                </span>
-              </div>
+              {isDistanceConfigIncomplete ? (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 text-xs text-amber-900 space-y-1">
+                  <div className="font-black flex items-center gap-1 text-[11px]">
+                    <span>⚠️</span>
+                    <span>نظام التوصيل بالمسافة غير مهيأ حالياً</span>
+                  </div>
+                  <p className="text-[10px] text-amber-800 leading-relaxed font-normal">
+                    موقع المستودع غير مضبوط في إعدادات المتجر. يمنع النظام الحساب التقديري الصامت حتى تكتمل إعدادات المخزن من قبل الإدارة.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <span>كروة التوصيل ({selectedAreaObj.tierLabel}):</span>
+                  <span className="font-bold text-slate-900">
+                    {calculatedDeliveryFee === 0 ? <span className="text-emerald-600 font-black">مجاناً ⚡</span> : `${calculatedDeliveryFee.toLocaleString()} د.ع`}
+                  </span>
+                </div>
+              )}
               <div className="border-t border-slate-100 pt-2 flex justify-between items-center text-sm font-black text-slate-900">
                 <span>الإجمالي الكلي:</span>
                 <span className="text-xl font-black text-brand-coral">
@@ -1530,6 +1569,19 @@ export default function CheckoutPage() {
                 </button>
                 <p className="text-center text-[11px] text-amber-900 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200">
                   ⚠️ حساب الماركت/التاجر قيد المراجعة. ستقوم الإدارة بالتواصل معك لاعتماده وتفعيل إرسال الفواتير.
+                </p>
+              </div>
+            ) : isDistanceConfigIncomplete ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  disabled
+                  className="w-full bg-amber-100 border border-amber-300 text-amber-900 font-black py-4 px-4 rounded-2xl cursor-not-allowed text-xs flex items-center justify-center gap-2 shadow-none"
+                >
+                  <span>⚠️ التوصيل بالمسافة غير متاح (موقع المخزن غير محدد في النظام)</span>
+                </button>
+                <p className="text-center text-[11px] text-amber-900 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                  يرجى التواصل مع إدارة المتجر لضبط موقع المخزن في لوحة التحكم لإتمام هذا الطلب.
                 </p>
               </div>
             ) : !user ? (

@@ -718,10 +718,79 @@ export default function DriverDashboardPage() {
                       <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-amber-900 text-xs font-bold flex items-start gap-2 shadow-2xs">
                         <span className="text-base shrink-0">⚠️</span>
                         <div>
-                          <p className="font-black">موقع المستودع غير محدد في إعدادات النظام</p>
-                          <p className="text-[11px] text-amber-800 mt-0.5 font-normal">
-                            يرجى من إدارة العمليات تحديد موقع المخزن وحفظه من لوحة التحكم لتفعيل حساب مسافات التوصيل الدقيقة وترتيب الانطلاق.
+                          <p className="font-black">موقع المستودع غير محدد في إعدادات النظام (الترتيب الذكي معطّل)</p>
+                          <p className="text-[11px] text-amber-800 mt-0.5 font-normal leading-relaxed">
+                            يتم عرض الطلبات كقائمة تسليم اعتيادية دون تحديد (التالي المقترح ⭐) لغياب نقطة انطلاق موثوقة. يرجى من الإدارة ضبط موقع المستودع لتفعيل التوجيه الذكي.
                           </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* عندما لا تتوفر نقطة انطلاق: عرض كافة الطلبات كقائمة اعتيادية دون اقتراح كاذب */}
+                    {!effectiveQueue.nextSuggestedOrder && effectiveQueue.queue.length > 0 && (
+                      <div className="space-y-2 pt-1 border-t border-slate-100">
+                        <div className="flex items-center justify-between text-xs font-black text-slate-700 py-1 px-1">
+                          <span>قائمة الطلبات المسندة (تسلسل الاستلام)</span>
+                          <span className="bg-slate-200 text-slate-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            {effectiveQueue.queue.length} طلبات
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 pt-1">
+                          {effectiveQueue.queue.map((item) => (
+                            <div
+                              key={item.order.id}
+                              className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex items-center justify-between gap-3 text-[11px]"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-800 flex items-center justify-center font-mono font-black text-[11px] shrink-0">
+                                  {item.sequence}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-black text-slate-900">#{item.order.orderNumber}</span>
+                                    <span className="text-slate-700 truncate font-bold">{item.order.customer?.name}</span>
+                                    <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
+                                      item.statusGroup === 'shipped' ? 'bg-orange-100 text-orange-900' : 'bg-blue-100 text-blue-900'
+                                    }`}>
+                                      {item.statusGroup === 'shipped' ? '🚚 بالطريق' : '📦 تجهيز'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                    {item.baseAddress}
+                                    {item.locationDesc ? ` • 📌 ${item.locationDesc}` : ''}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5 font-bold">
+                                    المسافة غير متاحة (بدون نقطة بداية)
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <a
+                                  href={item.mapsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg transition"
+                                  title="فتح الخريطة"
+                                >
+                                  <Navigation className="w-3.5 h-3.5" />
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const el = document.getElementById(`order-card-${item.order.id}`);
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    setExpandedOrderId(item.order.id);
+                                  }}
+                                  className="p-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg transition text-[10px] font-black"
+                                  title="عرض الطلب"
+                                >
+                                  عرض
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -811,7 +880,7 @@ export default function DriverDashboardPage() {
                     )}
 
                     {/* Remaining Stops in the Queue */}
-                    {effectiveQueue.queue.length > 1 && (
+                    {effectiveQueue.nextSuggestedOrder && effectiveQueue.queue.length > 1 && (
                       <div className="space-y-2 pt-1 border-t border-slate-100">
                         <button
                           type="button"

@@ -479,6 +479,9 @@ export interface StoreSettings {
   minOrderAmount?: number; // الحد الأدنى لقيمة الطلبية بالدينار العراقي (مثال: 10000)
   deliveryPricingMode?: 'fixed' | 'distance_tiered' | 'per_km'; // نظام الكروة: ثابت، متدرج، أو بالكيلومتر
   deliveryZones?: DeliveryZone[]; // قائمة المناطق وتكلفة كل منطقة
+  // حالة الجاهزية التشغيلية لنظام التوصيل (قيمة مشتقة)
+  deliveryReady?: boolean;
+  deliveryReadinessIssues?: string[];
   // موقع المخزن / نقطة انطلاق المندوب
   warehouseLat?: number;       // خط العرض للمخزن
   warehouseLng?: number;       // خط الطول للمخزن

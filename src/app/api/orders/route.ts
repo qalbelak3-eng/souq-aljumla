@@ -186,7 +186,33 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Server-side delivery fee verification
+    // Server-side delivery fee & warehouse readiness verification (Strict Second Defense)
+    const pricingMode = settings.deliveryPricingMode || 'fixed';
+    if (pricingMode === 'distance_tiered' || pricingMode === 'per_km') {
+      const isValidWarehouse =
+        settings.warehouseLat !== undefined &&
+        settings.warehouseLat !== null &&
+        !isNaN(Number(settings.warehouseLat)) &&
+        Number(settings.warehouseLat) >= -90 &&
+        Number(settings.warehouseLat) <= 90 &&
+        settings.warehouseLng !== undefined &&
+        settings.warehouseLng !== null &&
+        !isNaN(Number(settings.warehouseLng)) &&
+        Number(settings.warehouseLng) >= -180 &&
+        Number(settings.warehouseLng) <= 180;
+
+      if (!isValidWarehouse) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'لا يمكن إتمام الطلب بنظام حساب المسافة لعدم ضبط إحداثيات المستودع في إعدادات المتجر. يرجى مراجعة إدارة المتجر.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const freeDeliveryThreshold = Number(settings.freeDeliveryThreshold) || 100000;
     const defaultDeliveryFee = Number(settings.deliveryFee) || 5000;
     const verifiedDeliveryFee = calculatedSubtotal >= freeDeliveryThreshold ? 0 : (deliveryFee !== undefined ? Number(deliveryFee) : defaultDeliveryFee);
