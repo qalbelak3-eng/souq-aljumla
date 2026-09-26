@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Package, Plus, Edit2, Trash2, Search, X, Check, Star, DollarSign, Sparkles, Building2, AlertTriangle, TrendingDown, Gift } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Search, X, Check, Star, DollarSign, Sparkles, Building2, AlertTriangle, TrendingDown, Gift, Wand2, ShieldAlert } from 'lucide-react';
 import { Product, Category, Company } from '@/types';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmModalContext';
 import { compressImageFile } from '@/lib/imageUtils';
+import { validateProductPricing, suggestTierPricing } from '@/lib/pricing';
 
 // Default Iraqi & International Brands/Companies by category
 const defaultCompaniesByCategory: Record<string, string[]> = {
@@ -112,6 +113,27 @@ export default function AdminProductsPage() {
   const [cashbackMarketAmount, setCashbackMarketAmount] = useState<number | ''>('');
   const [cashbackMerchantAmount, setCashbackMerchantAmount] = useState<number | ''>('');
   const [cashbackWholesalePerCarton, setCashbackWholesalePerCarton] = useState<number | ''>('');
+
+  // Commerce-2B2: Pricing Safety & Below-Cost Override State
+  const [allowBelowCostOverride, setAllowBelowCostOverride] = useState<boolean>(false);
+  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [currentOperator, setCurrentOperator] = useState<{ name: string; username: string; role: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const auth = localStorage.getItem('etihad_admin_auth');
+        if (auth) {
+          const parsed = JSON.parse(auth);
+          setCurrentOperator({
+            name: parsed.name || parsed.username || 'المشرف',
+            username: parsed.username || 'admin',
+            role: parsed.role || 'admin',
+          });
+        }
+      } catch {}
+    }
+  }, []);
 
   const fetchProducts = async () => {
     if (products.length === 0) setIsLoading(true);
@@ -218,6 +240,8 @@ export default function AdminProductsPage() {
     setCashbackMarketAmount('');
     setCashbackMerchantAmount('');
     setCashbackWholesalePerCarton('');
+    setAllowBelowCostOverride(false);
+    setOverrideReason('');
     setIsModalOpen(true);
   };
 
@@ -272,6 +296,8 @@ export default function AdminProductsPage() {
     setCashbackMarketAmount(p.cashbackMarketAmount ?? '');
     setCashbackMerchantAmount(p.cashbackMerchantAmount ?? '');
     setCashbackWholesalePerCarton(p.cashbackWholesalePerCarton ?? '');
+    setAllowBelowCostOverride(false);
+    setOverrideReason('');
     setIsModalOpen(true);
   };
 
@@ -301,6 +327,46 @@ export default function AdminProductsPage() {
     const piecesPerBox = Number(itemsPerBox) || 24;
     const totalPieces = boxes * piecesPerBox;
     const cPrice = Number(costPrice) || 0;
+
+    // Phase Commerce-2B2: Pre-save Central Pricing Validation
+    const numCost = cPrice;
+    const numWholesale = Number(wholesalePrice) || 0;
+    const numPrice = Number(price) || 0;
+    const numMarket = marketPrice !== '' ? Number(marketPrice) : undefined;
+    const numSpecial = specialPrice !== '' ? Number(specialPrice) : undefined;
+    const numVip = vipPrice !== '' ? Number(vipPrice) : undefined;
+    const numBox = boxPrice !== '' ? Number(boxPrice) : undefined;
+
+    const pricingValidation = validateProductPricing(
+      {
+        costPrice: numCost,
+        price: numPrice,
+        wholesalePrice: numWholesale,
+        specialPrice: numSpecial,
+        vipPrice: numVip,
+        marketPrice: numMarket,
+        boxPrice: numBox,
+        boxesPerCarton: boxes,
+        itemsPerBox: piecesPerBox,
+        piecesPerCarton: totalPieces,
+        isSellable: true,
+      },
+      {
+        allowBelowCostOverride,
+        overrideReason: overrideReason.trim(),
+        operator: currentOperator || undefined,
+      }
+    );
+
+    if (pricingValidation.hardErrors.length > 0) {
+      toast.error(pricingValidation.hardErrors[0]);
+      return;
+    }
+
+    if (pricingValidation.requiresOverride && (!allowBelowCostOverride || overrideReason.trim().length < 5)) {
+      toast.error('يتضمن التسعير بيعاً دون التكلفة! يرجى تفعيل الموافقة الإدارية وكتابة السبب (5 أحرف على الأقل).');
+      return;
+    }
 
     const hasOffer = Boolean(
       isOnOffer || 
@@ -349,6 +415,9 @@ export default function AdminProductsPage() {
       cashbackMerchantAmount: cashbackMerchantAmount !== '' ? Number(cashbackMerchantAmount) : undefined,
       cashbackWholesalePerCarton: cashbackWholesalePerCarton !== '' ? Number(cashbackWholesalePerCarton) : undefined,
       customCashbackAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
+      allowBelowCostOverride: pricingValidation.requiresOverride ? allowBelowCostOverride : undefined,
+      overrideReason: (pricingValidation.requiresOverride && allowBelowCostOverride) ? overrideReason.trim() : undefined,
+      operator: currentOperator || undefined,
     };
 
     try {
@@ -445,6 +514,94 @@ export default function AdminProductsPage() {
       return `${remainingPieces} ${p.retailUnit || 'قطعة'}`;
     }
     return `${fullCartons} كرتون + ${remainingPieces} ${p.retailUnit || 'قطعة'}`;
+  };
+
+  // Commerce-2B2: Live pricing calculations & validation for the modal form
+  const modalBoxes = Number(boxesPerCarton) || 1;
+  const modalItems = Number(itemsPerBox) || 1;
+  const modalPiecesPerCarton = modalBoxes * modalItems;
+  const modalCost = Number(costPrice) || 0;
+  const modalWholesale = Number(wholesalePrice) || 0;
+  const modalPrice = Number(price) || 0;
+  const modalMarket = marketPrice !== '' ? Number(marketPrice) : undefined;
+  const modalSpecial = specialPrice !== '' ? Number(specialPrice) : undefined;
+  const modalVip = vipPrice !== '' ? Number(vipPrice) : undefined;
+  const modalBox = boxPrice !== '' ? Number(boxPrice) : undefined;
+
+  const livePricingValidation = validateProductPricing(
+    {
+      costPrice: modalCost,
+      price: modalPrice,
+      wholesalePrice: modalWholesale,
+      specialPrice: modalSpecial,
+      vipPrice: modalVip,
+      marketPrice: modalMarket,
+      boxPrice: modalBox,
+      boxesPerCarton: modalBoxes,
+      itemsPerBox: modalItems,
+      piecesPerCarton: modalPiecesPerCarton,
+      isSellable: true,
+    },
+    {
+      allowBelowCostOverride,
+      overrideReason: overrideReason.trim(),
+    }
+  );
+
+  const modalPieceCost = modalCost > 0 && modalPiecesPerCarton > 0 ? (modalCost / modalPiecesPerCarton) : 0;
+  const modalRetailCartonTotal = modalPrice * modalPiecesPerCarton;
+
+  const handleApplySmartSuggestions = () => {
+    if (modalWholesale <= 0) {
+      toast.error('يرجى إدخال سعر كرتون الجملة الأساسي (البرونزي) أولاً لتوليد الاقتراحات الذكية');
+      return;
+    }
+    const suggested = suggestTierPricing(modalWholesale, modalCost);
+    setMarketPrice(suggested.marketPrice);
+    setSpecialPrice(suggested.silverPrice);
+    setVipPrice(suggested.goldPrice);
+    setBoxPrice(suggested.consumerCartonPrice);
+    toast.success('تم تطبيق اقتراحات التسعير الذكية على الحقول! يمكنك تعديلها بحرية قبل الحفظ ✨');
+  };
+
+  const renderProfitBadge = (priceVal?: number | '', isCarton: boolean = true) => {
+    if (priceVal === '' || priceVal === undefined || isNaN(Number(priceVal))) return null;
+    const num = Number(priceVal);
+    if (isCarton) {
+      if (modalCost <= 0) return null;
+      const profit = num - modalCost;
+      const marginPct = num > 0 ? (((profit) / num) * 100).toFixed(1) : '0';
+      const isLoss = profit < 0;
+      const diffFromBronze = modalWholesale > 0 && num !== modalWholesale ? num - modalWholesale : null;
+
+      return (
+        <div className={`mt-1.5 p-1.5 rounded-lg text-[10px] font-bold space-y-0.5 ${isLoss ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+          <div className="flex items-center justify-between">
+            <span>الربح: {profit > 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString()} د.ع</span>
+            <span>هامش: {marginPct}%</span>
+          </div>
+          {diffFromBronze !== null && (
+            <div className="text-[9px] text-slate-500 font-normal">
+              فرق عن البرونزي: {diffFromBronze > 0 ? `+${diffFromBronze.toLocaleString()}` : diffFromBronze.toLocaleString()} د.ع
+            </div>
+          )}
+        </div>
+      );
+    } else {
+      if (modalPieceCost <= 0) return null;
+      const profit = num - modalPieceCost;
+      const marginPct = num > 0 ? (((profit) / num) * 100).toFixed(1) : '0';
+      const isLoss = profit < 0;
+
+      return (
+        <div className={`mt-1.5 p-1.5 rounded-lg text-[10px] font-bold space-y-0.5 ${isLoss ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-800 border border-blue-200'}`}>
+          <div className="flex items-center justify-between">
+            <span>تكلفة القطعة: {modalPieceCost.toFixed(1)} د.ع</span>
+            <span>ربح القطعة: {profit > 0 ? `+${profit.toFixed(1)}` : profit.toFixed(1)} د.ع ({marginPct}%)</span>
+          </div>
+        </div>
+      );
+    }
   };
 
   return (
@@ -699,6 +856,11 @@ export default function AdminProductsPage() {
                         <span className="text-[10px] text-slate-400 font-medium block">
                           {p.retailUnit}
                         </span>
+                        {Boolean(p.boxPrice) && (
+                          <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md block w-fit mx-auto mt-0.5" title="سعر الكرتون للمستهلك">
+                            📦 كرتون: {Number(p.boxPrice).toLocaleString()} د.ع
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -977,146 +1139,273 @@ export default function AdminProductsPage() {
                 </div>
               </div>
 
-              {/* PRICING TIERS: COST, MARKET, MERCHANTS, BOX, RETAIL */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-black text-slate-900 flex items-center gap-1.5 text-xs text-brand-blue">
-                    <DollarSign className="w-4 h-4" />
-                    <span>هيكل تسعير رتب الزبائن والماركت والتجار (د.ع):</span>
-                  </h4>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded-md">
-                    حساب الأرباح بدقة 💹
+              {/* REDESIGNED PRICING SECTION: PRIMARY, TIERS, INDICATORS, SUGGESTIONS, OVERRIDE */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
+                {/* Header & Smart Suggestion Trigger */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-brand-blue/10 flex items-center justify-center text-brand-blue font-bold">
+                      <DollarSign className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 text-xs">
+                        هيكل تسعير المنتج والكرتون والرتب (د.ع):
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        التحكم بالأسعار الأساسية، رتب التجار، وسعر كرتون المستهلك
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplySmartSuggestions}
+                    className="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition shadow-sm"
+                    title="اقتراح أسعار ذكية غير ملزمة للرتب بناءً على سعر البرونزي والتكلفة"
+                  >
+                    <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>اقتراح تسعير ذكي للرتب 🪄</span>
+                  </button>
+                </div>
+
+                {/* 1. PRIMARY CORE PRICES (COST, BRONZE, CONSUMER PIECE) */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-black text-slate-700 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-brand-blue inline-block"></span>
+                    الأسعار الأساسية والمرجعية:
                   </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    
+                    {/* Cost Price */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                      <label className="font-bold text-slate-800 block flex items-center justify-between">
+                        <span>1. سعر التكلفة للكرتون *:</span>
+                        <span className="text-[10px] text-slate-400 font-normal">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={costPrice}
+                        onChange={(e) => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="7000"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:bg-white focus:border-brand-blue"
+                      />
+                      <span className="text-[10px] text-slate-500 block pt-0.5">
+                        أساس حساب الأرباح الصافية
+                      </span>
+                    </div>
+
+                    {/* Bronze Wholesale Price */}
+                    <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 space-y-1">
+                      <label className="font-black text-amber-950 block flex items-center justify-between">
+                        <span>2. سعر كرتون الجملة (البرونزي 🥉) *:</span>
+                        <span className="text-[10px] text-amber-800">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={wholesalePrice}
+                        onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="8250"
+                        className="w-full bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-amber-900 focus:border-amber-600"
+                      />
+                      {renderProfitBadge(wholesalePrice, true)}
+                    </div>
+
+                    {/* Consumer Piece Price */}
+                    <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-200 space-y-1">
+                      <label className="font-black text-blue-950 block flex items-center justify-between">
+                        <span>3. سعر بيع المفرد للقطعة للمستهلك 👤 *:</span>
+                        <span className="text-[10px] text-blue-800 font-bold">للقطعة</span>
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="500"
+                        className="w-full bg-white border border-blue-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-blue-950 focus:border-brand-blue"
+                      />
+                      {renderProfitBadge(price, false)}
+                    </div>
+
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  
-                  {/* 1. Cost Price */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-800 block flex items-center justify-between">
-                      <span>1. سعر التكلفة والشراء *:</span>
-                      <span className="text-[10px] text-slate-500 font-normal">للكرتون / الشليف</span>
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      value={costPrice}
-                      onChange={(e) => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="7000"
-                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-900 focus:border-brand-blue"
-                    />
-                    <span className="text-[10px] text-slate-500 block">لحساب أرباح المتجر الصافية بدقة</span>
-                  </div>
+                {/* 2. CARTON TIERS & CUSTOMER VARIANTS */}
+                <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                  <span className="text-[11px] font-black text-slate-700 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                    رتب كرتون الماركت والتجار وسعر كرتون المستهلك:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    
+                    {/* Market Carton Price */}
+                    <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200 space-y-1">
+                      <label className="font-black text-emerald-950 block flex items-center justify-between text-[11px]">
+                        <span>سعر كرتون الماركت 🏪:</span>
+                        <span className="text-[10px] text-emerald-800">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={marketPrice}
+                        onChange={(e) => setMarketPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="8500"
+                        className="w-full bg-white border border-emerald-300 rounded-xl py-1.5 px-2.5 text-xs font-black font-mono text-emerald-900 focus:border-emerald-600"
+                      />
+                      {renderProfitBadge(marketPrice, true)}
+                    </div>
 
-                  {/* 2. Market Price (سعر الماركت والمحلات) */}
-                  <div className="space-y-1 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200">
-                    <label className="font-black text-emerald-950 block flex items-center justify-between">
-                      <span>2. سعر الماركت والمحلات 🏪 *:</span>
-                      <span className="text-[10px] text-emerald-800 font-bold">للكرتون / الشليف</span>
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      value={marketPrice}
-                      onChange={(e) => setMarketPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="8500"
-                      className="w-full bg-white border-2 border-emerald-400 rounded-xl py-1.5 px-3 text-xs font-black font-mono text-emerald-900 focus:border-emerald-600"
-                    />
-                    <span className="text-[10px] text-emerald-700 block">السعر المعتمد لأصحاب الماركتات والسوبرماركت</span>
-                  </div>
+                    {/* Silver Carton Price */}
+                    <div className="bg-slate-100/70 p-2.5 rounded-xl border border-slate-300 space-y-1">
+                      <label className="font-black text-slate-900 block flex items-center justify-between text-[11px]">
+                        <span>سعر التاجر الفضي 🥈:</span>
+                        <span className="text-[10px] text-slate-500">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={specialPrice}
+                        onChange={(e) => setSpecialPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="8000"
+                        className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-2.5 text-xs font-black font-mono text-slate-800 focus:border-brand-blue"
+                      />
+                      {renderProfitBadge(specialPrice, true)}
+                    </div>
 
-                  {/* 3. Bronze Wholesale Price (التاجر البرونزي) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-amber-900 block flex items-center justify-between">
-                      <span>3. سعر التاجر العام (البرونزي 🥉) *:</span>
-                      <span className="text-[10px] text-amber-800">للكرتون</span>
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      value={wholesalePrice}
-                      onChange={(e) => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="8250"
-                      className="w-full bg-white border border-amber-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-amber-900 focus:border-amber-600"
-                    />
-                    <span className="text-[10px] text-amber-700 block">سعر كرتون الجملة الأساسي</span>
-                  </div>
+                    {/* Gold VIP Carton Price */}
+                    <div className="bg-amber-100/40 p-2.5 rounded-xl border border-amber-300 space-y-1">
+                      <label className="font-black text-amber-950 block flex items-center justify-between text-[11px]">
+                        <span>سعر التاجر الذهبي VIP 👑:</span>
+                        <span className="text-[10px] text-amber-800">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={vipPrice}
+                        onChange={(e) => setVipPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="7500"
+                        className="w-full bg-white border border-amber-400 rounded-xl py-1.5 px-2.5 text-xs font-black font-mono text-amber-900 focus:border-amber-600"
+                      />
+                      {renderProfitBadge(vipPrice, true)}
+                    </div>
 
-                  {/* 4. Silver Special Price (التاجر الفضي) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-800 block flex items-center justify-between">
-                      <span>4. سعر التاجر الفضي 🥈:</span>
-                      <span className="text-[10px] text-slate-500">للكرتون</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={specialPrice}
-                      onChange={(e) => setSpecialPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="8000"
-                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-black font-mono text-slate-800 focus:border-brand-blue"
-                    />
-                    <span className="text-[10px] text-slate-500 block">للتجار ذوي السحب المستمر</span>
-                  </div>
+                    {/* Consumer Carton Price (Semantic label: سعر الكرتون للمستهلك) */}
+                    <div className="bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200 space-y-1">
+                      <label className="font-black text-indigo-950 block flex items-center justify-between text-[11px]">
+                        <span>سعر الكرتون للمستهلك 📦:</span>
+                        <span className="text-[10px] text-indigo-800 font-bold">للكرتون</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={boxPrice}
+                        onChange={(e) => setBoxPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="مثال: 8000"
+                        className="w-full bg-white border-2 border-indigo-300 rounded-xl py-1.5 px-2.5 text-xs font-black font-mono text-indigo-950 focus:border-indigo-600"
+                      />
+                      {renderProfitBadge(boxPrice, true)}
+                      <span className="text-[9px] text-indigo-800/80 block leading-tight pt-0.5">
+                        سعر شراء كرتون كامل للزبون العادي
+                      </span>
+                    </div>
 
-                  {/* 5. Gold VIP Price (التاجر الذهبي) */}
-                  <div className="space-y-1">
-                    <label className="font-bold text-amber-800 block flex items-center justify-between">
-                      <span>5. سعر التاجر الذهبي VIP 👑:</span>
-                      <span className="text-[10px] text-amber-700">للكرتون</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={vipPrice}
-                      onChange={(e) => setVipPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="7500"
-                      className="w-full bg-white border border-amber-400 rounded-xl py-2 px-3 text-xs font-black font-mono text-amber-700 focus:border-amber-600"
-                    />
-                    <span className="text-[10px] text-amber-600 block">لكبار التجار والموزعين المميزين</span>
                   </div>
-
-                  {/* 6. Consumer Carton / Box Price (سعر كرتون الزبون العادي) */}
-                  <div className="space-y-1 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200">
-                    <label className="font-black text-indigo-950 block flex items-center justify-between">
-                      <span>6. سعر كرتون المستهلك (الزبون العادي) 📦:</span>
-                      <span className="text-[10px] text-indigo-700 font-bold">للكرتون الكامل</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={boxPrice}
-                      onChange={(e) => setBoxPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="مثال: 8000"
-                      className="w-full bg-white border-2 border-indigo-400 rounded-xl py-1.5 px-3 text-xs font-black font-mono text-indigo-950 focus:border-indigo-600"
-                    />
-                    <span className="text-[10px] text-indigo-800 font-bold block">
-                      💡 السعر الذي يدفعه الزبون العادي عند شراء كرتون كامل (أنسب له من المفرد وأعلى من سعر التاجر).
-                    </span>
-                  </div>
-
-                  {/* 7. Retail Price (سعر القطعة المفردة) */}
-                  <div className="space-y-1 sm:col-span-2 bg-blue-50/60 p-2.5 rounded-xl border border-blue-200">
-                    <label className="font-black text-blue-950 block flex items-center justify-between">
-                      <span>7. سعر البيع بالمفرد للزبون العادي (للقطعة / الكيس) 👤 *:</span>
-                      <span className="text-[10px] text-blue-700 font-bold">للقطعة المفردة</span>
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="500"
-                      className="w-full bg-white border-2 border-blue-400 rounded-xl py-2 px-3 text-xs font-black font-mono text-blue-950 focus:border-brand-blue"
-                    />
-                    <span className="text-[10px] text-blue-700 block">سعر القطعة الواحدة أو كيس المفرد للمستهلكين في التطبيق</span>
-                  </div>
-
                 </div>
+
+                {/* 3. COMPARISON BANNER */}
+                {modalPiecesPerCarton > 0 && modalPrice > 0 && (
+                  <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/80 p-3 rounded-xl border border-blue-200/80 space-y-1.5 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-1 font-bold text-slate-800">
+                      <span>📊 مقارنة الجملة والمفرد للكرتون الواحد ({modalPiecesPerCarton} قطعة):</span>
+                      <span className="font-mono font-black text-brand-blue text-sm">
+                        إجمالي البيع مفرد: {modalRetailCartonTotal.toLocaleString()} د.ع
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1 border-t border-blue-200/50">
+                      {modalWholesale > 0 && (
+                        <div className="flex items-center justify-between text-slate-700 bg-white/70 px-2 py-1 rounded-md">
+                          <span>فرق سعر كرتون الجملة عن المفرد:</span>
+                          <span className="font-mono font-bold text-emerald-700">
+                            +{(modalRetailCartonTotal - modalWholesale).toLocaleString()} د.ع ({(((modalRetailCartonTotal - modalWholesale) / modalRetailCartonTotal) * 100).toFixed(1)}%)
+                          </span>
+                        </div>
+                      )}
+                      {Boolean(modalBox && modalBox > 0) && (
+                        <div className="flex items-center justify-between text-slate-700 bg-white/70 px-2 py-1 rounded-md">
+                          <span>توفير المستهلك عند شراء كرتون كامل:</span>
+                          <span className="font-mono font-bold text-indigo-700">
+                            {(modalRetailCartonTotal - (modalBox || 0)).toLocaleString()} د.ع ({(((modalRetailCartonTotal - (modalBox || 0)) / modalRetailCartonTotal) * 100).toFixed(1)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. REAL-TIME VALIDATION ERRORS & WARNINGS */}
+                {livePricingValidation.hardErrors.length > 0 && (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 text-xs text-red-900 space-y-1">
+                    <div className="flex items-center gap-1.5 font-black text-red-800">
+                      <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>أخطاء تسعير تجارية تمنع حفظ المنتج:</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-0.5 text-red-700 pr-1">
+                      {livePricingValidation.hardErrors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* 5. BELOW-COST SELLING OVERRIDE CONFIRMATION */}
+                {livePricingValidation.requiresOverride && (
+                  <div className="bg-red-100/70 border-2 border-red-400 rounded-xl p-3 text-xs space-y-2.5">
+                    <div className="flex items-center gap-2 font-black text-red-900">
+                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                      <span>تنبيه خطير: التسعير يتضمن بيعاً دون التكلفة!</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-0.5 text-red-800 pr-1 text-[11px]">
+                      {livePricingValidation.warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                    <div className="bg-white p-2.5 rounded-lg border border-red-300 space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer font-bold text-red-950 text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={allowBelowCostOverride}
+                          onChange={(e) => setAllowBelowCostOverride(e.target.checked)}
+                          className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4"
+                        />
+                        <span>
+                          أقر وأوافق بصفتي الإدارية على البيع بأقل من التكلفة استثنائياً لهذا المنتج وتوثيق العملية في سجل التدقيق
+                        </span>
+                      </label>
+
+                      {allowBelowCostOverride && (
+                        <div className="space-y-1 pt-1 pr-6">
+                          <label className="font-bold text-red-900 block text-[11px]">
+                            سبب البيع دون التكلفة (مطلوب للتوثيق والمساءلة الإدارية) *:
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={overrideReason}
+                            onChange={(e) => setOverrideReason(e.target.value)}
+                            placeholder="مثال: تصفية ستوك قريب الانتهاء / حملة ترويجية للموسم"
+                            className="w-full bg-white border border-red-300 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-900 focus:border-red-600"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {/* Units Description */}

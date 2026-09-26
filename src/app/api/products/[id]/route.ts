@@ -21,10 +21,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const body = await request.json();
+    const { allowBelowCostOverride, overrideReason, operator, ...updates } = body;
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
     const updated = usePg
-      ? await pgUpdateProduct(params.id, body)
-      : updateProduct(params.id, body);
+      ? await pgUpdateProduct(params.id, updates, { allowBelowCostOverride, overrideReason, operator })
+      : updateProduct(params.id, updates);
     if (!updated) {
       return NextResponse.json({ success: false, error: 'المنتج غير موجود' }, { status: 404 });
     }

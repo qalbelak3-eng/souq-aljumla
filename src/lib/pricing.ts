@@ -326,3 +326,382 @@ export function calculateUserCashbackFromOrders(
     totalItemsCount,
   };
 }
+
+/* =========================================================================
+   Phase Commerce-2B2: Product Pricing Foundation, Validation & Semantic Audit
+   ========================================================================= */
+
+export interface ProductPricingInput {
+  costPrice?: number | string | null;
+  price?: number | string | null;
+  wholesalePrice?: number | string | null;
+  specialPrice?: number | string | null;
+  vipPrice?: number | string | null;
+  marketPrice?: number | string | null;
+  boxPrice?: number | string | null; // Semantic: Consumer Carton Price (سعر الكرتون للمستهلك)
+  boxesPerCarton?: number | string | null;
+  itemsPerBox?: number | string | null;
+  piecesPerCarton?: number | string | null;
+  isSellable?: boolean;
+}
+
+export interface ProductPricingValidationOptions {
+  allowBelowCostOverride?: boolean;
+  overrideReason?: string;
+  operator?: {
+    role?: string | null;
+    username?: string | null;
+    name?: string | null;
+    permissions?: string[] | null;
+  };
+}
+
+export interface PricingValidationResult {
+  valid: boolean;
+  hardErrors: string[];
+  warnings: string[];
+  requiresOverride: boolean;
+  metrics: {
+    piecesPerCarton: number;
+    pieceCostPrice: number;
+    retailCartonTotal: number;
+    bronzeMarginPercent: number;
+    bronzeProfit: number;
+    goldMarginPercent?: number;
+    silverMarginPercent?: number;
+    marketMarginPercent?: number;
+    consumerCartonMarginPercent?: number;
+  };
+}
+
+function parsePricingNumber(val: any): number | null {
+  if (val === undefined || val === null || val === '') return null;
+  const num = Number(val);
+  return isNaN(num) ? NaN : num;
+}
+
+/**
+ * محرك مركزي للتحقق من سلامة أسعار المنتجات (Server-Side + Client-Side):
+ * - Hard Errors: أخطاء قطعية تمنع حفظ المنتج (سالب، تكلفة صفر، أسعار أساسية صفرية، تناقض رتب الجملة Gold > Silver أو Silver > Bronze).
+ * - Warnings: تحذيرات تسترعي الانتباه وتتطلب موافقة إدارية معللة في حال البيع دون التكلفة.
+ */
+export function validateProductPricing(
+  input: ProductPricingInput,
+  options?: ProductPricingValidationOptions
+): PricingValidationResult {
+  const hardErrors: string[] = [];
+  const warnings: string[] = [];
+
+  const cost = parsePricingNumber(input.costPrice);
+  const retailPiece = parsePricingNumber(input.price);
+  const wholesale = parsePricingNumber(input.wholesalePrice);
+  const special = parsePricingNumber(input.specialPrice);
+  const vip = parsePricingNumber(input.vipPrice);
+  const market = parsePricingNumber(input.marketPrice);
+  const box = parsePricingNumber(input.boxPrice); // Consumer Carton Price
+
+  const boxes = Math.max(1, Number(input.boxesPerCarton) || 1);
+  const items = Math.max(1, Number(input.itemsPerBox) || 1);
+  const pieces = Number(input.piecesPerCarton) || (boxes * items);
+
+  // 1. Negative or Non-Numeric Checks (Hard Errors)
+  const allFields: { name: string; val: number | null }[] = [
+    { name: 'سعر التكلفة', val: cost },
+    { name: 'سعر القطعة المفردة', val: retailPiece },
+    { name: 'سعر كرتون الجملة البرونزي', val: wholesale },
+    { name: 'سعر كرتون الجملة الفضي', val: special },
+    { name: 'سعر كرتون الجملة الذهبي VIP', val: vip },
+    { name: 'سعر كرتون الماركت', val: market },
+    { name: 'سعر كرتون المستهلك', val: box },
+  ];
+
+  for (const f of allFields) {
+    if (f.val !== null) {
+      if (isNaN(f.val) || !isFinite(f.val)) {
+        hardErrors.push(`${f.name} غير صالح ويجب أن يكون رقماً صحيحاً`);
+      } else if (f.val < 0) {
+        hardErrors.push(`${f.name} لا يمكن أن يكون رقماً سالباً`);
+      }
+    }
+  }
+
+  // 2. Required Values for Sellable Products (Hard Errors)
+  const isSellable = input.isSellable !== false;
+  if (isSellable) {
+    if (cost === null || cost <= 0) {
+      hardErrors.push('سعر تكلفة الكرتون (costPrice) مطلوب ويجب أن يكون أكبر من صفر للسلع القابلة للبيع');
+    }
+    if (retailPiece === null || retailPiece <= 0) {
+      hardErrors.push('سعر بيع القطعة المفردة للمستهلك (price) مطلوب ويجب أن يكون أكبر من صفر');
+    }
+    if (wholesale === null || wholesale <= 0) {
+      hardErrors.push('سعر كرتون الجملة الأساسي للتاجر البرونزي (wholesalePrice) مطلوب ويجب أن يكون أكبر من صفر');
+    }
+  }
+
+  // 3. Wholesale Tier Logical Hierarchy (Hard Errors)
+  // القاعدة التجارية الصارمة: Gold VIP <= Silver <= Bronze
+  if (vip !== null && vip > 0 && special !== null && special > 0) {
+    if (vip > special) {
+      hardErrors.push(
+        `تناقض في تسعير الرتب: سعر التاجر الذهبي VIP (${vip.toLocaleString()} د.ع) لا يمكن أن يكون أعلى من سعر التاجر الفضي (${special.toLocaleString()} د.ع)`
+      );
+    }
+  }
+
+  if (special !== null && special > 0 && wholesale !== null && wholesale > 0) {
+    if (special > wholesale) {
+      hardErrors.push(
+        `تناقض في تسعير الرتب: سعر التاجر الفضي (${special.toLocaleString()} د.ع) لا يمكن أن يكون أعلى من سعر التاجر البرونزي (${wholesale.toLocaleString()} د.ع)`
+      );
+    }
+  }
+
+  if (vip !== null && vip > 0 && wholesale !== null && wholesale > 0) {
+    if (vip > wholesale) {
+      hardErrors.push(
+        `تناقض في تسعير الرتب: سعر التاجر الذهبي VIP (${vip.toLocaleString()} د.ع) لا يمكن أن يكون أعلى من سعر التاجر البرونزي (${wholesale.toLocaleString()} د.ع)`
+      );
+    }
+  }
+
+  // 4. Calculations & Financial Metrics
+  const pieceCostPrice = cost && cost > 0 && pieces > 0 ? Number((cost / pieces).toFixed(4)) : 0;
+  const retailCartonTotal = retailPiece && retailPiece > 0 && pieces > 0 ? retailPiece * pieces : 0;
+  const bronzeProfit = wholesale && cost ? wholesale - cost : 0;
+  const bronzeMarginPercent = wholesale && cost && wholesale > 0 ? Number((((wholesale - cost) / wholesale) * 100).toFixed(1)) : 0;
+
+  const calcMargin = (p: number | null) => (p && cost && p > 0 ? Number((((p - cost) / p) * 100).toFixed(1)) : undefined);
+  const goldMarginPercent = calcMargin(vip);
+  const silverMarginPercent = calcMargin(special);
+  const marketMarginPercent = calcMargin(market);
+  const consumerCartonMarginPercent = calcMargin(box);
+
+  // 5. Warnings & Below Cost Verification
+  let requiresOverride = false;
+  if (cost !== null && cost > 0) {
+    if (wholesale !== null && wholesale > 0 && wholesale < cost) {
+      warnings.push(`سعر كرتون الجملة البرونزي (${wholesale.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+    if (special !== null && special > 0 && special < cost) {
+      warnings.push(`سعر كرتون التاجر الفضي (${special.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+    if (vip !== null && vip > 0 && vip < cost) {
+      warnings.push(`سعر كرتون التاجر الذهبي VIP (${vip.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+    if (market !== null && market > 0 && market < cost) {
+      warnings.push(`سعر كرتون الماركت (${market.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+    if (box !== null && box > 0 && box < cost) {
+      warnings.push(`سعر كرتون المستهلك (${box.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+    if (retailCartonTotal > 0 && retailCartonTotal < cost) {
+      warnings.push(`إجمالي بيع محتويات الكرتون بالمفرد (${retailCartonTotal.toLocaleString()} د.ع) أقل من سعر التكلفة (${cost.toLocaleString()} د.ع)`);
+      requiresOverride = true;
+    }
+  }
+
+  // 6. Packaging & Unit Consistency Warnings
+  if (box !== null && box > 0 && retailCartonTotal > 0 && retailCartonTotal < box) {
+    warnings.push(
+      `سعر شراء محتويات الكرتون بالقطع المفردة (${retailCartonTotal.toLocaleString()} د.ع) أرخص من سعر كرتون المستهلك (${box.toLocaleString()} د.ع)، مما يجعل الشراء بالكرتون غير مجدٍ للمستهلك`
+    );
+  }
+
+  if (retailCartonTotal > 0 && wholesale !== null && wholesale > 0 && retailCartonTotal < wholesale) {
+    warnings.push(
+      `سعر شراء محتويات الكرتون بالقطع المفردة (${retailCartonTotal.toLocaleString()} د.ع) أرخص من سعر كرتون الجملة (${wholesale.toLocaleString()} د.ع)`
+    );
+  }
+
+  if (market !== null && market > 0 && wholesale !== null && wholesale > 0 && market < wholesale) {
+    warnings.push(
+      `سعر كرتون الماركت (${market.toLocaleString()} د.ع) أقل من سعر كرتون الجملة البرونزي (${wholesale.toLocaleString()} د.ع)`
+    );
+  }
+
+  if (box !== null && box > 0 && wholesale !== null && wholesale > 0 && box < wholesale) {
+    warnings.push(
+      `سعر كرتون المستهلك (${box.toLocaleString()} د.ع) أقل من سعر كرتون الجملة البرونزي (${wholesale.toLocaleString()} د.ع)، مما قد يدفع التجار للشراء كأفراد`
+    );
+  }
+
+  // 7. Administrative Below-Cost Override Gate
+  let valid = hardErrors.length === 0;
+  if (requiresOverride) {
+    if (!options?.allowBelowCostOverride) {
+      valid = false;
+    } else {
+      const reason = (options.overrideReason || '').trim();
+      if (reason.length < 5) {
+        hardErrors.push('يرجى تقديم سبب إداري واضح ومفصل للبيع دون سعر التكلفة (5 أحرف على الأقل)');
+        valid = false;
+      }
+    }
+  }
+
+  return {
+    valid,
+    hardErrors,
+    warnings,
+    requiresOverride,
+    metrics: {
+      piecesPerCarton: pieces,
+      pieceCostPrice,
+      retailCartonTotal,
+      bronzeMarginPercent,
+      bronzeProfit,
+      goldMarginPercent,
+      silverMarginPercent,
+      marketMarginPercent,
+      consumerCartonMarginPercent,
+    },
+  };
+}
+
+export interface SuggestedTierPrices {
+  goldPrice: number;
+  silverPrice: number;
+  marketPrice: number;
+  consumerCartonPrice: number;
+}
+
+/**
+ * دالة مساعدة لتوليد اقتراحات ذكية غير ملزمة للرتب انطلاقاً من سعر البرونزي والتكلفة:
+ * - لا تفرض قيماً ثابتة كقاعدة دائمة، بل تقدم للمشرف قيم استرشادية مريحة مع الحفاظ على حق التعديل اليدوي الكامل.
+ */
+export function suggestTierPricing(wholesalePrice: number, costPrice?: number): SuggestedTierPrices {
+  const ws = Math.max(0, Number(wholesalePrice) || 0);
+  const cost = costPrice ? Math.max(0, Number(costPrice) || 0) : 0;
+
+  // Gold VIP: خصم تقريبي 5% مع التقريب لأقرب 250 د.ع وبما لا يقل عن التكلفة
+  const rawGold = Math.max(0, Math.round((ws * 0.95) / 250) * 250);
+  const goldPrice = cost > 0 ? Math.max(cost, rawGold) : rawGold;
+
+  // Silver: خصم تقريبي 2% مع التقريب لأقرب 250 د.ع وبما لا يقل عن التكلفة
+  const rawSilver = Math.max(0, Math.round((ws * 0.98) / 250) * 250);
+  const silverPrice = cost > 0 ? Math.max(cost, rawSilver) : rawSilver;
+
+  // Market: زيادة تقريبية 3% فوق سعر الجملة
+  const marketPrice = Math.max(0, Math.round((ws * 1.03) / 250) * 250);
+
+  // Consumer Carton: زيادة تقريبية 8% فوق سعر الجملة (أنسب من المفرد وأعلى من الجملة)
+  const consumerCartonPrice = Math.max(0, Math.round((ws * 1.08) / 250) * 250);
+
+  return {
+    goldPrice,
+    silverPrice,
+    marketPrice,
+    consumerCartonPrice,
+  };
+}
+
+export interface ProductPricingAuditReport {
+  productId: string;
+  productName: string;
+  hasHardErrors: boolean;
+  hasWarnings: boolean;
+  hardErrors: string[];
+  warnings: string[];
+  boxPriceClassification: 'none' | 'consumer_carton' | 'inner_box' | 'ambiguous';
+  costPrice: number;
+  wholesalePrice: number;
+  boxPrice?: number;
+  price: number;
+  piecesPerCarton: number;
+  retailCartonTotal: number;
+}
+
+/**
+ * أداة تدقيق وفحص للأصناف المخزنة لاكتشاف أي بيانات غير متناسقة في الأصناف القديمة (Legacy)
+ * دون تعديلها تلقائياً، وتصنيف معنى boxPrice الفعلي في كل صنف.
+ */
+export function auditProductPricing(product: Product): ProductPricingAuditReport {
+  const boxes = Math.max(1, Number(product.boxesPerCarton) || 1);
+  const items = Math.max(1, Number(product.itemsPerBox) || 1);
+  const pieces = Number(product.itemsPerWholesaleUnit) || (boxes * items);
+
+  const costP = Number(product.costPrice) || 0;
+  const wsP = Number(product.wholesalePrice) || 0;
+  const retailP = Number(product.price) || 0;
+  const boxP = product.boxPrice !== undefined && product.boxPrice !== null ? Number(product.boxPrice) : undefined;
+  const retailCarton = retailP * pieces;
+
+  let classification: 'none' | 'consumer_carton' | 'inner_box' | 'ambiguous' = 'none';
+  if (boxP !== undefined && boxP > 0) {
+    if (wsP > 0 && boxP >= wsP) {
+      classification = 'consumer_carton';
+    } else if (boxes > 1 && wsP > 0 && boxP <= (wsP / boxes) * 1.5) {
+      classification = 'inner_box';
+    } else {
+      classification = 'ambiguous';
+    }
+  }
+
+  const res = validateProductPricing({
+    costPrice: product.costPrice,
+    price: product.price,
+    wholesalePrice: product.wholesalePrice,
+    specialPrice: product.specialPrice,
+    vipPrice: product.vipPrice,
+    marketPrice: product.marketPrice,
+    boxPrice: product.boxPrice,
+    boxesPerCarton: product.boxesPerCarton,
+    itemsPerBox: product.itemsPerBox,
+    piecesPerCarton: pieces,
+    isSellable: true,
+  });
+
+  return {
+    productId: product.id,
+    productName: product.name,
+    hasHardErrors: res.hardErrors.length > 0,
+    hasWarnings: res.warnings.length > 0,
+    hardErrors: res.hardErrors,
+    warnings: res.warnings,
+    boxPriceClassification: classification,
+    costPrice: costP,
+    wholesalePrice: wsP,
+    boxPrice: boxP,
+    price: retailP,
+    piecesPerCarton: pieces,
+    retailCartonTotal: retailCarton,
+  };
+}
+
+export function auditAllProductsPricing(products: Product[]): {
+  total: number;
+  cleanCount: number;
+  warningCount: number;
+  errorCount: number;
+  boxPriceBreakdown: { none: number; consumer_carton: number; inner_box: number; ambiguous: number };
+  reports: ProductPricingAuditReport[];
+} {
+  const reports = products.map(auditProductPricing);
+  const breakdown = { none: 0, consumer_carton: 0, inner_box: 0, ambiguous: 0 };
+
+  let clean = 0;
+  let warn = 0;
+  let err = 0;
+
+  for (const r of reports) {
+    breakdown[r.boxPriceClassification]++;
+    if (r.hasHardErrors) err++;
+    else if (r.hasWarnings) warn++;
+    else clean++;
+  }
+
+  return {
+    total: products.length,
+    cleanCount: clean,
+    warningCount: warn,
+    errorCount: err,
+    boxPriceBreakdown: breakdown,
+    reports,
+  };
+}

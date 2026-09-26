@@ -1,5 +1,7 @@
 import { getPostgresClient } from '@/db/client';
 import { Product, Category, Company } from '@/types';
+import { PgOperator } from '@/lib/postgres-orders';
+import { validateProductPricing } from '@/lib/pricing';
 
 // =========================================================================
 // 1. Categories Management (PostgreSQL)
@@ -552,7 +554,14 @@ export async function pgGetProductById(id: string): Promise<Product | null> {
  * - Category and company relational resolution
  * - Promotional offer creation in product_offers if created on offer
  */
-export async function pgCreateProduct(productData: Partial<Product> & { name: string; category?: string }): Promise<Product> {
+export async function pgCreateProduct(
+  productData: Partial<Product> & { name: string; category?: string },
+  options?: {
+    operator?: PgOperator;
+    allowBelowCostOverride?: boolean;
+    overrideReason?: string;
+  }
+): Promise<Product> {
   const sql = getPostgresClient();
 
   const name = productData.name?.trim();
@@ -639,6 +648,38 @@ export async function pgCreateProduct(productData: Partial<Product> & { name: st
   const vipPrice = productData.vipPrice !== undefined ? Number(productData.vipPrice) : null;
   const wholesaleMinQuantity = Math.max(1, Number(productData.wholesaleMinQuantity) || 1);
 
+  // 5.1. Central Server-Side Pricing Validation (Commerce-2B2)
+  const validation = validateProductPricing(
+    {
+      costPrice,
+      price,
+      wholesalePrice,
+      specialPrice,
+      vipPrice,
+      marketPrice,
+      boxPrice,
+      boxesPerCarton,
+      itemsPerBox,
+      piecesPerCarton,
+      isSellable: true,
+    },
+    {
+      allowBelowCostOverride: options?.allowBelowCostOverride,
+      overrideReason: options?.overrideReason,
+      operator: options?.operator,
+    }
+  );
+
+  if (validation.hardErrors.length > 0) {
+    throw new Error(validation.hardErrors.join(' | '));
+  }
+
+  if (validation.requiresOverride && !options?.allowBelowCostOverride) {
+    throw new Error(
+      `تحذير تجاري: يتضمن التسعير بيعاً بأقل من التكلفة (${validation.warnings.join('; ')}). يتطلب هذا الإجراء تأكيداً إدارياً صريحاً مع بيان سبب البيع دون التكلفة.`
+    );
+  }
+
   // 6. Units and Merchandising
   const retailUnit = productData.retailUnit?.trim() || 'قطعة مفردة';
   const wholesaleUnit = productData.wholesaleUnit?.trim() || `كرتون جملة (${boxesPerCarton} علب × ${itemsPerBox} قطعة)`;
@@ -723,6 +764,32 @@ export async function pgCreateProduct(productData: Partial<Product> & { name: st
 
   const newProductId = String(newRow.id);
 
+  // Log audit if created below cost with administrative override
+  if (validation.requiresOverride && options?.allowBelowCostOverride) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'pricing_below_cost_override',
+          'اعتماد تسعير استثنائي دون التكلفة',
+          'pricing',
+          'التسعير والأرباح',
+          ${sql.json(options.operator || null)},
+          'product',
+          ${newProductId},
+          ${name},
+          ${`تم اعتماد تسعير دون التكلفة للصنف "${name}". السبب: "${options.overrideReason}". التحذيرات: ${validation.warnings.join('; ')}`},
+          'warning'
+        );
+      `;
+    } catch (e) {
+      console.error('Failed to log pricing override audit:', e);
+    }
+  }
+
   // 8. Handle Promotional Offer Creation
   if (isOnOffer) {
     const offerOriginalPrice = Number(productData.originalPrice);
@@ -771,7 +838,12 @@ export async function pgCreateProduct(productData: Partial<Product> & { name: st
  */
 export async function pgUpdateProduct(
   id: string,
-  updates: Partial<Product>
+  updates: Partial<Product>,
+  options?: {
+    operator?: PgOperator;
+    allowBelowCostOverride?: boolean;
+    overrideReason?: string;
+  }
 ): Promise<Product | null> {
   const sql = getPostgresClient();
 
@@ -850,6 +922,45 @@ export async function pgUpdateProduct(
   const pieceCostPrice = updates.pieceCostPrice !== undefined
     ? Number(updates.pieceCostPrice)
     : (costPrice && newPiecesPerCarton > 0 ? Number((costPrice / newPiecesPerCarton).toFixed(4)) : undefined);
+
+  // 4.1. Validate Pricing Hierarchy (Commerce-2B2)
+  const priceToCheck = updates.price !== undefined ? Number(updates.price) : (existing.isOnOffer ? (existing.originalPrice || existing.price) : existing.price);
+  const wholesaleToCheck = updates.wholesalePrice !== undefined ? Number(updates.wholesalePrice) : (existing.isOnOffer ? (existing.originalWholesalePrice || existing.wholesalePrice) : existing.wholesalePrice);
+  const specialToCheck = updates.specialPrice !== undefined ? (updates.specialPrice ? Number(updates.specialPrice) : null) : existing.specialPrice;
+  const vipToCheck = updates.vipPrice !== undefined ? (updates.vipPrice ? Number(updates.vipPrice) : null) : existing.vipPrice;
+  const marketToCheck = updates.marketPrice !== undefined ? (updates.marketPrice ? Number(updates.marketPrice) : null) : existing.marketPrice;
+  const boxToCheck = updates.boxPrice !== undefined ? (updates.boxPrice ? Number(updates.boxPrice) : null) : existing.boxPrice;
+
+  const validation = validateProductPricing(
+    {
+      costPrice,
+      price: priceToCheck,
+      wholesalePrice: wholesaleToCheck,
+      specialPrice: specialToCheck,
+      vipPrice: vipToCheck,
+      marketPrice: marketToCheck,
+      boxPrice: boxToCheck,
+      boxesPerCarton: newBoxes,
+      itemsPerBox: newItems,
+      piecesPerCarton: newPiecesPerCarton,
+      isSellable: true,
+    },
+    {
+      allowBelowCostOverride: options?.allowBelowCostOverride,
+      overrideReason: options?.overrideReason,
+      operator: options?.operator,
+    }
+  );
+
+  if (validation.hardErrors.length > 0) {
+    throw new Error(validation.hardErrors.join(' | '));
+  }
+
+  if (validation.requiresOverride && !options?.allowBelowCostOverride) {
+    throw new Error(
+      `تحذير تجاري: يتضمن التسعير بيعاً بأقل من التكلفة (${validation.warnings.join('; ')}). يتطلب هذا الإجراء تأكيداً إدارياً صريحاً مع بيان سبب البيع دون التكلفة.`
+    );
+  }
 
   // 5. Handle Promotional Offer Sync
   if (updates.isOnOffer === false) {
@@ -969,6 +1080,32 @@ export async function pgUpdateProduct(
       cashback_merchant_amount = ${updates.cashbackMerchantAmount !== undefined ? (updates.cashbackMerchantAmount ? Number(updates.cashbackMerchantAmount) : null) : sql`cashback_merchant_amount`}
     WHERE id = ${productId};
   `;
+
+  // Log audit if updated below cost with administrative override
+  if (validation.requiresOverride && options?.allowBelowCostOverride) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'pricing_below_cost_override',
+          'اعتماد تسعير استثنائي دون التكلفة (تعديل منتج)',
+          'pricing',
+          'التسعير والأرباح',
+          ${sql.json(options.operator || null)},
+          'product',
+          ${productId},
+          ${existing.name},
+          ${`تم اعتماد تسعير دون التكلفة للصنف "${existing.name}". السبب: "${options.overrideReason}". التحذيرات: ${validation.warnings.join('; ')}`},
+          'warning'
+        );
+      `;
+    } catch (e) {
+      console.error('Failed to log pricing override audit on update:', e);
+    }
+  }
 
   return await pgGetProductById(productId);
 }
