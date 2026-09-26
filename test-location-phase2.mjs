@@ -66,6 +66,7 @@ async function setup() {
     'drizzle/0007_delivery_pin_proof.sql',
     'drizzle/0008_delivery_pin_encrypted.sql',
     'drizzle/0009_driver_operational_status.sql',
+    'drizzle/0010_order_coupon_snapshot.sql',
   ];
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);

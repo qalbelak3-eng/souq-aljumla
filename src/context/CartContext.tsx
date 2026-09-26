@@ -282,10 +282,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const applyCoupon = async (code: string): Promise<{ success: boolean; message: string }> => {
     try {
+      const payloadItems = validCart.map((it) => ({
+        productId: it.product.id,
+        quantity: it.quantity,
+        saleType: it.saleType,
+      }));
       const res = await fetch('/api/coupons/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, subtotal, userAccountType: user?.accountType }),
+        body: JSON.stringify({
+          code,
+          subtotal,
+          items: payloadItems,
+          userAccountType: user?.accountType,
+        }),
       });
       const data = await res.json();
       if (data.success && data.coupon) {

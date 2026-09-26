@@ -30,15 +30,23 @@ export async function POST(request: Request) {
       let calculated = 0;
       for (const item of items) {
         const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id);
-        if (prod && (prod as any).isActive !== false) {
-          const qty = Math.max(1, Number(item.quantity) || 1);
-          const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
-          const pricingRes = getProductPriceForUser(prod, saleType as any, customer as any);
-          calculated += pricingRes.price * qty;
+        if (!prod || (prod as any).isActive === false) {
+          return NextResponse.json({
+            success: false,
+            error: 'السلة تحتوي على منتج غير متوفر أو معطل حالياً',
+          }, { status: 400 });
         }
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
+        const pricingRes = getProductPriceForUser(prod, saleType as any, customer as any);
+        calculated += pricingRes.price * qty;
       }
-      if (calculated > 0) {
-        subtotal = calculated;
+      subtotal = calculated;
+    } else {
+      // If items are missing or empty:
+      // Admins may provide arbitrary subtotal for simulation, but customers/guests subtotal is strictly 0
+      if (!admin) {
+        subtotal = 0;
       }
     }
 

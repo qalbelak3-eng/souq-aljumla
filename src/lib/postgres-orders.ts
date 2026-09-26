@@ -15,6 +15,7 @@ import {
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgConsumeCoupon } from '@/lib/postgres-coupons';
+import { getProductPriceForUser } from '@/lib/pricing';
 
 /* =========================================================
    Types & Interfaces
@@ -43,6 +44,7 @@ export interface PgCreateOrderInput {
   accountId?: string;
   createAccountIfMissing?: boolean;
   operator?: PgOperator;
+  trustSuppliedPrices?: boolean;
 }
 
 export interface PgOrderFilters {
@@ -128,6 +130,12 @@ export function formatOrderRecord(
     subtotal: toNumber(orderRow.subtotal),
     deliveryFee: toNumber(orderRow.deliveryFee),
     discount: toNumber(orderRow.discount),
+    couponId: orderRow.couponId ? String(orderRow.couponId) : undefined,
+    couponCode: orderRow.couponCodeSnap ? String(orderRow.couponCodeSnap) : undefined,
+    couponDiscountType: orderRow.couponDiscountTypeSnap ? String(orderRow.couponDiscountTypeSnap) : undefined,
+    couponDiscountValue: orderRow.couponDiscountValueSnap !== null && orderRow.couponDiscountValueSnap !== undefined
+      ? toNumber(orderRow.couponDiscountValueSnap)
+      : undefined,
     usedCashbackDiscount: toNumber(orderRow.usedCashbackDiscount),
     earnedCashback: toNumber(orderRow.earnedCashback),
     total: toNumber(orderRow.total),
@@ -454,7 +462,35 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       }
 
       const newStockPieces = currentStockPieces - baseQuantityDeducted;
-      const unitPrice = toNumber(item.price);
+      let unitPrice = toNumber(item.price);
+
+      // Defense-in-depth price verification at repository level (Requirement B):
+      // Privileged staff or admin operators can specify custom negotiated prices.
+      // Unprivileged customer/guest orders or explicit enforcement are strictly bound to official PostgreSQL pricing.
+      const isUnprivilegedCustomer = data.operator?.role === 'customer' || data.operator?.role === 'guest';
+      const shouldEnforceOfficialPrice = (isUnprivilegedCustomer || (data as any).enforceOfficialPrices === true) && data.trustSuppliedPrices !== true;
+      if (shouldEnforceOfficialPrice) {
+        const effectiveUser = {
+          accountType: data.userAccountType || customerAccount?.pricingTier || (data.customer as any)?.accountType || 'individual',
+          merchantTier: (customerAccount as any)?.merchantTier || (data.customer as any)?.merchantTier,
+          role: 'customer' as const,
+        };
+        const pricingRes = getProductPriceForUser(
+          {
+            ...prod,
+            price: Number(prod.price) || 0,
+            wholesalePrice: Number(prod.wholesalePrice) || 0,
+            marketPrice: Number(prod.marketPrice) || 0,
+            boxPrice: Number(prod.boxPrice) || 0,
+            specialPrice: Number(prod.specialPrice) || 0,
+            vipPrice: Number(prod.vipPrice) || 0,
+          } as any,
+          (item.saleType as any) || 'retail',
+          effectiveUser as any
+        );
+        unitPrice = pricingRes.price;
+      }
+
       const unitCost = toNumber(prod.pieceCostPrice);
       const itemEarnedCashback = toNumber(item.earnedCashback);
 
@@ -478,11 +514,26 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 
     const subtotal = calculatedSubtotal;
     let discount = 0;
+    let consumedCouponSnapshot: {
+      id?: string;
+      code?: string;
+      discountType?: string;
+      discountValue?: number;
+    } | null = null;
+
     if (data.couponCode && data.couponCode.trim()) {
       const cleanCoupon = data.couponCode.trim();
       const accountType = data.userAccountType || customerAccount?.pricingTier || (data.customer as any)?.accountType || 'individual';
       const couponRes = await pgConsumeCoupon(cleanCoupon, subtotal, accountType, tx);
       discount = couponRes.discount;
+      if (couponRes.coupon) {
+        consumedCouponSnapshot = {
+          id: couponRes.coupon.id,
+          code: couponRes.coupon.code,
+          discountType: couponRes.coupon.discountType,
+          discountValue: couponRes.coupon.discountValue,
+        };
+      }
     } else if (data.discount !== undefined && data.discount !== null && Number(data.discount) > 0) {
       if (data.operator?.role === 'admin' || data.operator?.role === 'staff') {
         discount = Math.min(subtotal, Math.max(0, toNumber(data.discount)));
@@ -503,6 +554,15 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     // -------------------------------------------------------------
     // Step D: Insert Order
     // -------------------------------------------------------------
+    try {
+      await tx.execute(sql`
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_id" uuid;
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_code_snap" varchar(50);
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_type_snap" varchar(20);
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_value_snap" numeric(14, 2);
+      `);
+    } catch {}
+
     const newOrderId = crypto.randomUUID();
     const pinData = generateOrderPinData();
 
@@ -525,6 +585,12 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         subtotal: String(subtotal.toFixed(2)),
         deliveryFee: String(deliveryFee.toFixed(2)),
         discount: String(discount.toFixed(2)),
+        couponId: consumedCouponSnapshot?.id || null,
+        couponCodeSnap: consumedCouponSnapshot?.code || null,
+        couponDiscountTypeSnap: consumedCouponSnapshot?.discountType || null,
+        couponDiscountValueSnap: consumedCouponSnapshot?.discountValue !== undefined
+          ? String(consumedCouponSnapshot.discountValue.toFixed(2))
+          : null,
         usedCashbackDiscount: String(usedCashbackDiscount.toFixed(2)),
         earnedCashback: String(earnedCashback.toFixed(2)),
         total: String(total.toFixed(2)),

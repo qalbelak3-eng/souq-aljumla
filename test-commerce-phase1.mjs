@@ -58,6 +58,7 @@ async function setup() {
     'drizzle/0007_delivery_pin_proof.sql',
     'drizzle/0008_delivery_pin_encrypted.sql',
     'drizzle/0009_driver_operational_status.sql',
+    'drizzle/0010_order_coupon_snapshot.sql',
   ];
 
   for (const m of migrations) {
@@ -85,7 +86,7 @@ async function runCommercePhase1Tests() {
     pgConsumeCoupon,
   } = await import('./src/lib/postgres-coupons.ts');
 
-  const { pgCreateOrder } = await import('./src/lib/postgres-orders.ts');
+  const { pgCreateOrder, pgGetOrderById } = await import('./src/lib/postgres-orders.ts');
   const { pgGetStoreSettings, pgUpdateStoreSettings } = await import('./src/lib/postgres-settings.ts');
   const { pgGetProductById } = await import('./src/lib/postgres-catalog.ts');
   const { POST: ordersPostHandler } = await import('./src/app/api/orders/route.ts');
@@ -560,6 +561,227 @@ async function runCommercePhase1Tests() {
     assert(auditRows[0].action_type === 'coupon_created', 'Audit logged coupon_created');
     assert(auditRows[1].action_type === 'coupon_updated', 'Audit logged coupon_updated');
     assert(auditRows[2].action_type === 'coupon_deleted', 'Audit logged coupon_deleted');
+  }
+
+  console.log('\n--- Scenario 14: Untrusted Subtotal & Product Verification in /api/coupons/validate (Hardening Point A) ---');
+  {
+    // Create a coupon with minimum order of 25,000 IQD
+    const [minOrderCoupon] = await sql`
+      INSERT INTO coupons (code, discount_type, discount_value, min_order_amount, is_active)
+      VALUES ('MIN25K', 'fixed', 5000, 25000, true)
+      RETURNING id, code;
+    `;
+
+    // 1. Customer sends spoofed subtotal of 50,000 IQD WITHOUT items -> subtotal forced to 0, rejects min order requirement
+    const fakeSubtotalReq = createJsonRequest('http://localhost/api/coupons/validate', 'POST', {
+      code: 'MIN25K',
+      subtotal: 50000,
+    }, individualCustomerCookie);
+    const fakeSubtotalRes = await couponsValidateHandler(fakeSubtotalReq);
+    const fakeSubtotalJson = await fakeSubtotalRes.json();
+    assert(fakeSubtotalRes.status === 400, 'Customer sending fake subtotal without items rejected with 400');
+    assert(fakeSubtotalJson.error.includes('25000') || fakeSubtotalJson.error.includes('الحد الأدنى'), 'Error explains minimum order requirement is not met');
+
+    // 2. Customer sends items with non-existent / invalid product ID -> returns 400 error
+    const fakeItemReq = createJsonRequest('http://localhost/api/coupons/validate', 'POST', {
+      code: 'MIN25K',
+      subtotal: 50000,
+      items: [{ productId: 'b0000000-0000-0000-0000-000000000000', quantity: 1, saleType: 'retail' }],
+    }, individualCustomerCookie);
+    const fakeItemRes = await couponsValidateHandler(fakeItemReq);
+    const fakeItemJson = await fakeItemRes.json();
+    assert(fakeItemRes.status === 400, 'Cart containing invalid product rejected with 400');
+    assert(fakeItemJson.error.includes('غير متوفر') || fakeItemJson.error.includes('معطل'), 'Error indicates cart item unavailable');
+
+    // 3. Customer sends empty items array with fake subtotal -> forced to 0, returns 400
+    const emptyItemsReq = createJsonRequest('http://localhost/api/coupons/validate', 'POST', {
+      code: 'MIN25K',
+      subtotal: 50000,
+      items: [],
+    }, individualCustomerCookie);
+    const emptyItemsRes = await couponsValidateHandler(emptyItemsReq);
+    assert(emptyItemsRes.status === 400, 'Cart with empty items array and fake subtotal rejected with 400');
+
+    // 4. Customer sends valid products reaching >= 25,000 IQD -> verified and accepted server-side
+    // prodActive has retail price 5000. 6 pieces = 30,000 IQD >= 25,000 IQD
+    const validItemsReq = createJsonRequest('http://localhost/api/coupons/validate', 'POST', {
+      code: 'MIN25K',
+      subtotal: 999, // Customer claims subtotal is 999, but server calculates 30,000
+      items: [{ productId: prodActive.id, quantity: 6, saleType: 'retail' }],
+    }, individualCustomerCookie);
+    const validItemsRes = await couponsValidateHandler(validItemsReq);
+    const validItemsJson = await validItemsRes.json();
+    assert(validItemsRes.status === 200, 'Cart with verified items meeting threshold accepted with 200');
+    assert(Number(validItemsJson.discount) === 5000, 'Calculates correct discount (5,000 IQD)');
+
+    // 5. Admin can test subtotal directly without items for administrative verification
+    const adminSimReq = createJsonRequest('http://localhost/api/coupons/validate', 'POST', {
+      code: 'MIN25K',
+      subtotal: 30000,
+    }, adminCookie);
+    const adminSimRes = await couponsValidateHandler(adminSimReq);
+    assert(adminSimRes.status === 200, 'Admin permitted to simulate subtotal without items');
+  }
+
+  console.log('\n--- Scenario 15: Repository-Level Price Tamper Defense in pgCreateOrder (Hardening Point B) ---');
+  {
+    // Customer attempts to call pgCreateOrder directly with spoofed unit price of 100 IQD for a 5000 IQD product
+    const tamperedOrder = await pgCreateOrder({
+      customer: {
+        name: 'زبون اختراق السعر',
+        phone: '07709998877',
+        isGuest: true,
+      },
+      items: [
+        {
+          productId: prodActive.id,
+          name: prodActive.name,
+          price: 100, // Spoofed price
+          quantity: 2,
+          saleType: 'retail',
+          unitLabel: 'قطعة',
+          image: '',
+        },
+      ],
+      operator: { name: 'Customer Test', username: '07709998877', role: 'customer' },
+      createAccountIfMissing: true,
+    });
+
+    // Subtotal must be calculated from official price (5000 * 2 = 10000), NOT spoofed price (100 * 2 = 200)
+    assert(Number(tamperedOrder.subtotal) === 10000, `pgCreateOrder enforced official price at repository layer (subtotal: ${tamperedOrder.subtotal} IQD, not 200)`);
+    assert(Number(tamperedOrder.items[0].price) === 5000, `Item price snap is official 5000 IQD`);
+
+    // Privileged admin operator CAN specify custom negotiated manual pricing
+    const adminOrder = await pgCreateOrder({
+      customer: {
+        name: 'زبون تفاوض خاص',
+        phone: '07709998866',
+        isGuest: true,
+      },
+      items: [
+        {
+          productId: prodActive.id,
+          name: prodActive.name,
+          price: 4200, // Custom negotiated price set by admin
+          quantity: 2,
+          saleType: 'retail',
+          unitLabel: 'قطعة',
+          image: '',
+        },
+      ],
+      operator: { name: 'مدير المبيعات', username: 'sales_admin', role: 'admin' },
+      createAccountIfMissing: true,
+    });
+    assert(Number(adminOrder.subtotal) === 8400, `Admin operator custom price honored (4200 * 2 = 8400 IQD)`);
+  }
+
+  console.log('\n--- Scenario 16: Order Coupon Historical Snapshot Persistence (Hardening Point C) ---');
+  {
+    // Create coupon with 15% discount
+    const [couponSnapTest] = await sql`
+      INSERT INTO coupons (code, discount_type, discount_value, min_order_amount, is_active)
+      VALUES ('SNAP15', 'percentage', 15, 5000, true)
+      RETURNING id, code;
+    `;
+
+    const snapOrder = await pgCreateOrder({
+      customer: {
+        name: 'زبون تجربة السجل',
+        phone: '07705556677',
+        isGuest: true,
+      },
+      items: [
+        {
+          productId: prodActive.id,
+          name: prodActive.name,
+          price: 5000,
+          quantity: 2, // 10,000 IQD subtotal
+          saleType: 'retail',
+          unitLabel: 'قطعة',
+          image: '',
+        },
+      ],
+      couponCode: 'SNAP15',
+      userAccountType: 'individual',
+      operator: { name: 'زبون', username: '07705556677', role: 'customer' },
+      createAccountIfMissing: true,
+    });
+
+    // Check DB record for orders table directly
+    const [dbOrder] = await sql`
+      SELECT id, order_number, coupon_id, coupon_code_snap, coupon_discount_type_snap, coupon_discount_value_snap, discount
+      FROM orders
+      WHERE id = ${snapOrder.id};
+    `;
+
+    assert(dbOrder.coupon_id === couponSnapTest.id, `Order references couponId in PostgreSQL`);
+    assert(dbOrder.coupon_code_snap === 'SNAP15', `Order snapshot preserved coupon_code_snap = 'SNAP15'`);
+    assert(dbOrder.coupon_discount_type_snap === 'percentage', `Order snapshot preserved coupon_discount_type_snap = 'percentage'`);
+    assert(Number(dbOrder.coupon_discount_value_snap) === 15, `Order snapshot preserved coupon_discount_value_snap = 15`);
+    assert(Number(dbOrder.discount) === 1500, `Discount amount calculated accurately (15% of 10,000 = 1,500 IQD)`);
+
+    // Verify formatOrderRecord / pgGetOrderById returns snapshot
+    const fetchedOrder = await pgGetOrderById(snapOrder.id);
+    assert(fetchedOrder?.couponCode === 'SNAP15', 'pgGetOrderById returns couponCode from snapshot');
+    assert(fetchedOrder?.couponDiscountType === 'percentage', 'pgGetOrderById returns couponDiscountType');
+    assert(fetchedOrder?.couponDiscountValue === 15, 'pgGetOrderById returns couponDiscountValue');
+  }
+
+  console.log('\n--- Scenario 17: Used Coupon Archival & Deactivation vs Unused Physical Delete (Hardening Point D) ---');
+  {
+    // 1. Delete a coupon that was used (SNAP15 has usage_count = 1 from Scenario 16)
+    const delUsedRes = await pgDeleteCoupon('SNAP15', { username: 'admin', role: 'admin' });
+    assert(delUsedRes === true, 'pgDeleteCoupon returned true for used coupon');
+
+    // Verify SNAP15 was NOT physically deleted, but archived and deactivated
+    const [archivedCoupon] = await sql`
+      SELECT id, code, is_active, is_archived, usage_count, archived_at
+      FROM coupons
+      WHERE id = (SELECT coupon_id FROM orders WHERE coupon_code_snap = 'SNAP15' LIMIT 1);
+    `;
+    assert(archivedCoupon != null, 'Used coupon still exists in PostgreSQL database (not physically deleted)');
+    assert(archivedCoupon.is_active === false, 'Archived coupon is_active is false');
+    assert(archivedCoupon.is_archived === true, 'Archived coupon is_archived is true');
+    assert(archivedCoupon.archived_at != null, 'Archived coupon has archived_at timestamp');
+    assert(archivedCoupon.code.includes('SNAP15_ARCHIVED_'), 'Code renamed to free up SNAP15 for future campaigns');
+
+    // Verify pgGetCoupons() does not return archived coupon
+    const visibleCoupons = await pgGetCoupons(false);
+    assert(!visibleCoupons.some((c) => c.id === archivedCoupon.id), 'pgGetCoupons excludes archived coupon');
+
+    // Verify pgGetCouponByCode('SNAP15') returns null
+    const codeLookup = await pgGetCouponByCode('SNAP15');
+    assert(codeLookup === null, 'pgGetCouponByCode("SNAP15") returns null');
+
+    // Verify invoice order STILL retains full snapshot of the coupon even after coupon was deleted/archived!
+    const [historicOrder] = await sql`
+      SELECT coupon_code_snap, coupon_discount_type_snap, coupon_discount_value_snap, discount
+      FROM orders
+      WHERE coupon_code_snap = 'SNAP15' LIMIT 1;
+    `;
+    assert(historicOrder.coupon_code_snap === 'SNAP15', 'Invoice permanently knows it used SNAP15 after coupon deletion');
+    assert(Number(historicOrder.coupon_discount_value_snap) === 15, 'Invoice retains coupon value rate snapshot');
+
+    // Verify audit logs recorded coupon_archived
+    const [archiveAudit] = await sql`
+      SELECT action_type, details
+      FROM audit_logs
+      WHERE action_type = 'coupon_archived'
+      ORDER BY timestamp DESC LIMIT 1;
+    `;
+    assert(archiveAudit != null, 'Audit log recorded coupon_archived action');
+
+    // 2. Delete an unused coupon (usage_count = 0) -> physical hard delete is safe
+    const [unusedCoupon] = await sql`
+      INSERT INTO coupons (code, discount_type, discount_value, is_active, usage_count)
+      VALUES ('UNUSED99', 'fixed', 1000, true, 0)
+      RETURNING id, code;
+    `;
+    const delUnusedRes = await pgDeleteCoupon('UNUSED99', { username: 'admin', role: 'admin' });
+    assert(delUnusedRes === true, 'pgDeleteCoupon returned true for unused coupon');
+
+    const [deletedRow] = await sql`SELECT id FROM coupons WHERE code = 'UNUSED99'`;
+    assert(deletedRow == null, 'Unused coupon physically deleted from database');
   }
 
   console.log('\n===============================================================');

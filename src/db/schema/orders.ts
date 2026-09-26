@@ -4,6 +4,7 @@ import { financialAccounts } from './accounts';
 import { products } from './catalog';
 import { drivers, vehicles, driverSettlements } from './vehicles_drivers';
 import { authIdentities } from './auth';
+import { coupons } from './operations';
 
 export const orders = pgTable('orders', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -22,6 +23,13 @@ export const orders = pgTable('orders', {
   mapsUrl: text('maps_url'),
   storefrontImage: text('storefront_image'),
   
+  // Coupon Historical Snapshot
+  couponId: uuid('coupon_id')
+    .references(() => coupons.id, { onDelete: 'set null' }),
+  couponCodeSnap: varchar('coupon_code_snap', { length: 50 }),
+  couponDiscountTypeSnap: varchar('coupon_discount_type_snap', { length: 20 }),
+  couponDiscountValueSnap: numeric('coupon_discount_value_snap', { precision: 14, scale: 2 }),
+
   // Financial Totals
   subtotal: numeric('subtotal', { precision: 14, scale: 2 }).notNull(),
   deliveryFee: numeric('delivery_fee', { precision: 14, scale: 2 }).default('0.00').notNull(),
@@ -75,6 +83,7 @@ export const orders = pgTable('orders', {
   index('idx_orders_driver_id').on(table.driverId),
   index('idx_orders_created_at').on(table.createdAt),
   index('idx_orders_delivery_verified_at').on(table.deliveryVerifiedAt),
+  index('idx_orders_coupon_code_snap').on(table.couponCodeSnap),
   check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),

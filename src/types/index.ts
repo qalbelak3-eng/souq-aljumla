@@ -321,6 +321,10 @@ export interface Order {
   subtotal: number;
   deliveryFee?: number;
   discount: number;
+  couponId?: string;
+  couponCode?: string;
+  couponDiscountType?: string;
+  couponDiscountValue?: number;
   usedCashbackDiscount?: number; // مبلغ الخصم المستقطع من رصيد الأرباح والمكافآت (كاش باك)
   earnedCashback?: number; // إجمالي رصيد الأرباح المكتسب من هذه الطلبية
   total: number;
@@ -428,6 +432,8 @@ export interface Coupon {
   usageLimit?: number; // الحد الأقصى للاستخدام
   usageCount?: number;
   expiresAt?: string; // تاريخ الانتهاء
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export interface LuckyWheelPrize {

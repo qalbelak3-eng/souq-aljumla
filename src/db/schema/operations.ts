@@ -43,6 +43,8 @@ export const coupons = pgTable('coupons', {
   usageCount: integer('usage_count').default(0).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   isActive: boolean('is_active').default(true).notNull(),
+  isArchived: boolean('is_archived').default(false).notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_coupons_code').on(table.code),

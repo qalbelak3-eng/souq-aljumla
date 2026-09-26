@@ -1,4 +1,4 @@
-import { eq, sql, desc } from 'drizzle-orm';
+import { eq, sql, desc, and } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import { coupons, auditLogs } from '@/db/schema';
 import { Coupon } from '@/types';
@@ -33,15 +33,29 @@ export function mapPgCouponRowToCoupon(r: any): Coupon {
       ? new Date(r.expiresAt ?? r.expires_at).toISOString()
       : undefined,
     isActive: Boolean(r.isActive ?? r.is_active),
+    isArchived: Boolean(r.isArchived ?? r.is_archived ?? false),
+    archivedAt: (r.archivedAt ?? r.archived_at)
+      ? new Date(r.archivedAt ?? r.archived_at).toISOString()
+      : undefined,
   };
 }
 
 /**
  * Seeds initial coupons into PostgreSQL if table is empty.
+ * Idempotently ensures historical coupon snapshot and archival columns exist.
  */
 export async function pgSeedInitialCoupons(): Promise<void> {
   const db = getDb();
   try {
+    await db.execute(sql`
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id uuid;
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code_snap varchar(50);
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_discount_type_snap varchar(20);
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_discount_value_snap numeric(14, 2);
+      ALTER TABLE coupons ADD COLUMN IF NOT EXISTS is_archived boolean DEFAULT false;
+      ALTER TABLE coupons ADD COLUMN IF NOT EXISTS archived_at timestamp with time zone;
+    `);
+
     const existing = await db.select({ count: sql<number>`count(*)` }).from(coupons);
     const count = Number(existing[0]?.count || 0);
     if (count === 0 && initialCoupons && initialCoupons.length > 0) {
@@ -59,6 +73,7 @@ export async function pgSeedInitialCoupons(): Promise<void> {
             usageCount: init.usageCount || 0,
             expiresAt: init.expiresAt ? new Date(init.expiresAt) : null,
             isActive: init.isActive ?? true,
+            isArchived: false,
           })
           .onConflictDoNothing();
       }
@@ -71,19 +86,24 @@ export async function pgSeedInitialCoupons(): Promise<void> {
 /**
  * Fetches all coupons from PostgreSQL, ordered by created_at DESC.
  * Seeds initialCoupons if the table is empty.
+ * By default filters out archived coupons unless includeArchived is true.
  */
-export async function pgGetCoupons(): Promise<Coupon[]> {
+export async function pgGetCoupons(includeArchived = false): Promise<Coupon[]> {
   const db = getDb();
-  let rows = await db.select().from(coupons).orderBy(desc(coupons.createdAt));
-  if (rows.length === 0) {
+  const whereClause = includeArchived ? undefined : eq(coupons.isArchived, false);
+  let rows = whereClause
+    ? await db.select().from(coupons).where(whereClause).orderBy(desc(coupons.createdAt))
+    : await db.select().from(coupons).orderBy(desc(coupons.createdAt));
+
+  if (rows.length === 0 && !includeArchived) {
     await pgSeedInitialCoupons();
-    rows = await db.select().from(coupons).orderBy(desc(coupons.createdAt));
+    rows = await db.select().from(coupons).where(eq(coupons.isArchived, false)).orderBy(desc(coupons.createdAt));
   }
   return rows.map(mapPgCouponRowToCoupon);
 }
 
 /**
- * Finds a coupon by exact or uppercase code.
+ * Finds a coupon by exact or uppercase code (excluding archived).
  */
 export async function pgGetCouponByCode(code: string): Promise<Coupon | null> {
   const clean = (code || '').trim().toUpperCase();
@@ -93,7 +113,7 @@ export async function pgGetCouponByCode(code: string): Promise<Coupon | null> {
   let rows = await db
     .select()
     .from(coupons)
-    .where(sql`UPPER(TRIM(${coupons.code})) = ${clean}`)
+    .where(and(sql`UPPER(TRIM(${coupons.code})) = ${clean}`, eq(coupons.isArchived, false)))
     .limit(1);
 
   if (rows.length === 0) {
@@ -103,7 +123,7 @@ export async function pgGetCouponByCode(code: string): Promise<Coupon | null> {
       rows = await db
         .select()
         .from(coupons)
-        .where(sql`UPPER(TRIM(${coupons.code})) = ${clean}`)
+        .where(and(sql`UPPER(TRIM(${coupons.code})) = ${clean}`, eq(coupons.isArchived, false)))
         .limit(1);
     }
   }
@@ -365,7 +385,43 @@ export async function pgDeleteCoupon(
 
   if (existing.length === 0) return false;
   const current = existing[0];
+  const usageCount = Number(current.usageCount || 0);
 
+  if (usageCount > 0) {
+    // Preserve historical data: Archive & Deactivate used coupon instead of physical delete (Requirement D)
+    const archivedCode = `${current.code}_ARCHIVED_${Date.now()}`;
+    await db
+      .update(coupons)
+      .set({
+        isActive: false,
+        isArchived: true,
+        archivedAt: new Date(),
+        code: archivedCode,
+      })
+      .where(eq(coupons.id, current.id));
+
+    // Audit log
+    try {
+      await db.insert(auditLogs).values({
+        actionType: 'coupon_archived',
+        actionLabel: 'أرشفة وتعطيل كود خصم مستخدم',
+        category: 'marketing',
+        categoryLabel: 'التسويق والكوبونات',
+        operatorSnapshot: operator || null,
+        targetType: 'coupon',
+        targetId: current.id,
+        targetReferenceNumber: current.code,
+        details: `تمت أرشفة وتعطيل كود الخصم ${current.code} لاحتوائه على سجل استخدام سابق (${usageCount} طلبية) بواسطة ${operator?.name || operator?.username || 'الإدارة'}`,
+        severity: 'info',
+      });
+    } catch (e) {
+      console.error('Failed to log coupon archive audit:', e);
+    }
+
+    return true;
+  }
+
+  // Never used in any order: physical delete is safe
   await db.delete(coupons).where(eq(coupons.id, current.id));
 
   // Audit log
