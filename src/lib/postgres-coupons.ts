@@ -42,20 +42,10 @@ export function mapPgCouponRowToCoupon(r: any): Coupon {
 
 /**
  * Seeds initial coupons into PostgreSQL if table is empty.
- * Idempotently ensures historical coupon snapshot and archival columns exist.
  */
 export async function pgSeedInitialCoupons(): Promise<void> {
   const db = getDb();
   try {
-    await db.execute(sql`
-      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id uuid;
-      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code_snap varchar(50);
-      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_discount_type_snap varchar(20);
-      ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_discount_value_snap numeric(14, 2);
-      ALTER TABLE coupons ADD COLUMN IF NOT EXISTS is_archived boolean DEFAULT false;
-      ALTER TABLE coupons ADD COLUMN IF NOT EXISTS archived_at timestamp with time zone;
-    `);
-
     const existing = await db.select({ count: sql<number>`count(*)` }).from(coupons);
     const count = Number(existing[0]?.count || 0);
     if (count === 0 && initialCoupons && initialCoupons.length > 0) {

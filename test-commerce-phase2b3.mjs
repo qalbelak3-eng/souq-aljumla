@@ -314,7 +314,7 @@ async function runCommercePhase2b3Tests() {
   console.log('\n--- Part 2: Database & Transactional Order Processing ---');
 
   const { pgCreateOrder, pgGetOrderById } = await import('./src/lib/postgres-orders.ts');
-  const { pgCreateCoupon } = await import('./src/lib/postgres-coupons.ts');
+  const { pgCreateCoupon, pgGetCoupons, pgGetCouponByCode } = await import('./src/lib/postgres-coupons.ts');
   const { POST: ordersPostHandler } = await import('./src/app/api/orders/route.ts');
 
   // Pre-seed test category and product
@@ -655,6 +655,83 @@ async function runCommercePhase2b3Tests() {
   const staleDataTier = await staleResTier.json();
   assert(staleResTier.status === 400, 'Scenario 29c: Returns 400 when client cart retail price (10k) differs from active offer (8k)');
   assert(staleDataTier.code === 'STALE_CART_PRICE', 'Scenario 29c: Returns code STALE_CART_PRICE');
+
+  // Scenario 31: Pure DML Verification: Coupon Read & Order Creation without runtime DDL
+  console.log('\n--- Scenario 31: Pure DML Verification (Coupons & Orders) ---');
+  const allCoupons = await pgGetCoupons();
+  assert(Array.isArray(allCoupons) && allCoupons.length > 0, 'Scenario 31: pgGetCoupons succeeds via pure DML');
+  const foundCoupon = await pgGetCouponByCode('TIERDISC10');
+  assert(foundCoupon !== null && foundCoupon.code === 'TIERDISC10', 'Scenario 31: pgGetCouponByCode succeeds via pure DML');
+
+  // Scenario 32: Fail-Fast Architecture on Unmigrated Database (Missing 0012)
+  console.log('\n--- Scenario 32: Fail-Fast Architecture on Unmigrated Database ---');
+  // Intentionally drop the columns added by migration 0012 to simulate an unmigrated database state
+  await sql`ALTER TABLE "orders" DROP COLUMN IF EXISTS "customer_account_type_snap";`;
+  await sql`ALTER TABLE "orders" DROP COLUMN IF EXISTS "customer_merchant_tier_snap";`;
+  await sql`ALTER TABLE "order_items" DROP COLUMN IF EXISTS "pricing_tier_snap";`;
+
+  let unmigratedFailedAsExpected = false;
+  let unmigratedErrorMessage = '';
+  try {
+    await pgCreateOrder({
+      customer: {
+        name: 'عميل تجربة قاعدة غير مهاجرة',
+        phone: '07700000099',
+        address: 'كربلاء',
+      },
+      items: [
+        {
+          productId: dbProduct.id,
+          quantity: 1,
+          saleType: 'retail',
+        },
+      ],
+      userAccountType: 'individual',
+      deliveryFee: 5000,
+      createAccountIfMissing: true,
+      operator: { role: 'customer' },
+    });
+  } catch (err) {
+    unmigratedFailedAsExpected = true;
+    unmigratedErrorMessage = err.message || '';
+  }
+
+  assert(unmigratedFailedAsExpected, 'Scenario 32: pgCreateOrder fails fast when migration 0012 is missing');
+  assert(
+    unmigratedErrorMessage.includes('customer_account_type_snap') || unmigratedErrorMessage.includes('does not exist'),
+    `Scenario 32: Error explicitly cites missing column without attempting runtime self-healing DDL: "${unmigratedErrorMessage}"`
+  );
+
+  // Check that the column was NOT automatically created (no self-healing occurred)
+  const colCheck = await sql`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'customer_account_type_snap';
+  `;
+  assert(colCheck.length === 0, 'Scenario 32: No runtime DDL self-healing occurred; column remains absent');
+
+  // Re-apply migration 0012 to prove that applying the formal migration restores order creation
+  console.log('   Re-applying migration 0012 to restore database schema...');
+  await runSqlScript(sql, path.resolve(process.cwd(), 'drizzle/0012_pricing_tier_snapshots.sql'));
+
+  const restoredOrder = await pgCreateOrder({
+    customer: {
+      name: 'عميل تجربة بعد تطبيق الميجريشن',
+      phone: '07700000099',
+      address: 'كربلاء',
+    },
+    items: [
+      {
+        productId: dbProduct.id,
+        quantity: 1,
+        saleType: 'retail',
+      },
+    ],
+    userAccountType: 'individual',
+    deliveryFee: 5000,
+    createAccountIfMissing: true,
+    operator: { role: 'customer' },
+  });
+  assert(restoredOrder && restoredOrder.id, 'Scenario 32: Order creation succeeds once formal migration 0012 is applied');
 
   console.log('\n================================================================');
   console.log(`  ALL COMMERCE-2B3 TESTS COMPLETE: ${passed} passed, ${failed} failed `);

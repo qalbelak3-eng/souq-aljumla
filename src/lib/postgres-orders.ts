@@ -656,18 +656,6 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     // -------------------------------------------------------------
     // Step D: Insert Order
     // -------------------------------------------------------------
-    try {
-      await tx.execute(sql`
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_id" uuid;
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_code_snap" varchar(50);
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_type_snap" varchar(20);
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_value_snap" numeric(14, 2);
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "customer_account_type_snap" varchar(50);
-        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "customer_merchant_tier_snap" varchar(50);
-        ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "pricing_tier_snap" varchar(50);
-      `);
-    } catch {}
-
     const pinData = generateOrderPinData();
 
     const [insertedOrder] = await tx
