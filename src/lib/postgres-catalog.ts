@@ -780,7 +780,7 @@ export async function pgCreateProduct(
           ${sql.json(options.operator || null)},
           'product',
           ${newProductId},
-          ${name},
+          ${(name || '').substring(0, 50)},
           ${`تم اعتماد تسعير دون التكلفة للصنف "${name}". السبب: "${options.overrideReason}". التحذيرات: ${validation.warnings.join('; ')}`},
           'warning'
         );
@@ -1097,7 +1097,7 @@ export async function pgUpdateProduct(
           ${sql.json(options.operator || null)},
           'product',
           ${productId},
-          ${existing.name},
+          ${(existing.name || '').substring(0, 50)},
           ${`تم اعتماد تسعير دون التكلفة للصنف "${existing.name}". السبب: "${options.overrideReason}". التحذيرات: ${validation.warnings.join('; ')}`},
           'warning'
         );
@@ -1116,7 +1116,7 @@ export async function pgUpdateProduct(
  * Foreign key constraint (product_offers ON DELETE CASCADE) guarantees
  * that all attached offers are safely removed automatically without orphans.
  */
-export async function pgDeleteProduct(id: string): Promise<boolean> {
+export async function pgDeleteProduct(id: string, operator?: PgOperator): Promise<boolean> {
   const sql = getPostgresClient();
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -1126,14 +1126,39 @@ export async function pgDeleteProduct(id: string): Promise<boolean> {
     rows = await sql`
       DELETE FROM products 
       WHERE id = ${id} OR barcode = ${id} 
-      RETURNING id;
+      RETURNING id, name;
     `;
   } else {
     rows = await sql`
       DELETE FROM products 
       WHERE barcode = ${id} 
-      RETURNING id;
+      RETURNING id, name;
     `;
+  }
+
+  if (rows.length > 0 && operator) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'product_deleted',
+          'حذف صنف من المخزون',
+          'catalog',
+          'الكتالوج والمنتجات',
+          ${sql.json(operator)},
+          'product',
+          ${String(rows[0].id)},
+          ${String(rows[0].name || id).substring(0, 50)},
+          ${`تم حذف الصنف "${rows[0].name || id}" نهائياً من النظام.`},
+          'warning'
+        );
+      `;
+    } catch (e) {
+      console.error('Failed to log product deletion audit:', e);
+    }
   }
 
   return rows.length > 0;

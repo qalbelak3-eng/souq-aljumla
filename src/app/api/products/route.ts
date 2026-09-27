@@ -3,6 +3,7 @@ import { getDomainDataSource } from '@/db/client';
 import { getProducts, createProduct, getCategories } from '@/lib/db';
 import { pgGetProducts, pgCreateProduct, pgGetCategories } from '@/lib/postgres-catalog';
 import { auditAllProductsPricing } from '@/lib/pricing';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,12 +34,43 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    // 1. RBAC Authentication & Authorization check
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
+        { status: 401 }
+      );
+    }
+    if (!hasPermission(admin, 'products') && admin.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بإضافة أو إدارة المنتجات والأسعار' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
-    const { allowBelowCostOverride, overrideReason, operator, ...productData } = body;
+    // Strictly FORBID trusting operator, role, or username coming from client request body
+    const { allowBelowCostOverride, overrideReason, operator: _ignoredOperator, ...productData } = body;
+
+    // Trusted server-side operator identity derived strictly from authenticated session
+    const trustedOperator = {
+      id: admin.id,
+      name: admin.name,
+      username: admin.username,
+      role: admin.role,
+      permissions: admin.permissions,
+    };
+
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
     const newProduct = usePg
-      ? await pgCreateProduct(productData, { allowBelowCostOverride, overrideReason, operator })
+      ? await pgCreateProduct(productData, {
+          allowBelowCostOverride: Boolean(allowBelowCostOverride),
+          overrideReason,
+          operator: trustedOperator,
+        })
       : createProduct(productData);
+
     return NextResponse.json({ success: true, product: newProduct }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });

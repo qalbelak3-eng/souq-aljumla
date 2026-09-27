@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDomainDataSource } from '@/db/client';
 import { getProductById, updateProduct, deleteProduct } from '@/lib/db';
 import { pgGetProductById, pgUpdateProduct, pgDeleteProduct } from '@/lib/postgres-catalog';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -20,12 +21,43 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
+    // 1. RBAC Authentication & Authorization check
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
+        { status: 401 }
+      );
+    }
+    if (!hasPermission(admin, 'products') && admin.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بتعديل أو إدارة المنتجات والأسعار' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
-    const { allowBelowCostOverride, overrideReason, operator, ...updates } = body;
+    // Strictly FORBID trusting operator, role, or username coming from client request body
+    const { allowBelowCostOverride, overrideReason, operator: _ignoredOperator, ...updates } = body;
+
+    // Trusted server-side operator identity derived strictly from authenticated session
+    const trustedOperator = {
+      id: admin.id,
+      name: admin.name,
+      username: admin.username,
+      role: admin.role,
+      permissions: admin.permissions,
+    };
+
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
     const updated = usePg
-      ? await pgUpdateProduct(params.id, updates, { allowBelowCostOverride, overrideReason, operator })
+      ? await pgUpdateProduct(params.id, updates, {
+          allowBelowCostOverride: Boolean(allowBelowCostOverride),
+          overrideReason,
+          operator: trustedOperator,
+        })
       : updateProduct(params.id, updates);
+
     if (!updated) {
       return NextResponse.json({ success: false, error: 'المنتج غير موجود' }, { status: 404 });
     }
@@ -37,10 +69,34 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
+    // 1. RBAC Authentication & Authorization check
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
+        { status: 401 }
+      );
+    }
+    if (!hasPermission(admin, 'products') && admin.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'غير مصرح لك بحذف المنتجات' },
+        { status: 403 }
+      );
+    }
+
+    const trustedOperator = {
+      id: admin.id,
+      name: admin.name,
+      username: admin.username,
+      role: admin.role,
+      permissions: admin.permissions,
+    };
+
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
     const ok = usePg
-      ? await pgDeleteProduct(params.id)
+      ? await pgDeleteProduct(params.id, trustedOperator)
       : deleteProduct(params.id);
+
     if (!ok) {
       return NextResponse.json({ success: false, error: 'تعذر حذف المنتج' }, { status: 404 });
     }

@@ -417,7 +417,6 @@ export default function AdminProductsPage() {
       customCashbackAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
       allowBelowCostOverride: pricingValidation.requiresOverride ? allowBelowCostOverride : undefined,
       overrideReason: (pricingValidation.requiresOverride && allowBelowCostOverride) ? overrideReason.trim() : undefined,
-      operator: currentOperator || undefined,
     };
 
     try {

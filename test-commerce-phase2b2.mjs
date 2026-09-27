@@ -17,6 +17,7 @@ const tempDir = path.join(os.tmpdir(), 'ep_test_commerce_phase2b2_' + Date.now()
 const dbUrl = `postgres://postgres:password@127.0.0.1:${PORT}/postgres`;
 process.env.DATABASE_URL = dbUrl;
 process.env.DB_POOL_MAX = '5';
+process.env.DATA_SOURCE_CATALOG_BASE = 'postgres';
 process.env.ADMIN_SESSION_SECRET = 'commerce-phase2b2-test-secret-min-32-chars-long';
 process.env.CUSTOMER_SESSION_SECRET = 'commerce-phase2b2-test-secret-min-32-chars-long';
 
@@ -425,6 +426,368 @@ async function runCommercePhase2b2Tests() {
   const apiAuditReport = auditAllProductsPricing(allDbProducts);
   assert(Array.isArray(apiAuditReport.reports), 'auditAllProductsPricing returns object with reports array');
   assert(apiAuditReport.reports.some(a => a.productId === validProduct.id), 'Audit report correctly contains created test product');
+
+  // =========================================================================
+  // TEST GROUP 6: Admin Pricing Override Security Hardening & RBAC Authorization
+  // =========================================================================
+  console.log('\n--- TEST GROUP 6: Admin Pricing Override Security Hardening & RBAC ---');
+
+  const { SESSION_COOKIE_NAME, signAdminSession } = await import('./src/lib/auth.ts');
+  const { ensureDbExists } = await import('./src/lib/db.ts');
+  const { POST: productsPostHandler } = await import('./src/app/api/products/route.ts');
+  const {
+    PUT: productPutHandler,
+    DELETE: productDeleteHandler,
+  } = await import('./src/app/api/products/[id]/route.ts');
+
+  // Setup staff accounts in inMemDb for session authentication
+  const inMemDb = ensureDbExists();
+  inMemDb.staff = inMemDb.staff || [];
+
+  const authorizedStaff = {
+    id: 'staff-product-mgr-101',
+    name: 'مسؤول المنتجات المعتمد',
+    username: 'product_mgr',
+    role: 'staff',
+    permissions: ['products'],
+    isActive: true,
+  };
+  const unauthorizedStaff = {
+    id: 'staff-no-products-202',
+    name: 'موظف بدون صلاحية المنتجات',
+    username: 'unauth_staff',
+    role: 'staff',
+    permissions: ['reports'],
+    isActive: true,
+  };
+  inMemDb.staff.push(authorizedStaff, unauthorizedStaff);
+
+  const authCookie = signAdminSession({
+    userId: authorizedStaff.id,
+    username: authorizedStaff.username,
+    role: 'staff',
+    exp: Math.floor(Date.now() / 1000) + 86400,
+  });
+
+  const unauthCookie = signAdminSession({
+    userId: unauthorizedStaff.id,
+    username: unauthorizedStaff.username,
+    role: 'staff',
+    exp: Math.floor(Date.now() / 1000) + 86400,
+  });
+
+  // 6.1 Guest cannot POST /api/products (401)
+  const guestPostReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'منتج ضيف غير مصرح',
+      category: catId,
+      costPrice: 5000,
+      wholesalePrice: 6000,
+      price: 500,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+    }),
+  });
+  const guestPostRes = await productsPostHandler(guestPostReq);
+  assert(guestPostRes.status === 401, 'Guest cannot create products (HTTP 401)');
+
+  // 6.2 Guest spoofing operator: { role: 'admin' } in body is rejected (401)
+  const guestSpoofReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'منتج ضيف ينتحل صفة مدير',
+      category: catId,
+      costPrice: 5000,
+      wholesalePrice: 6000,
+      price: 500,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+      operator: {
+        id: 'fake-admin-id',
+        name: 'انتحال مدير',
+        username: 'admin',
+        role: 'admin',
+        permissions: ['*'],
+      },
+    }),
+  });
+  const guestSpoofRes = await productsPostHandler(guestSpoofReq);
+  assert(guestSpoofRes.status === 401, 'Guest spoofing admin operator in body rejected with HTTP 401');
+
+  // 6.3 Staff without products permission cannot POST /api/products (403)
+  const unauthPostReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${unauthCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'منتج موظف غير مخول',
+      category: catId,
+      costPrice: 5000,
+      wholesalePrice: 6000,
+      price: 500,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+    }),
+  });
+  const unauthPostRes = await productsPostHandler(unauthPostReq);
+  assert(unauthPostRes.status === 403, 'Staff without products permission rejected with HTTP 403');
+
+  // 6.4 Staff without products permission spoofing operator: { role: 'admin' } in body is rejected (403)
+  const unauthSpoofReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${unauthCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'منتج موظف غير مخول مع انتحال صلاحية بالـ body',
+      category: catId,
+      costPrice: 5000,
+      wholesalePrice: 6000,
+      price: 500,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+      operator: {
+        role: 'admin',
+        permissions: ['products', 'admin'],
+      },
+    }),
+  });
+  const unauthSpoofRes = await productsPostHandler(unauthSpoofReq);
+  assert(unauthSpoofRes.status === 403, 'Staff without products permission spoofing admin role in body rejected with HTTP 403');
+
+  // 6.5 Guest attempting below-cost override is rejected (401)
+  const guestOverrideReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'منتج تجاوز دون تكلفة من ضيف',
+      category: catId,
+      costPrice: 9000,
+      wholesalePrice: 7000, // Below cost!
+      price: 500,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+      allowBelowCostOverride: true,
+      overrideReason: 'تجاوز غير مصرح به من ضيف',
+    }),
+  });
+  const guestOverrideRes = await productsPostHandler(guestOverrideReq);
+  assert(guestOverrideRes.status === 401, 'Guest attempting below-cost override rejected with HTTP 401');
+
+  // 6.6 Authorized staff POST below-cost WITHOUT allowBelowCostOverride -> 400
+  const authBelowCostNoOverrideReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'منتج دون التكلفة بدون تفعيل التجاوز',
+      category: catId,
+      costPrice: 10000,
+      wholesalePrice: 8500, // Below cost!
+      price: 600,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+    }),
+  });
+  const authBelowCostNoOverrideRes = await productsPostHandler(authBelowCostNoOverrideReq);
+  assert(authBelowCostNoOverrideRes.status === 400, 'Authorized staff POST below-cost without override rejected with HTTP 400');
+  const errData66 = await authBelowCostNoOverrideRes.json();
+  assert(errData66.error.includes('أقل من التكلفة'), 'Error message mentions below cost');
+
+  // 6.7 Authorized staff POST below-cost with short reason (< 5 chars) -> 400
+  const authBelowCostShortReasonReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'منتج دون التكلفة بسبب قصير',
+      category: catId,
+      costPrice: 10000,
+      wholesalePrice: 8500,
+      price: 600,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+      allowBelowCostOverride: true,
+      overrideReason: 'تخ', // Only 2 chars (< 5 chars required)
+    }),
+  });
+  const authBelowCostShortReasonRes = await productsPostHandler(authBelowCostShortReasonReq);
+  assert(authBelowCostShortReasonRes.status === 400, 'Authorized staff with short reason (< 5 chars) rejected with HTTP 400');
+
+  // 6.8 Authorized staff POST below-cost WITH valid reason + spoofed body operator -> 201
+  const authValidOverrideReq = new Request('http://localhost:3000/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'منتج مرخص دون التكلفة مع محاولة تزوير المشغل بالـ body',
+      category: catId,
+      costPrice: 10000,
+      wholesalePrice: 8500,
+      price: 600,
+      boxesPerCarton: 1,
+      itemsPerBox: 12,
+      stock: 15,
+      allowBelowCostOverride: true,
+      overrideReason: 'تصفية موسمية معتمدة من الإدارة التجارية',
+      operator: {
+        id: 'hacker-fake-id',
+        name: 'منتحل الهوية المخترق',
+        username: 'evil_hacker',
+        role: 'super_admin',
+      },
+    }),
+  });
+  const authValidOverrideRes = await productsPostHandler(authValidOverrideReq);
+  assert(authValidOverrideRes.status === 201, 'Authorized staff with valid override reason created product (HTTP 201)');
+  const createdProd68 = (await authValidOverrideRes.json()).product;
+  assert(createdProd68 && createdProd68.id, 'Product object returned successfully');
+
+  // 6.9 Verify audit_logs carries TRUSTED session admin identity and NOT spoofed body operator
+  const auditLogs68 = await sql`
+    SELECT * FROM audit_logs
+    WHERE action_type = 'pricing_below_cost_override' AND target_id = ${createdProd68.id}
+    ORDER BY timestamp DESC LIMIT 1;
+  `;
+  assert(auditLogs68.length === 1, 'Audit log entry created for below-cost override');
+  const snap68 = typeof auditLogs68[0].operator_snapshot === 'string'
+    ? JSON.parse(auditLogs68[0].operator_snapshot)
+    : auditLogs68[0].operator_snapshot;
+  assert(snap68.username === 'product_mgr', `Audit log recorded trusted session username 'product_mgr' (got '${snap68.username}')`);
+  assert(snap68.name === 'مسؤول المنتجات المعتمد', `Audit log recorded trusted session name (got '${snap68.name}')`);
+  assert(snap68.username !== 'evil_hacker', 'Audit log completely discarded spoofed body username');
+  assert(snap68.name !== 'منتحل الهوية المخترق', 'Audit log completely discarded spoofed body name');
+
+  // 6.10 PUT /api/products/[id] Authorization, Below-cost Override & Spoofing Defense
+  // 6.10.1 Guest PUT -> 401
+  const guestPutReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'تعديل من ضيف' }),
+  });
+  const guestPutRes = await productPutHandler(guestPutReq, { params: { id: createdProd68.id } });
+  assert(guestPutRes.status === 401, 'Guest PUT /api/products/[id] rejected with HTTP 401');
+
+  // 6.10.2 Unauthorized Staff PUT -> 403
+  const unauthPutReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${unauthCookie}`,
+    },
+    body: JSON.stringify({
+      name: 'تعديل موظف غير مخول',
+      operator: { role: 'admin' }, // Spoofed body
+    }),
+  });
+  const unauthPutRes = await productPutHandler(unauthPutReq, { params: { id: createdProd68.id } });
+  assert(unauthPutRes.status === 403, 'Unauthorized staff PUT /api/products/[id] rejected with HTTP 403');
+
+  // 6.10.3 Authorized Staff PUT further below cost without override -> 400
+  const authPutNoOverrideReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+    body: JSON.stringify({
+      wholesalePrice: 7000, // Even lower below cost 10000!
+    }),
+  });
+  const authPutNoOverrideRes = await productPutHandler(authPutNoOverrideReq, { params: { id: createdProd68.id } });
+  assert(authPutNoOverrideRes.status === 400, 'Authorized staff PUT below-cost without override rejected with HTTP 400');
+
+  // 6.10.4 Authorized Staff PUT below-cost WITH override + spoofed body operator -> 200
+  const authPutOverrideReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+    body: JSON.stringify({
+      wholesalePrice: 7000,
+      specialPrice: 6800,
+      vipPrice: 6500,
+      allowBelowCostOverride: true,
+      overrideReason: 'تحديث تخفيض التصفية بقرار المدير',
+      operator: {
+        username: 'spoofed_put_operator',
+        name: 'مخترق PUT',
+        role: 'admin',
+      },
+    }),
+  });
+  const authPutOverrideRes = await productPutHandler(authPutOverrideReq, { params: { id: createdProd68.id } });
+  assert(authPutOverrideRes.status === 200, 'Authorized staff PUT below cost with override succeeded (HTTP 200)');
+
+  // 6.10.5 Verify PUT Audit log records trusted session operator
+  const putAuditRows = await sql`
+    SELECT * FROM audit_logs
+    WHERE action_type = 'pricing_below_cost_override' AND target_id = ${createdProd68.id}
+    ORDER BY timestamp DESC LIMIT 1;
+  `;
+  const putSnap = typeof putAuditRows[0].operator_snapshot === 'string'
+    ? JSON.parse(putAuditRows[0].operator_snapshot)
+    : putAuditRows[0].operator_snapshot;
+  assert(putSnap.username === 'product_mgr', `PUT Audit log recorded trusted session username (got '${putSnap.username}')`);
+  assert(putSnap.username !== 'spoofed_put_operator', 'PUT Audit log discarded spoofed body username');
+
+  // 6.11 DELETE /api/products/[id] Authorization & Audit Defense
+  // 6.11.1 Guest DELETE -> 401
+  const guestDelReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'DELETE',
+  });
+  const guestDelRes = await productDeleteHandler(guestDelReq, { params: { id: createdProd68.id } });
+  assert(guestDelRes.status === 401, 'Guest DELETE /api/products/[id] rejected with HTTP 401');
+
+  // 6.11.2 Unauthorized Staff DELETE -> 403
+  const unauthDelReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'DELETE',
+    headers: {
+      'Cookie': `${SESSION_COOKIE_NAME}=${unauthCookie}`,
+    },
+  });
+  const unauthDelRes = await productDeleteHandler(unauthDelReq, { params: { id: createdProd68.id } });
+  assert(unauthDelRes.status === 403, 'Unauthorized staff DELETE /api/products/[id] rejected with HTTP 403');
+
+  // 6.11.3 Authorized Staff DELETE -> 200
+  const authDelReq = new Request(`http://localhost:3000/api/products/${createdProd68.id}`, {
+    method: 'DELETE',
+    headers: {
+      'Cookie': `${SESSION_COOKIE_NAME}=${authCookie}`,
+    },
+  });
+  const authDelRes = await productDeleteHandler(authDelReq, { params: { id: createdProd68.id } });
+  assert(authDelRes.status === 200, 'Authorized staff DELETE /api/products/[id] succeeded (HTTP 200)');
+
+  // 6.11.4 Verify deletion in DB and audit log
+  const delCheckRows = await sql`
+    SELECT * FROM products WHERE id = ${createdProd68.id};
+  `;
+  assert(delCheckRows.length === 0, 'Product was permanently removed from database');
+
+  const delAuditRows = await sql`
+    SELECT * FROM audit_logs
+    WHERE action_type = 'product_deleted' AND target_id = ${createdProd68.id}
+    ORDER BY timestamp DESC LIMIT 1;
+  `;
+  assert(delAuditRows.length === 1, 'Deletion audit log recorded in audit_logs table');
+  const delSnap = typeof delAuditRows[0].operator_snapshot === 'string'
+    ? JSON.parse(delAuditRows[0].operator_snapshot)
+    : delAuditRows[0].operator_snapshot;
+  assert(delSnap.username === 'product_mgr', `DELETE Audit log recorded trusted session username (got '${delSnap.username}')`);
 
   console.log('\n================================================================');
   console.log(`  ALL COMMERCE-2B2 TESTS COMPLETED: ${passed} PASSED, ${failed} FAILED  `);

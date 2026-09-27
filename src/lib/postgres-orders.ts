@@ -29,9 +29,11 @@ import { getProductPriceForUser, validateOrderItemQuantity, normalizePricingIden
    ========================================================= */
 
 export type PgOperator = {
+  id?: string | null;
   name?: string | null;
   username?: string | null;
   role?: string | null;
+  permissions?: string[] | null;
 };
 
 export interface PgCreateOrderInput {
