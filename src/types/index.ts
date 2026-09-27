@@ -195,6 +195,7 @@ export interface OrderItem {
   saleType: SaleType;
   unitLabel: string;
   image: string;
+  pricingTierSnap?: string; // اسم الرتبة/المستوى السعري المطبق عند الشراء
   cashbackPerUnit?: number; // قيمة مكافأة القطعة/الكرتون المكتسبة
   earnedCashback?: number; // إجمالي المكافأة المكتسبة لهذا البند (cashbackPerUnit * quantity)
 }
@@ -331,6 +332,8 @@ export interface Order {
   couponCode?: string;
   couponDiscountType?: string;
   couponDiscountValue?: number;
+  customerAccountTypeSnap?: string; // لقطة تاريخية لنوع حساب العميل وقت إنشاء الطلب
+  customerMerchantTierSnap?: string; // لقطة تاريخية لرتبة التاجر وقت إنشاء الطلب
   usedCashbackDiscount?: number; // مبلغ الخصم المستقطع من رصيد الأرباح والمكافآت (كاش باك)
   earnedCashback?: number; // إجمالي رصيد الأرباح المكتسب من هذه الطلبية
   total: number;

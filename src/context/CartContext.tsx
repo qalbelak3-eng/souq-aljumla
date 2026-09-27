@@ -30,6 +30,7 @@ interface CartContextType {
   minOrderAmount: number;
   amountNeededForMinOrder: number;
   isBelowMinOrder: boolean;
+  refreshCartPrices: () => Promise<void>;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -315,6 +316,38 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshCartPrices = async () => {
+    try {
+      if (cart.length === 0) return;
+      const res = await fetch('/api/products?limit=1000');
+      const data = await res.json();
+      const freshProducts: Product[] = data.products || data || [];
+      const prodMap = new Map<string, Product>();
+      freshProducts.forEach((p: Product) => {
+        if (p && p.id) prodMap.set(p.id, p);
+      });
+
+      setCart((prevCart) => {
+        const updated = prevCart.map((item) => {
+          const freshProd = prodMap.get(item.product.id) || item.product;
+          const { price: newPrice } = getProductPriceForUser(freshProd, item.saleType || 'retail', user);
+          return {
+            ...item,
+            product: freshProd,
+            pricePerUnit: newPrice,
+          };
+        });
+        const storageKey = getCartStorageKey(user?.id);
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+    } catch (e) {
+      console.error('Failed to refresh cart prices', e);
+    }
+  };
+
   const removeCoupon = () => {
     setAppliedCoupon(null);
   };
@@ -335,6 +368,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         appliedCoupon,
         applyCoupon,
         removeCoupon,
+        refreshCartPrices,
         isCartDrawerOpen,
         setIsCartDrawerOpen,
         freeDeliveryThreshold: storeSettings.freeDeliveryThreshold,

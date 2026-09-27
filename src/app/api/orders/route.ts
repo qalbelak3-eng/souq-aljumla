@@ -5,7 +5,7 @@ import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgResolveCustomerAccount, pgGetAccountCashbackBalance } from '@/lib/postgres-cashback';
-import { getProductPriceForUser, getProductCashbackRate, validateOrderItemQuantity } from '@/lib/pricing';
+import { getProductPriceForUser, resolveAuthoritativeProductPrice, getProductCashbackRate, validateOrderItemQuantity } from '@/lib/pricing';
 import { getEffectiveDeliveryFee } from '@/lib/delivery';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
@@ -190,13 +190,13 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
 
-      // Stale cart price detection (Requirement 9 & Phase 2B1):
+      // Stale cart price detection (Requirement 9 & Phase 2B1/2B3):
       // When client requests price change protection (rejectStaleCartPrice: true), reject if price changed
       const shouldRejectStale = body.rejectStaleCartPrice === true || body.enforceExactCartPrices === true || item.enforceExactPrice === true;
       if (!admin && shouldRejectStale && item.price !== undefined && item.price !== null && item.price !== '') {
         const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
-        const pricingRes = getProductPriceForUser(prod, saleType as any, trustedUser);
-        const officialPrice = pricingRes.price;
+        const authPricing = resolveAuthoritativeProductPrice({ product: prod, saleType: saleType as any, user: trustedUser });
+        const officialPrice = authPricing.finalUnitPrice;
         const submittedPrice = Number(item.price);
         if (!isNaN(submittedPrice) && Math.abs(submittedPrice - officialPrice) >= 0.01) {
           return NextResponse.json({
@@ -214,9 +214,9 @@ export async function POST(request: Request) {
       const qty = qtyRes.quantity!;
       const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
 
-      // Strictly derive price from PostgreSQL product and trusted session tier (Requirement 6)
-      const pricingRes = getProductPriceForUser(prod, saleType as any, trustedUser);
-      const officialPrice = pricingRes.price;
+      // Strictly derive price from Final Pricing Authority (Phase Commerce-2B3)
+      const authPricing = resolveAuthoritativeProductPrice({ product: prod, saleType: saleType as any, user: trustedUser });
+      const officialPrice = authPricing.finalUnitPrice;
 
       const itemTotal = officialPrice * qty;
       calculatedSubtotal += itemTotal;
@@ -224,22 +224,10 @@ export async function POST(request: Request) {
       const cashbackRate = getProductCashbackRate(prod, trustedUser, settings, saleType as any);
       const earnedCashback = cashbackRate * qty;
 
-      // Offer snapshot calculation for audit & historical invoice immutability
-      let originalPriceSnap = officialPrice;
-      let offerIdSnap: string | undefined = undefined;
-      let offerDiscountSnap = 0;
-
-      if (prod.isOnOffer && prod.offerId) {
-        if (saleType === 'retail') {
-          originalPriceSnap = prod.originalPrice || prod.price;
-          offerIdSnap = prod.offerId;
-          offerDiscountSnap = Math.max(0, originalPriceSnap - officialPrice);
-        } else if (saleType === 'wholesale' && prod.originalWholesalePrice && prod.wholesalePrice < prod.originalWholesalePrice) {
-          originalPriceSnap = prod.originalWholesalePrice;
-          offerIdSnap = prod.offerId;
-          offerDiscountSnap = Math.max(0, originalPriceSnap - officialPrice);
-        }
-      }
+      const originalPriceSnap = authPricing.originalUnitPrice;
+      const offerIdSnap = authPricing.offerId || undefined;
+      const offerDiscountSnap = authPricing.offerSavingsPerUnit;
+      const pricingTierSnap = authPricing.pricingTierApplied;
 
       return {
         ...item,
@@ -253,6 +241,7 @@ export async function POST(request: Request) {
         originalPriceSnap,
         offerIdSnap,
         offerDiscountSnap,
+        pricingTierSnap,
         quantity: qty,
         saleType,
         unitLabel: item.unitLabel || (saleType === 'wholesale' ? 'كرتون' : saleType === 'box' ? 'علبة' : 'مفرد'),

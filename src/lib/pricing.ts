@@ -88,7 +88,7 @@ export function normalizePricingIdentity(input: {
   let resolvedMerchantTier: MerchantTier | undefined = undefined;
 
   // 1. Resolve Account Type:
-  if (rawAccountType === 'market' || rawPricingTier === 'market') {
+  if (rawAccountType === 'market' || rawPricingTier === 'market' || rawMerchantTier === 'market') {
     resolvedAccountType = 'market';
   } else if (
     rawAccountType === 'wholesale' ||
@@ -126,51 +126,297 @@ export function normalizePricingIdentity(input: {
   };
 }
 
+export type PricingTierApplied =
+  | 'retail'
+  | 'consumer_carton'
+  | 'market'
+  | 'wholesale_bronze'
+  | 'wholesale_silver'
+  | 'wholesale_gold';
+
+export interface AuthoritativePriceParams {
+  product: Product | any;
+  saleType?: SaleType | 'box' | 'carton' | 'piece' | string;
+  user?: User | NormalizedPricingUser | { accountType?: string | null; merchantTier?: string | null; pricingTier?: string | null } | null;
+  activeOffer?: {
+    id: string;
+    offerPrice: number;
+    offerWholesalePrice?: number | null;
+    originalPrice?: number | null;
+    originalWholesalePrice?: number | null;
+    startDate?: any;
+    endDate?: any;
+    isActive?: boolean;
+    isArchived?: boolean;
+  } | null;
+}
+
+export interface AuthoritativePriceResult {
+  finalUnitPrice: number;
+  originalUnitPrice: number;
+  pricingTierApplied: PricingTierApplied;
+  tierLabel: string;
+  isOfferApplied: boolean;
+  offerId: string | null;
+  offerSavingsPerUnit: number;
+  tierSavingsPerUnit: number;
+  totalSavingsPerUnit: number;
+  explanation: string;
+}
+
+/**
+ * Phase Commerce-2B3: Final Pricing Authority
+ * المرجع المركزي والموحد الوحيد في النظام لاتخاذ السعر النهائي المؤهل للعميل (Best Eligible Price)
+ * تضمن:
+ * 1. حصول العميل على أقل سعر من الأسعار التي هو مؤهل لها قانونياً وتجارياً فقط.
+ * 2. عدم استفادة زبون المفرد من أسعار الجملة أو الرتب الخاصة.
+ * 3. عدم دفع صاحب الماركت سعراً أعلى من عرض الجملة العام المتاح.
+ * 4. توافق تسعير الرتب (Bronze / Silver / Gold) عند وجود عروض ترويجية.
+ */
+export function resolveAuthoritativeProductPrice(params: AuthoritativePriceParams): AuthoritativePriceResult {
+  const { product, saleType = 'retail', user, activeOffer } = params;
+
+  // 1. تطبيع هوية العميل بصورة مركزية
+  const effectiveUser = normalizePricingIdentity(user || {});
+  const isRetail = saleType === 'retail' || saleType === 'piece';
+
+  // 2. فحص وتدقيق العرض الترويجي النشط
+  let hasValidActiveOffer = false;
+  let offerId: string | null = null;
+  let offerRetailPrice: number | null = null;
+  let offerWholesalePrice: number | null = null;
+  let offerOriginalRetailPrice: number | null = null;
+  let offerOriginalWholesalePrice: number | null = null;
+
+  if (activeOffer) {
+    const isUnarchived = !activeOffer.isArchived;
+    const isExplicitActive = activeOffer.isActive !== false;
+    let isTimeValid = true;
+    const now = Date.now();
+    if (activeOffer.endDate) {
+      const end = new Date(activeOffer.endDate).getTime();
+      if (!isNaN(end) && end <= now) isTimeValid = false;
+    }
+    if (activeOffer.startDate) {
+      const start = new Date(activeOffer.startDate).getTime();
+      if (!isNaN(start) && start > now) isTimeValid = false;
+    }
+
+    if (isUnarchived && isExplicitActive && isTimeValid) {
+      hasValidActiveOffer = true;
+      offerId = String(activeOffer.id);
+      offerRetailPrice = Number(activeOffer.offerPrice);
+      offerWholesalePrice = (activeOffer.offerWholesalePrice !== undefined && activeOffer.offerWholesalePrice !== null && Number(activeOffer.offerWholesalePrice) > 0)
+        ? Number(activeOffer.offerWholesalePrice)
+        : null;
+      offerOriginalRetailPrice = activeOffer.originalPrice ? Number(activeOffer.originalPrice) : null;
+      offerOriginalWholesalePrice = activeOffer.originalWholesalePrice ? Number(activeOffer.originalWholesalePrice) : null;
+    }
+  } else if (product.isOnOffer && product.offerId) {
+    hasValidActiveOffer = true;
+    offerId = String(product.offerId);
+    offerRetailPrice = Number(product.price);
+    offerWholesalePrice = (product.wholesalePrice !== undefined && product.originalWholesalePrice !== undefined && Number(product.wholesalePrice) < Number(product.originalWholesalePrice))
+      ? Number(product.wholesalePrice)
+      : (product.offerWholesalePrice ? Number(product.offerWholesalePrice) : null);
+    offerOriginalRetailPrice = product.originalPrice ? Number(product.originalPrice) : null;
+    offerOriginalWholesalePrice = product.originalWholesalePrice ? Number(product.originalWholesalePrice) : null;
+  }
+
+  // 3. الأسعار الأساسية الدائمة للصنف
+  const baseRetailPrice = Number(
+    offerOriginalRetailPrice ?? product.basePrice ?? (product.isOnOffer ? product.originalPrice : product.price) ?? product.price
+  ) || 0;
+
+  const baseWholesalePrice = Number(
+    offerOriginalWholesalePrice ?? product.baseWholesalePrice ?? (product.isOnOffer ? product.originalWholesalePrice : product.wholesalePrice) ?? product.wholesalePrice
+  ) || 0;
+
+  const regularBoxPrice = Number(product.boxPrice) || 0;
+  const regularMarketPrice = Number(product.marketPrice) || 0;
+  const regularSpecialPrice = Number(product.specialPrice) || 0;
+  const regularVipPrice = Number(product.vipPrice) || 0;
+
+  // =========================================================================
+  // الحالة الأولى: البيع بالمفرد (Retail Piece Sale)
+  // =========================================================================
+  if (isRetail) {
+    const originalUnitPrice = baseRetailPrice;
+    const canUseRetailOffer = hasValidActiveOffer && offerRetailPrice !== null && offerRetailPrice > 0 && offerRetailPrice < baseRetailPrice;
+
+    if (canUseRetailOffer) {
+      const finalUnitPrice = offerRetailPrice!;
+      const offerSavings = Math.max(0, originalUnitPrice - finalUnitPrice);
+      return {
+        finalUnitPrice,
+        originalUnitPrice,
+        pricingTierApplied: 'retail',
+        tierLabel: 'سعر المفرد',
+        isOfferApplied: true,
+        offerId,
+        offerSavingsPerUnit: offerSavings,
+        tierSavingsPerUnit: 0,
+        totalSavingsPerUnit: offerSavings,
+        explanation: `استفادة من العرض الترويجي للمفرد بسعر ${finalUnitPrice.toLocaleString()} د.ع بدلاً من ${originalUnitPrice.toLocaleString()} د.ع`,
+      };
+    }
+
+    return {
+      finalUnitPrice: baseRetailPrice,
+      originalUnitPrice: baseRetailPrice,
+      pricingTierApplied: 'retail',
+      tierLabel: 'سعر المفرد',
+      isOfferApplied: false,
+      offerId: null,
+      offerSavingsPerUnit: 0,
+      tierSavingsPerUnit: 0,
+      totalSavingsPerUnit: 0,
+      explanation: `سعر المفرد الاعتيادي ${baseRetailPrice.toLocaleString()} د.ع`,
+    };
+  }
+
+  // =========================================================================
+  // الحالة الثانية: البيع بالكرتون / الجملة (Wholesale / Carton Sale)
+  // =========================================================================
+  const hasWholesaleOffer = hasValidActiveOffer && offerWholesalePrice !== null && offerWholesalePrice > 0;
+  const activeOfferWholesale = hasWholesaleOffer ? offerWholesalePrice! : null;
+
+  // 1. كرتون المستهلك العادي (Individual Consumer Carton)
+  if (effectiveUser.accountType === 'individual') {
+    const finalUnitPrice = regularBoxPrice > 0 ? regularBoxPrice : baseWholesalePrice;
+    return {
+      finalUnitPrice,
+      originalUnitPrice: finalUnitPrice,
+      pricingTierApplied: 'consumer_carton',
+      tierLabel: 'سعر الكرتون للمستهلك',
+      isOfferApplied: false,
+      offerId: null,
+      offerSavingsPerUnit: 0,
+      tierSavingsPerUnit: 0,
+      totalSavingsPerUnit: 0,
+      explanation: `سعر كرتون المستهلك ${finalUnitPrice.toLocaleString()} د.ع`,
+    };
+  }
+
+  // 2. كرتون أصحاب الماركت (Market Merchant) — Best Eligible Price
+  if (effectiveUser.accountType === 'market') {
+    const nominalMarket = regularMarketPrice > 0 ? regularMarketPrice : baseWholesalePrice;
+    const isOffer = activeOfferWholesale !== null && activeOfferWholesale < nominalMarket;
+    const finalUnitPrice = isOffer ? activeOfferWholesale : nominalMarket;
+    const originalUnitPrice = nominalMarket;
+
+    return {
+      finalUnitPrice,
+      originalUnitPrice,
+      pricingTierApplied: 'market',
+      tierLabel: 'سعر الماركت',
+      isOfferApplied: isOffer,
+      offerId: isOffer ? offerId : null,
+      offerSavingsPerUnit: isOffer ? Math.max(0, nominalMarket - finalUnitPrice) : 0,
+      tierSavingsPerUnit: 0,
+      totalSavingsPerUnit: Math.max(0, originalUnitPrice - finalUnitPrice),
+      explanation: isOffer
+        ? `سعر الماركت مستفيداً من عرض الجملة العام ${finalUnitPrice.toLocaleString()} د.ع بدلاً من ${originalUnitPrice.toLocaleString()} د.ع`
+        : `سعر كرتون الماركت ${finalUnitPrice.toLocaleString()} د.ع`,
+    };
+  }
+
+  // 3. تجار الجملة المعتمدون (Wholesale Bronze, Silver, Gold)
+  const tier = effectiveUser.merchantTier || 'bronze';
+
+  if (tier === 'gold') {
+    const nominalGold = regularVipPrice > 0
+      ? Math.min(regularVipPrice, regularSpecialPrice > 0 ? regularSpecialPrice : baseWholesalePrice, baseWholesalePrice)
+      : (regularSpecialPrice > 0 ? Math.min(regularSpecialPrice, baseWholesalePrice) : baseWholesalePrice);
+
+    const isOffer = activeOfferWholesale !== null && activeOfferWholesale < nominalGold;
+    const finalUnitPrice = isOffer ? activeOfferWholesale : nominalGold;
+    const originalUnitPrice = baseWholesalePrice;
+
+    return {
+      finalUnitPrice,
+      originalUnitPrice,
+      pricingTierApplied: 'wholesale_gold',
+      tierLabel: 'سعر جملة ذهبي',
+      isOfferApplied: isOffer,
+      offerId: isOffer ? offerId : null,
+      offerSavingsPerUnit: isOffer ? Math.max(0, nominalGold - finalUnitPrice) : 0,
+      tierSavingsPerUnit: Math.max(0, baseWholesalePrice - nominalGold),
+      totalSavingsPerUnit: Math.max(0, originalUnitPrice - finalUnitPrice),
+      explanation: isOffer
+        ? `سعر جملة ذهبي VIP مستفيداً من عرض الجملة ${finalUnitPrice.toLocaleString()} د.ع`
+        : `سعر جملة ذهبي VIP مخصص ${finalUnitPrice.toLocaleString()} د.ع`,
+    };
+  }
+
+  if (tier === 'silver') {
+    const nominalSilver = regularSpecialPrice > 0
+      ? Math.min(regularSpecialPrice, baseWholesalePrice)
+      : baseWholesalePrice;
+
+    const isOffer = activeOfferWholesale !== null && activeOfferWholesale < nominalSilver;
+    const finalUnitPrice = isOffer ? activeOfferWholesale : nominalSilver;
+    const originalUnitPrice = baseWholesalePrice;
+
+    return {
+      finalUnitPrice,
+      originalUnitPrice,
+      pricingTierApplied: 'wholesale_silver',
+      tierLabel: 'سعر جملة فضي',
+      isOfferApplied: isOffer,
+      offerId: isOffer ? offerId : null,
+      offerSavingsPerUnit: isOffer ? Math.max(0, nominalSilver - finalUnitPrice) : 0,
+      tierSavingsPerUnit: Math.max(0, baseWholesalePrice - nominalSilver),
+      totalSavingsPerUnit: Math.max(0, originalUnitPrice - finalUnitPrice),
+      explanation: isOffer
+        ? `سعر جملة فضي مستفيداً من عرض الجملة ${finalUnitPrice.toLocaleString()} د.ع`
+        : `سعر جملة فضي ${finalUnitPrice.toLocaleString()} د.ع`,
+    };
+  }
+
+  // Bronze Wholesale
+  const nominalBronze = baseWholesalePrice;
+  const isOffer = activeOfferWholesale !== null && activeOfferWholesale < nominalBronze;
+  const finalUnitPrice = isOffer ? activeOfferWholesale : nominalBronze;
+  const originalUnitPrice = baseWholesalePrice;
+
+  return {
+    finalUnitPrice,
+    originalUnitPrice,
+    pricingTierApplied: 'wholesale_bronze',
+    tierLabel: 'سعر جملة برونزي',
+    isOfferApplied: isOffer,
+    offerId: isOffer ? offerId : null,
+    offerSavingsPerUnit: isOffer ? Math.max(0, baseWholesalePrice - finalUnitPrice) : 0,
+    tierSavingsPerUnit: 0,
+    totalSavingsPerUnit: isOffer ? Math.max(0, originalUnitPrice - finalUnitPrice) : 0,
+    explanation: isOffer
+      ? `سعر جملة برونزي مستفيداً من عرض الجملة ${finalUnitPrice.toLocaleString()} د.ع بدلاً من ${originalUnitPrice.toLocaleString()} د.ع`
+      : `سعر جملة برونزي ${finalUnitPrice.toLocaleString()} د.ع`,
+  };
+}
+
+/**
+ * واجهة توافقية لـ getProductPriceForUser تعتمد داخلياً على resolveAuthoritativeProductPrice
+ */
 export function getProductPriceForUser(
   product: Product,
   saleType: SaleType = 'retail',
   user?: User | NormalizedPricingUser | null
 ): { price: number; tierLabel: string; tier: MerchantTier | 'retail' | 'market' } {
-  if (saleType === 'retail') {
-    return { price: product.price, tierLabel: 'سعر المفرد', tier: 'retail' };
-  }
+  const result = resolveAuthoritativeProductPrice({ product, saleType, user });
+  let tier: MerchantTier | 'retail' | 'market' = 'retail';
+  if (result.pricingTierApplied === 'market') tier = 'market';
+  else if (result.pricingTierApplied === 'wholesale_gold') tier = 'gold';
+  else if (result.pricingTierApplied === 'wholesale_silver') tier = 'silver';
+  else if (result.pricingTierApplied === 'wholesale_bronze') tier = 'bronze';
+  else tier = 'retail';
 
-  // 1. Normal Consumer (زبون عادي غير مسجل كتاجر أو ماركت)
-  if (!user || user.accountType === 'individual' || !user.accountType) {
-    const consumerCartonPrice = Number(product.boxPrice) > 0 ? Number(product.boxPrice) : Number(product.wholesalePrice);
-    return { price: consumerCartonPrice, tierLabel: 'سعر الكرتون للمستهلك', tier: 'retail' };
-  }
-
-  // 2. Market Customer (ماركت معتمد)
-  if (user.accountType === 'market') {
-    const price = Number(product.marketPrice) > 0 ? Number(product.marketPrice) : Number(product.wholesalePrice);
-    return { price, tierLabel: 'سعر الماركت', tier: 'market' };
-  }
-
-  // 3. Wholesale Merchant (تاجر جملة معتمد)
-  if (user.accountType === 'wholesale' || user.accountType === 'merchant' || user.role === 'merchant') {
-    const tier: MerchantTier = user.merchantTier || 'bronze';
-    const baseWholesale = Number(product.wholesalePrice);
-
-    if (tier === 'gold') {
-      const regularVip = Number(product.vipPrice) > 0 ? Number(product.vipPrice) : (Number(product.specialPrice) || baseWholesale);
-      // Commercial rule: Gold VIP tier must never pay more than promotional wholesale price
-      const price = baseWholesale > 0 && baseWholesale < regularVip ? baseWholesale : regularVip;
-      return { price, tierLabel: 'سعر جملة ذهبي', tier: 'gold' };
-    }
-
-    if (tier === 'silver') {
-      const regularSpecial = Number(product.specialPrice) > 0 ? Number(product.specialPrice) : baseWholesale;
-      // Commercial rule: Silver tier must never pay more than promotional wholesale price
-      const price = baseWholesale > 0 && baseWholesale < regularSpecial ? baseWholesale : regularSpecial;
-      return { price, tierLabel: 'سعر جملة فضي', tier: 'silver' };
-    }
-
-    return { price: baseWholesale, tierLabel: 'سعر جملة برونزي', tier: 'bronze' };
-  }
-
-  const fallbackPrice = Number(product.boxPrice) > 0 ? Number(product.boxPrice) : Number(product.wholesalePrice);
-  return { price: fallbackPrice, tierLabel: 'سعر الكرتون', tier: 'retail' };
+  return {
+    price: result.finalUnitPrice,
+    tierLabel: result.tierLabel,
+    tier,
+  };
 }
 
 export function getUserCashbackRate(

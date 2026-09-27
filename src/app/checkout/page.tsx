@@ -241,7 +241,8 @@ export default function CheckoutPage() {
     isBelowMinOrder,
     appliedCoupon,
     applyCoupon,
-    removeCoupon
+    removeCoupon,
+    refreshCartPrices,
   } = useCart();
   const { user, isApprovedMerchant, isPendingApproval, updateProfile } = useAuth();
   const router = useRouter();
@@ -313,6 +314,8 @@ export default function CheckoutPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [staleCartPriceError, setStaleCartPriceError] = useState<string | null>(null);
+  const [isRefreshingCart, setIsRefreshingCart] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
 
@@ -606,6 +609,7 @@ export default function CheckoutPage() {
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setStaleCartPriceError(null);
 
     if (!user) {
       setShowAuthModal(true);
@@ -697,6 +701,7 @@ export default function CheckoutPage() {
         usedCashbackDiscount: appliedCashbackDiscount,
         total: finalPayableTotal,
         paymentMethod,
+        rejectStaleCartPrice: true,
       };
 
       const res = await fetch('/api/orders', {
@@ -713,6 +718,10 @@ export default function CheckoutPage() {
         } catch {}
         const tokenParam = data.orderAccessToken ? `?token=${encodeURIComponent(data.orderAccessToken)}` : '';
         window.location.href = `/order-success/${data.order.id}${tokenParam}`;
+      } else if (data.code === 'STALE_CART_PRICE') {
+        setStaleCartPriceError(data.error || 'تغيرت أسعار بعض المنتجات في سلتك أثناء إتمام الطلب.');
+        toast.showToast(data.error || 'تغيرت أسعار بعض المنتجات في سلتك. يرجى مراجعة الأسعار المحدثة.', 'warning');
+        setIsSubmitting(false);
       } else {
         setErrorMessage(data.error || 'حدث خطأ أثناء حفظ الطلبية');
         setIsSubmitting(false);
@@ -865,6 +874,32 @@ export default function CheckoutPage() {
               })()}
             </div>
           </div>
+        </div>
+      )}
+
+      {staleCartPriceError && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 sm:p-5 shadow-sm text-amber-950 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <h4 className="font-black text-sm text-amber-950">تنبيه: تغيرت أسعار بعض المنتجات في سلتك</h4>
+              <p className="text-xs text-amber-800 mt-0.5">{staleCartPriceError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={isRefreshingCart}
+            onClick={async () => {
+              setIsRefreshingCart(true);
+              await refreshCartPrices();
+              setIsRefreshingCart(false);
+              setStaleCartPriceError(null);
+              toast.showToast('تم تحديث أسعار السلة. يرجى مراجعة الإجمالي والمتابعة.', 'info');
+            }}
+            className="w-full sm:w-auto px-5 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-black text-xs rounded-xl shadow transition whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {isRefreshingCart ? 'جاري التحديث...' : 'تحديث أسعار السلة ومراجعة الإجمالي'}
+          </button>
         </div>
       )}
 

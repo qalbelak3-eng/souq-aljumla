@@ -22,7 +22,7 @@ import {
   pgReverseOrderRedeemedCashback,
   pgGetAccountCashbackBalance,
 } from '@/lib/postgres-cashback';
-import { getProductPriceForUser, validateOrderItemQuantity, normalizePricingIdentity } from '@/lib/pricing';
+import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity, normalizePricingIdentity } from '@/lib/pricing';
 
 /* =========================================================
    Types & Interfaces
@@ -132,6 +132,7 @@ export function formatOrderRecord(
       originalPrice: it.originalPriceSnap ? toNumber(it.originalPriceSnap) : undefined,
       offerId: it.offerIdSnap ? String(it.offerIdSnap) : undefined,
       offerDiscount: it.offerDiscountSnap ? toNumber(it.offerDiscountSnap) : undefined,
+      pricingTierSnap: it.pricingTierSnap ? String(it.pricingTierSnap) : undefined,
       costPrice: toNumber(it.unitCostSnap),
       quantity: Number(it.soldQuantity),
       saleType: (it.soldUnit === 'carton' ? 'wholesale' : 'retail') as OrderItem['saleType'],
@@ -149,6 +150,8 @@ export function formatOrderRecord(
     couponDiscountValue: orderRow.couponDiscountValueSnap !== null && orderRow.couponDiscountValueSnap !== undefined
       ? toNumber(orderRow.couponDiscountValueSnap)
       : undefined,
+    customerAccountTypeSnap: orderRow.customerAccountTypeSnap ? String(orderRow.customerAccountTypeSnap) : undefined,
+    customerMerchantTierSnap: orderRow.customerMerchantTierSnap ? String(orderRow.customerMerchantTierSnap) : undefined,
     usedCashbackDiscount: toNumber(orderRow.usedCashbackDiscount),
     earnedCashback: toNumber(orderRow.earnedCashback),
     total: toNumber(orderRow.total),
@@ -419,11 +422,20 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       originalPriceSnap?: number | null;
       offerIdSnap?: string | null;
       offerDiscountSnap?: number;
+      pricingTierSnap?: string | null;
       unitCostSnap: number;
       earnedCashback: number;
       image: string | null;
       newStockPieces: number;
     }> = [];
+
+    // Server-authoritative semantic normalization of customer pricing identity:
+    // Never trust client request body. Strictly derive from server-side trusted session / operator or PostgreSQL account:
+    const effectiveUser = normalizePricingIdentity({
+      accountType: data.userAccountType,
+      pricingTier: customerAccount?.pricingTier,
+      merchantTier: data.userMerchantTier,
+    });
 
     let calculatedSubtotal = 0;
 
@@ -502,56 +514,23 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 
       const activeOffer = activeOfferRows.length > 0 ? activeOfferRows[0] : null;
 
-      const baseRegularPrice = Number(prod.price) || 0;
-      const baseWholesalePrice = Number(prod.wholesalePrice) || 0;
-      const baseMarketPrice = Number(prod.marketPrice) || 0;
-      const baseBoxPrice = Number(prod.boxPrice) || 0;
-      const baseSpecialPrice = Number(prod.specialPrice) || 0;
-      const baseVipPrice = Number(prod.vipPrice) || 0;
-
-      const overlayProduct: any = {
-        ...prod,
-        price: activeOffer ? Number(activeOffer.offerPrice) : baseRegularPrice,
-        wholesalePrice: (activeOffer && activeOffer.offerWholesalePrice && Number(activeOffer.offerWholesalePrice) > 0)
-          ? Number(activeOffer.offerWholesalePrice)
-          : baseWholesalePrice,
-        marketPrice: baseMarketPrice,
-        boxPrice: baseBoxPrice,
-        specialPrice: baseSpecialPrice,
-        vipPrice: baseVipPrice,
-      };
-
-      const regularProduct: any = {
-        ...prod,
-        price: baseRegularPrice,
-        wholesalePrice: baseWholesalePrice,
-        marketPrice: baseMarketPrice,
-        boxPrice: baseBoxPrice,
-        specialPrice: baseSpecialPrice,
-        vipPrice: baseVipPrice,
-      };
-
-      // Server-authoritative semantic normalization of customer pricing identity:
-      // Never trust client request body. Strictly derive from server-side trusted session / operator or PostgreSQL account:
-      const effectiveUser = normalizePricingIdentity({
-        accountType: data.userAccountType,
-        pricingTier: customerAccount?.pricingTier,
-        merchantTier: data.userMerchantTier,
+      const saleType = (item.saleType as any) || 'retail';
+      const authoritativePricing = resolveAuthoritativeProductPrice({
+        product: prod,
+        saleType,
+        user: effectiveUser,
+        activeOffer: activeOffer ? {
+          id: activeOffer.id,
+          offerPrice: Number(activeOffer.offerPrice),
+          offerWholesalePrice: activeOffer.offerWholesalePrice ? Number(activeOffer.offerWholesalePrice) : undefined,
+          originalPrice: activeOffer.originalPrice ? Number(activeOffer.originalPrice) : undefined,
+          originalWholesalePrice: activeOffer.originalWholesalePrice ? Number(activeOffer.originalWholesalePrice) : undefined,
+          startDate: activeOffer.startDate,
+          endDate: activeOffer.endDate,
+        } : null,
       });
 
-      const officialPricingRes = getProductPriceForUser(
-        overlayProduct,
-        (item.saleType as any) || 'retail',
-        effectiveUser as any
-      );
-      const regularPricingRes = getProductPriceForUser(
-        regularProduct,
-        (item.saleType as any) || 'retail',
-        effectiveUser as any
-      );
-
-      const officialPrice = officialPricingRes.price;
-      const regularBasePrice = regularPricingRes.price;
+      const officialPrice = authoritativePricing.finalUnitPrice;
 
       // Defense-in-depth price verification at repository level (Requirement B & Phase 2B1):
       // Privileged staff or admin operators can specify custom negotiated prices.
@@ -563,32 +542,10 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       }
 
       // Snapshot calculation for audit and historical integrity:
-      let originalPriceSnap: number | null = null;
-      let offerIdSnap: string | null = null;
-      let offerDiscountSnap = 0;
-
-      const isRetailSale = (item.saleType as any) !== 'wholesale' && (item.saleType as any) !== 'box';
-      const isWholesaleSale = (item.saleType as any) === 'wholesale';
-
-      if (activeOffer) {
-        if (isRetailSale) {
-          originalPriceSnap = Number(activeOffer.originalPrice) || regularBasePrice;
-          offerIdSnap = activeOffer.id;
-          offerDiscountSnap = Math.max(0, originalPriceSnap - unitPrice);
-        } else if (isWholesaleSale && activeOffer.offerWholesalePrice && Number(activeOffer.offerWholesalePrice) > 0) {
-          originalPriceSnap = Number(activeOffer.originalWholesalePrice) || regularBasePrice;
-          offerIdSnap = activeOffer.id;
-          offerDiscountSnap = Math.max(0, originalPriceSnap - unitPrice);
-        } else {
-          originalPriceSnap = regularBasePrice;
-          offerIdSnap = null;
-          offerDiscountSnap = 0;
-        }
-      } else {
-        originalPriceSnap = regularBasePrice;
-        offerIdSnap = null;
-        offerDiscountSnap = 0;
-      }
+      let originalPriceSnap: number | null = authoritativePricing.originalUnitPrice;
+      let offerIdSnap: string | null = authoritativePricing.isOfferApplied ? authoritativePricing.offerId || null : null;
+      let offerDiscountSnap = authoritativePricing.isOfferApplied ? authoritativePricing.offerSavingsPerUnit : 0;
+      let pricingTierSnap: string | null = authoritativePricing.pricingTierApplied;
 
       // If privileged operator specified explicit offer snapshot fields, preserve them
       if (!shouldEnforceOfficialPrice) {
@@ -600,6 +557,9 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         }
         if ((item as any).offerDiscountSnap !== undefined || (item as any).offerDiscount !== undefined) {
           offerDiscountSnap = toNumber((item as any).offerDiscountSnap ?? (item as any).offerDiscount);
+        }
+        if ((item as any).pricingTierSnap !== undefined) {
+          pricingTierSnap = (item as any).pricingTierSnap || null;
         }
       }
 
@@ -620,6 +580,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         originalPriceSnap,
         offerIdSnap,
         offerDiscountSnap,
+        pricingTierSnap,
         unitCostSnap: unitCost,
         earnedCashback: itemEarnedCashback,
         image: item.image || null,
@@ -701,6 +662,9 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_code_snap" varchar(50);
         ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_type_snap" varchar(20);
         ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "coupon_discount_value_snap" numeric(14, 2);
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "customer_account_type_snap" varchar(50);
+        ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "customer_merchant_tier_snap" varchar(50);
+        ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "pricing_tier_snap" varchar(50);
       `);
     } catch {}
 
@@ -731,6 +695,8 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         couponDiscountValueSnap: consumedCouponSnapshot?.discountValue !== undefined
           ? String(consumedCouponSnapshot.discountValue.toFixed(2))
           : null,
+        customerAccountTypeSnap: effectiveUser.accountType || null,
+        customerMerchantTierSnap: effectiveUser.merchantTier || null,
         usedCashbackDiscount: String(verifiedCashbackDiscount.toFixed(2)),
         earnedCashback: String(earnedCashback.toFixed(2)),
         total: String(total.toFixed(2)),
@@ -769,6 +735,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         originalPriceSnap: item.originalPriceSnap != null ? String(item.originalPriceSnap.toFixed(2)) : null,
         offerIdSnap: item.offerIdSnap || null,
         offerDiscountSnap: String((item.offerDiscountSnap || 0).toFixed(2)),
+        pricingTierSnap: item.pricingTierSnap || null,
         unitCostSnap: String(item.unitCostSnap.toFixed(4)),
         earnedCashback: String(item.earnedCashback.toFixed(2)),
         image: item.image,

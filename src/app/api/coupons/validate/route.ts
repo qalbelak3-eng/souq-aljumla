@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgGetProducts } from '@/lib/postgres-catalog';
-import { getProductPriceForUser, validateOrderItemQuantity } from '@/lib/pricing';
+import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity } from '@/lib/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,8 +45,8 @@ export async function POST(request: Request) {
         }
         const qty = qtyRes.quantity!;
         const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
-        const pricingRes = getProductPriceForUser(prod, saleType as any, customer as any);
-        calculated += pricingRes.price * qty;
+        const pricingRes = resolveAuthoritativeProductPrice({ product: prod, saleType: saleType as any, user: customer as any });
+        calculated += pricingRes.finalUnitPrice * qty;
       }
       subtotal = calculated;
     } else {

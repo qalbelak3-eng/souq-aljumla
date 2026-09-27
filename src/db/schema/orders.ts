@@ -30,6 +30,10 @@ export const orders = pgTable('orders', {
   couponDiscountTypeSnap: varchar('coupon_discount_type_snap', { length: 20 }),
   couponDiscountValueSnap: numeric('coupon_discount_value_snap', { precision: 14, scale: 2 }),
 
+  // Customer Pricing Identity Snapshots (Phase Commerce-2B3)
+  customerAccountTypeSnap: varchar('customer_account_type_snap', { length: 30 }),
+  customerMerchantTierSnap: varchar('customer_merchant_tier_snap', { length: 30 }),
+
   // Financial Totals
   subtotal: numeric('subtotal', { precision: 14, scale: 2 }).notNull(),
   deliveryFee: numeric('delivery_fee', { precision: 14, scale: 2 }).default('0.00').notNull(),
@@ -84,6 +88,7 @@ export const orders = pgTable('orders', {
   index('idx_orders_created_at').on(table.createdAt),
   index('idx_orders_delivery_verified_at').on(table.deliveryVerifiedAt),
   index('idx_orders_coupon_code_snap').on(table.couponCodeSnap),
+  index('idx_orders_customer_account_type_snap').on(table.customerAccountTypeSnap),
   check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),
@@ -112,6 +117,7 @@ export const orderItems = pgTable('order_items', {
   originalPriceSnap: numeric('original_price_snap', { precision: 14, scale: 2 }),
   offerIdSnap: uuid('offer_id_snap').references(() => productOffers.id, { onDelete: 'restrict' }),
   offerDiscountSnap: numeric('offer_discount_snap', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  pricingTierSnap: varchar('pricing_tier_snap', { length: 50 }),
   unitCostSnap: numeric('unit_cost_pieces_snap', { precision: 14, scale: 4 }).notNull(),
   earnedCashback: numeric('earned_cashback', { precision: 14, scale: 2 }).default('0.00').notNull(),
   image: text('image'),
@@ -119,6 +125,7 @@ export const orderItems = pgTable('order_items', {
   index('idx_order_items_order_id').on(table.orderId),
   index('idx_order_items_product_id').on(table.productId),
   index('idx_order_items_offer_id_snap').on(table.offerIdSnap),
+  index('idx_order_items_pricing_tier_snap').on(table.pricingTierSnap),
   check('chk_order_item_sold_qty', sql`${table.soldQuantity} > 0`),
   check('chk_order_item_conversion_factor', sql`${table.conversionFactorSnap} > 0`),
   check('chk_order_item_base_deducted', sql`${table.baseQuantityDeducted} > 0`),
