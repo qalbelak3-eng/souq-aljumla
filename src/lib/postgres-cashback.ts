@@ -369,6 +369,15 @@ export async function pgCreditOrderDeliveredCashback(
     return { credited: false, amount: toNumber(existing[0].amount) };
   }
 
+  // Row-level lock on customer's financial account to prevent concurrency races with redemptions
+  if (order.accountId) {
+    await tx
+      .select({ id: financialAccounts.id })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, order.accountId))
+      .for('update');
+  }
+
   await tx.insert(cashbackLedger).values({
     accountId: order.accountId,
     type: 'earned',
@@ -431,6 +440,15 @@ export async function pgReverseOrderRedeemedCashback(
 
   if (existingReversal.length > 0) {
     return { reversed: false, amount: toNumber(existingReversal[0].amount) };
+  }
+
+  // Row-level lock on customer's financial account to prevent concurrency races with redemptions
+  if (order.accountId) {
+    await tx
+      .select({ id: financialAccounts.id })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, order.accountId))
+      .for('update');
   }
 
   await tx.insert(cashbackLedger).values({
@@ -503,6 +521,15 @@ export async function pgClawbackOrderDeliveredCashback(
       balanceBefore: 0,
       deficitAmount: 0,
     };
+  }
+
+  // Row-level lock on the customer's financial account FOR UPDATE to serialize with pgRedeemCashbackInOrder
+  if (order.accountId) {
+    await tx
+      .select({ id: financialAccounts.id })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, order.accountId))
+      .for('update');
   }
 
   const currentSpendableBalance = await pgGetAccountCashbackBalance(order.accountId, tx);

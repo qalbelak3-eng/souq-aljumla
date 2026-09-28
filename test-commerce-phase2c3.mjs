@@ -24,6 +24,10 @@ import {
   pgResolveCustomerAccount,
 } from './src/lib/postgres-cashback.ts';
 import { toCanonicalIraqiPhone } from './src/lib/phone-utils.ts';
+import { getDb } from './src/db/client.ts';
+import { financialAccounts } from './src/db/schema/accounts.ts';
+import { cashbackLedger } from './src/db/schema/accounting.ts';
+import { eq } from 'drizzle-orm';
 
 const Ep = EpDefault.default || EpDefault;
 const PORT = 54361;
@@ -593,6 +597,133 @@ async function runTests() {
     assert(e.message.includes('غير مسند إليك'), 'Driver cannot cancel an order assigned to a different driver');
   }
   assert(errThrown, 'Object-level driver check passed');
+
+  // Test 12: Real PostgreSQL Concurrency Serialization (Return/Clawback vs Redeem on Same Account)
+  console.log('\n[Test 12] Testing Concurrency Serialization (Return/Clawback vs Redeem on Same Financial Account)');
+  
+  // Case 12A: Clawback acquires lock first -> Redeem waits, reads new balance (0), and is rejected
+  console.log('\n--- Case 12A: Clawback acquires lock first -> Redeem waits and rejects ---');
+  const custPhone12A = '07788112233';
+  const order12A = await createTestOrder({
+    customer: { name: 'زبون التزامن 12A', phone: custPhone12A, address: 'بغداد' },
+    items: [{ productId: prod1.id, name: prod1.name, price: 10000, quantity: 2, saleType: 'piece', unitLabel: 'قطعة', image: '' }],
+  });
+  await sql`UPDATE orders SET earned_cashback = '10000.00' WHERE id = ${order12A.id}`;
+  await pgUpdateOrderStatus(order12A.id, 'processing');
+  await pgUpdateOrderStatus(order12A.id, 'shipped');
+  await pgUpdateOrderStatus(order12A.id, 'delivered');
+
+  const [db12A] = await sql`SELECT account_id FROM orders WHERE id = ${order12A.id}`;
+  const accountId12A = db12A.account_id;
+
+  const bal12ABefore = await pgGetAccountCashbackBalance(accountId12A);
+  assert(bal12ABefore === 10000, 'Initial balance is exactly 10,000 IQD');
+
+  const db = getDb();
+  let redeemPromise12A = null;
+
+  await db.transaction(async (txA) => {
+    // 1. Transaction A starts return & clawback, which locks financial_accounts FOR UPDATE
+    await pgReturnOrder(order12A.id, { reason: 'إرجاع واسترداد أولاً', tx: txA });
+
+    // 2. While txA is still active and holding the lock, Transaction B attempts to create an order redeeming 10,000 IQD
+    redeemPromise12A = createTestOrder({
+      customer: { name: 'زبون التزامن 12A', phone: custPhone12A, address: 'بغداد' },
+      items: [{ productId: prod1.id, name: prod1.name, price: 10000, quantity: 2, saleType: 'piece', unitLabel: 'قطعة', image: '' }],
+      usedCashbackDiscount: 10000,
+      accountId: accountId12A,
+    });
+
+    // Small delay to ensure Transaction B has started and is waiting on the lock
+    await new Promise((r) => setTimeout(r, 100));
+  });
+
+  // Now txA has committed. Await Transaction B
+  let redeemError12A = null;
+  try {
+    await redeemPromise12A;
+  } catch (err) {
+    redeemError12A = err;
+  }
+
+  assert(Boolean(redeemError12A), 'Redeem was rejected cleanly because balance dropped to 0 while waiting for lock');
+  assert(
+    redeemError12A?.message.includes('رصيد الأرباح') || redeemError12A?.message.includes('0 د.ع'),
+    'Redeem rejected with insufficient balance error: ' + redeemError12A?.message
+  );
+
+  const bal12AAfter = await pgGetAccountCashbackBalance(accountId12A);
+  assert(bal12AAfter === 0, 'Final spendable balance is strictly 0 IQD (no double-spend)');
+  const summary12A = await pgGetCustomerCashbackSummary({ accountId: accountId12A });
+  assert(summary12A.deficitBalance === 0, 'No deficit created because Redeem was blocked');
+  assert(summary12A.totalRedeemed === 0, 'Total redeemed is strictly 0');
+  assert(summary12A.totalClawedBack === 10000, 'Total clawed back is 10,000');
+
+  // Case 12B: Redeem acquires lock first -> Clawback waits, calculates deficitAmount from updated state, logs warning
+  console.log('\n--- Case 12B: Redeem acquires lock first -> Clawback waits and calculates deficit ---');
+  const custPhone12B = '07788112244';
+  const order12B = await createTestOrder({
+    customer: { name: 'زبون التزامن 12B', phone: custPhone12B, address: 'بغداد' },
+    items: [{ productId: prod1.id, name: prod1.name, price: 10000, quantity: 2, saleType: 'piece', unitLabel: 'قطعة', image: '' }],
+  });
+  await sql`UPDATE orders SET earned_cashback = '10000.00' WHERE id = ${order12B.id}`;
+  await pgUpdateOrderStatus(order12B.id, 'processing');
+  await pgUpdateOrderStatus(order12B.id, 'shipped');
+  await pgUpdateOrderStatus(order12B.id, 'delivered');
+
+  const [db12B] = await sql`SELECT account_id FROM orders WHERE id = ${order12B.id}`;
+  const accountId12B = db12B.account_id;
+
+  const bal12BBefore = await pgGetAccountCashbackBalance(accountId12B);
+  assert(bal12BBefore === 10000, 'Initial balance is exactly 10,000 IQD');
+
+  let clawbackPromise12B = null;
+
+  await db.transaction(async (txB) => {
+    // 1. Transaction B starts and locks financial_accounts FOR UPDATE
+    await txB
+      .select({ id: financialAccounts.id })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, accountId12B))
+      .for('update');
+
+    // Deduct/redeem 10,000 IQD in txB
+    await txB.insert(cashbackLedger).values({
+      accountId: accountId12B,
+      type: 'redeemed',
+      amount: '10000.00',
+      notes: 'صرف الأرباح أولاً في معاملة متزامنة',
+    });
+
+    // 2. While txB is still holding the lock on financial_accounts, Transaction A attempts to return order12B
+    clawbackPromise12B = pgReturnOrder(order12B.id, { reason: 'إرجاع متزامن بعد بدء الشراء' });
+
+    // Small delay to ensure Transaction A has reached and is waiting on the lock
+    await new Promise((r) => setTimeout(r, 100));
+  });
+
+  // Now txB has committed. Await Transaction A
+  const returnRes12B = await clawbackPromise12B;
+  assert(returnRes12B.status === 'returned', 'Clawback succeeded after waiting for Redeem lock');
+
+  const bal12BAfter = await pgGetAccountCashbackBalance(accountId12B);
+  assert(bal12BAfter === 0, 'Spendable balance is 0 (no phantom positive money)');
+  const summary12B = await pgGetCustomerCashbackSummary({ accountId: accountId12B });
+  assert(summary12B.netBalance === -10000, 'Summary accurately reflects customer deficit of -10,000 IQD');
+  assert(summary12B.deficitBalance === 10000, 'Deficit balance is 10,000 IQD');
+  assert(summary12B.totalRedeemed === 10000, 'Total redeemed is 10,000 IQD');
+  assert(summary12B.totalClawedBack === 10000, 'Total clawed back is 10,000 IQD');
+
+  // Verify Audit Log records accurate deficit and severity: warning
+  const [auditClawbackRow] = await sql`
+    SELECT action_type, financial_impact, severity 
+    FROM audit_logs 
+    WHERE target_id = ${order12B.id} AND action_type LIKE '%clawback%'
+  `;
+  assert(Boolean(auditClawbackRow), 'Audit log exists for clawback');
+  assert(auditClawbackRow.severity === 'warning', 'Audit log severity is warning due to deficit');
+  assert(Number(auditClawbackRow.financial_impact?.deficitAmount) === 10000, 'Audit log accurately records deficitAmount: 10,000 IQD');
+  assert(auditClawbackRow.action_type === 'cashback_clawback_deficit', 'Audit log action_type is cashback_clawback_deficit');
 
   console.log('\n======================================================');
   console.log('✅ ALL COMMERCE-2C3 VERIFICATION TESTS PASSED SUCCESSFULLY!');
