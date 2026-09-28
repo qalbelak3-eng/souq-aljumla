@@ -646,23 +646,44 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     let calculatedSubtotal = 0;
     let calculatedNonDiscountedSubtotal = 0;
 
-    for (const item of data.items) {
-      if (!item.productId || !isUuid(item.productId)) {
-        throw new Error(`معرّف المنتج غير صالح: ${item.productId || item.name}`);
-      }
+    // Deterministic Product Row Locking (Commerce-2C4A Finding #2):
+    // Collect all unique productIds, sort lexicographically, and lock upfront in deterministic order
+    // to strictly prevent intra-table concurrency deadlocks (40P01 deadlock_detected) across concurrent checkouts.
+    const uniqueProductIds = Array.from(
+      new Set(
+        (data.items || []).map((it) => {
+          const pId = String(it.productId || (it as any).id || '').trim();
+          if (!pId || !isUuid(pId)) {
+            throw new Error(`معرّف المنتج غير صالح: ${it.productId || it.name}`);
+          }
+          return pId;
+        })
+      )
+    ).sort((a, b) => a.localeCompare(b));
 
-      // Lock product row FOR UPDATE to prevent concurrency race conditions
+    const lockedProductsMap = new Map<string, any>();
+    const prodStockTracker = new Map<string, number>();
+
+    for (const pId of uniqueProductIds) {
       const prodRows = await tx
         .select()
         .from(products)
-        .where(eq(products.id, item.productId))
+        .where(eq(products.id, pId))
         .for('update');
 
       if (prodRows.length === 0) {
-        throw new Error(`المنتج غير موجود: ${item.productId}`);
+        throw new Error(`المنتج غير موجود: ${pId}`);
       }
+      lockedProductsMap.set(pId, prodRows[0]);
+      prodStockTracker.set(pId, Number(prodRows[0].currentStockPieces) || 0);
+    }
 
-      const prod = prodRows[0];
+    for (const item of data.items) {
+      const prodId = String(item.productId || (item as any).id || '').trim();
+      const prod = lockedProductsMap.get(prodId);
+      if (!prod) {
+        throw new Error(`المنتج غير موجود: ${prodId}`);
+      }
 
       if (prod.isArchived) {
         throw new Error(`المنتج (${prod.name}) مؤرشف ومحذوف من المتجر ولا يمكن طلبه`);
@@ -700,14 +721,15 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       const soldQuantity = qtyRes.quantity!;
       const baseQuantityDeducted = soldQuantity * conversionFactorSnap;
 
-      const currentStockPieces = Number(prod.currentStockPieces) || 0;
-      if (currentStockPieces < baseQuantityDeducted) {
+      const availableStockPieces = prodStockTracker.get(prod.id)!;
+      if (availableStockPieces < baseQuantityDeducted) {
         throw new Error(
-          `المخزون غير كافٍ للمنتج (${prod.name}): المتاح ${currentStockPieces} قطعة، والمطلوب ${baseQuantityDeducted} قطعة (${soldQuantity} ${unitLabelSnap})`
+          `المخزون غير كافٍ للمنتج (${prod.name}): المتاح ${availableStockPieces} قطعة، والمطلوب ${baseQuantityDeducted} قطعة (${soldQuantity} ${unitLabelSnap})`
         );
       }
 
-      const newStockPieces = currentStockPieces - baseQuantityDeducted;
+      const newStockPieces = availableStockPieces - baseQuantityDeducted;
+      prodStockTracker.set(prod.id, newStockPieces);
       let unitPrice = toNumber(item.price ?? (item as any).unitPrice);
 
       // Query active, unarchived, and valid promotional offer for this product under transaction lock
@@ -1216,7 +1238,8 @@ export async function pgCancelOrder(
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id));
 
-      for (const item of items) {
+      const sortedItems = [...items].sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
+      for (const item of sortedItems) {
         const prodRows = await tx
           .select()
           .from(products)
@@ -1382,7 +1405,8 @@ export async function pgReturnOrder(
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id));
 
-      for (const item of items) {
+      const sortedItems = [...items].sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
+      for (const item of sortedItems) {
         const prodRows = await tx
           .select()
           .from(products)
@@ -1609,41 +1633,105 @@ export async function pgUpdateOrderStatus(
 
 export async function pgUpdateOrder(
   idOrOrderNumber: string,
-  updates: Partial<Order>,
-  options?: { adjustInventory?: boolean; operator?: PgOperator }
+  updates: Partial<Order> & { items?: OrderItem[]; customer?: CustomerInfo; accountId?: string },
+  options?: { adjustInventory?: boolean; operator?: PgOperator; tx?: any }
 ): Promise<Order> {
-  const current = await pgGetOrderById(idOrOrderNumber);
-  if (!current) {
-    throw new Error('الطلب غير موجود');
-  }
+  const trimmed = String(idOrOrderNumber || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
-  // Terminal State Protection
-  if (current.status === 'cancelled' || current.status === 'returned' || current.collectionStatus === 'returned') {
-    if (updates.status && updates.status !== current.status) {
-      throw new Error('الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)');
+  const executeUpdate = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) {
+      conditions.push(eq(orders.id, trimmed));
     }
-  }
 
-  if (updates.status === 'cancelled' && current.status !== 'cancelled') {
-    return pgCancelOrder(idOrOrderNumber, {
-      reason: updates.driverNotes || updates.notes,
-      operator: options?.operator,
-    });
-  }
+    // 1. Row-level lock on the target order BEFORE any check or modification
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
 
-  if (updates.status === 'returned' && current.status !== 'returned') {
-    return pgReturnOrder(idOrOrderNumber, {
-      reason: updates.driverNotes || updates.notes,
-      operator: options?.operator,
-    });
-  }
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
 
-  const db = getDb();
-  return db.transaction(async (tx) => {
+    const current = orderRows[0];
+
+    // 2. Terminal State Protection: Strictly forbid modifying delivered, cancelled, or returned orders
+    if (['delivered', 'cancelled', 'returned'].includes(current.status) || current.collectionStatus === 'returned') {
+      throw new Error(`الطلبية بحالة نهائية (${current.status}) ولا يمكن تعديلها`);
+    }
+
+    // 3. Double-restock Protection: Never allow inventory or item modification if inventory was already restored
+    if (current.inventoryRestored) {
+      throw new Error('تم استرجاع مخزون هذه الطلبية مسبقاً ولا يمكن تعديل أصنافها أو مخزونها');
+    }
+
+    // 4. Financial Identity Protection: Never allow changing the customer accountId to sever the invoice
+    if (updates.accountId && updates.accountId !== current.accountId) {
+      throw new Error('لا يمكن تغيير الحساب المالي المرتبط بالطلب');
+    }
+
+    // 5. Strict State Machine Validation: Do not allow free arbitrary status mutations
+    if (updates.status && updates.status !== current.status) {
+      validateOrderTransition(current.status as OrderStatus, updates.status as OrderStatus);
+
+      if (updates.status === 'cancelled') {
+        return await pgCancelOrder(trimmed, {
+          reason: updates.driverNotes || updates.notes,
+          operator: options?.operator,
+          tx,
+        });
+      }
+
+      if (updates.status === 'returned') {
+        return await pgReturnOrder(trimmed, {
+          reason: updates.driverNotes || updates.notes,
+          operator: options?.operator,
+          tx,
+        });
+      }
+
+      // Delegate to official lifecycle status updater
+      return await pgUpdateOrderStatus(trimmed, updates.status as OrderStatus, {
+        operator: options?.operator,
+        driverNotes: updates.driverNotes || updates.notes,
+        tx,
+      });
+    }
+
     const staffId = await resolveStaffId(tx, options?.operator);
 
-    // If items are modified and adjustInventory is true, compute delta adjustments
-    if (options?.adjustInventory !== false && updates.items && Array.isArray(updates.items)) {
+    // 6. Item & Quantity Modification: Strictly allowed in 'pending' status ONLY
+    if (updates.items && Array.isArray(updates.items)) {
+      if (current.status !== 'pending') {
+        throw new Error(
+          `لا يمكن تعديل أصناف أو كميات الطلبية إلا عندما تكون بحالة الانتظار (pending). حالة الطلب الحالية: ${current.status}`
+        );
+      }
+
+      // Financial Impact Protection: Forbid modifying items if coupon or cashback was applied
+      if (toNumber(current.usedCashbackDiscount) > 0 || current.couponId) {
+        throw new Error(
+          'لا يمكن تعديل أصناف طلب تم تطبيق كود خصم أو رصيد أرباح (كاشباك) عليه لاختلاف الأثر المالي؛ يرجى إلغاء الطلب وإنشاء طلب جديد بالكميات المعدلة'
+        );
+      }
+
+      // Fetch customer account to determine authoritative pricing identity
+      const [customerAccount] = await tx
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, current.accountId))
+        .limit(1);
+
+      const effectiveUser = normalizePricingIdentity({
+        accountType: current.customerAccountTypeSnap || (customerAccount?.category === 'customer' ? undefined : customerAccount?.category),
+        pricingTier: customerAccount?.pricingTier,
+        merchantTier: current.customerMerchantTierSnap as any,
+      });
+
+      // Existing items for inventory diff
       const oldItems = await tx
         .select()
         .from(orderItems)
@@ -1654,23 +1742,51 @@ export async function pgUpdateOrder(
         oldDeductedMap.set(it.productId, (oldDeductedMap.get(it.productId) || 0) + Number(it.baseQuantityDeducted));
       }
 
-      // Re-evaluate new items
+      // Validate new items and collect new product IDs
+      const newDeductedMap = new Map<string, number>();
+      const newProductIds = new Set<string>();
+
+      for (const item of updates.items) {
+        const pId = String(item.productId || (item as any).id || '').trim();
+        if (!pId || !isUuid(pId)) {
+          throw new Error(`معرّف المنتج غير صالح: ${item.productId || item.name}`);
+        }
+        newProductIds.add(pId);
+      }
+
+      // Deterministic Sorting of ALL affected product IDs before locking
+      const allProductIds = Array.from(
+        new Set([...Array.from(oldDeductedMap.keys()), ...Array.from(newProductIds)])
+      ).sort((a, b) => a.localeCompare(b));
+
+      // Lock all affected products in deterministic order
+      const lockedProdsMap = new Map<string, any>();
+      for (const pId of allProductIds) {
+        const prodRows = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, pId))
+          .for('update');
+
+        if (prodRows.length === 0) {
+          throw new Error(`المنتج غير موجود: ${pId}`);
+        }
+        lockedProdsMap.set(pId, prodRows[0]);
+      }
+
+      // Process new items with authoritative pricing and packaging math
       const newItemsProcessed = [];
       let newCalculatedSubtotal = 0;
 
       for (const item of updates.items) {
-        if (!item.productId || !isUuid(item.productId)) {
-          throw new Error(`معرّف المنتج غير صالح: ${item.productId || item.name}`);
+        const pId = String(item.productId || (item as any).id || '').trim();
+        const prod = lockedProdsMap.get(pId)!;
+
+        if (prod.isArchived) {
+          throw new Error(`المنتج (${prod.name}) مؤرشف ومحذوف من المتجر ولا يمكن طلبه`);
         }
-
-        const [prod] = await tx
-          .select()
-          .from(products)
-          .where(eq(products.id, item.productId))
-          .for('update');
-
-        if (!prod) {
-          throw new Error(`المنتج غير موجود: ${item.productId}`);
+        if (prod.isActive === false) {
+          throw new Error(`المنتج (${prod.name}) معطل حالياً وغير متاح للطلب`);
         }
 
         const boxesPerCarton = Math.max(1, Number(prod.boxesPerCarton) || 1);
@@ -1697,10 +1813,46 @@ export async function pgUpdateOrder(
         }
         const soldQuantity = qtyRes.quantity!;
         const baseQuantityDeducted = soldQuantity * conversionFactorSnap;
-        const unitPrice = toNumber(item.price);
+
+        // Query active promotional offer for this product under lock
+        const activeOfferRows = await tx
+          .select()
+          .from(productOffers)
+          .where(
+            and(
+              eq(productOffers.productId, prod.id),
+              eq(productOffers.isActive, true),
+              or(isNull(productOffers.isArchived), eq(productOffers.isArchived, false)),
+              or(isNull(productOffers.startDate), lte(productOffers.startDate, new Date())),
+              gt(productOffers.endDate, new Date())
+            )
+          )
+          .orderBy(desc(productOffers.createdAt))
+          .limit(1);
+
+        const activeOffer = activeOfferRows.length > 0 ? activeOfferRows[0] : null;
+
+        // Authoritative Server-Side Pricing (NEVER trust item.price)
+        const authoritativePricing = resolveAuthoritativeProductPrice({
+          product: prod,
+          saleType: (item.saleType as any) || 'retail',
+          user: effectiveUser,
+          activeOffer: activeOffer ? {
+            id: activeOffer.id,
+            offerPrice: Number(activeOffer.offerPrice),
+            offerWholesalePrice: activeOffer.offerWholesalePrice ? Number(activeOffer.offerWholesalePrice) : undefined,
+            originalPrice: activeOffer.originalPrice ? Number(activeOffer.originalPrice) : undefined,
+            originalWholesalePrice: activeOffer.originalWholesalePrice ? Number(activeOffer.originalWholesalePrice) : undefined,
+            startDate: activeOffer.startDate,
+            endDate: activeOffer.endDate,
+          } : null,
+        });
+
+        const authoritativePrice = authoritativePricing.finalUnitPrice;
         const unitCost = toNumber(prod.pieceCostPrice);
 
-        newCalculatedSubtotal += unitPrice * soldQuantity;
+        newCalculatedSubtotal += authoritativePrice * soldQuantity;
+        newDeductedMap.set(pId, (newDeductedMap.get(pId) || 0) + baseQuantityDeducted);
 
         newItemsProcessed.push({
           productId: prod.id,
@@ -1710,60 +1862,52 @@ export async function pgUpdateOrder(
           soldQuantity,
           conversionFactorSnap,
           baseQuantityDeducted,
-          unitPriceSnap: unitPrice,
+          unitPriceSnap: authoritativePrice,
+          originalPriceSnap: authoritativePricing.originalUnitPrice,
+          offerIdSnap: authoritativePricing.isOfferApplied ? authoritativePricing.offerId || null : null,
+          offerDiscountSnap: authoritativePricing.isOfferApplied ? authoritativePricing.offerSavingsPerUnit : 0,
+          pricingTierSnap: authoritativePricing.pricingTierApplied,
           unitCostSnap: unitCost,
-          earnedCashback: toNumber(item.earnedCashback),
+          earnedCashback: 0,
           image: item.image || null,
         });
       }
 
-      const newDeductedMap = new Map<string, number>();
-      for (const it of newItemsProcessed) {
-        newDeductedMap.set(it.productId, (newDeductedMap.get(it.productId) || 0) + it.baseQuantityDeducted);
-      }
-
-      const allProductIds = Array.from(new Set([...Array.from(oldDeductedMap.keys()), ...Array.from(newDeductedMap.keys())]));
+      // Rebalance inventory atomically
       for (const pId of allProductIds) {
         const oldPieces = oldDeductedMap.get(pId) || 0;
         const newPieces = newDeductedMap.get(pId) || 0;
-        const diff = oldPieces - newPieces; // diff > 0 means returned to stock, diff < 0 means more stock needed
+        const diff = oldPieces - newPieces; // diff > 0: return to stock; diff < 0: deduct more
 
         if (diff !== 0) {
-          const [prod] = await tx
-            .select()
-            .from(products)
-            .where(eq(products.id, pId))
-            .for('update');
+          const prod = lockedProdsMap.get(pId)!;
+          const currentStock = Number(prod.currentStockPieces) || 0;
+          const updatedStock = currentStock + diff;
 
-          if (prod) {
-            const currentStock = Number(prod.currentStockPieces) || 0;
-            const updatedStock = currentStock + diff;
-
-            if (updatedStock < 0) {
-              throw new Error(
-                `المخزون غير كافٍ للمنتج (${prod.name}) لتعديل الكمية: المطلوب إضافة ${Math.abs(diff)} قطعة بينما المتاح فقط ${currentStock}`
-              );
-            }
-
-            await tx
-              .update(products)
-              .set({ currentStockPieces: updatedStock })
-              .where(eq(products.id, prod.id));
-
-            await tx.insert(inventoryMovements).values({
-              productId: prod.id,
-              movementType: diff > 0 ? 'customer_return' : 'sale',
-              quantityPieces: diff,
-              unitCostPieces: String(prod.pieceCostPrice || '0.0000'),
-              totalCost: String((Math.abs(diff) * Number(prod.pieceCostPrice || 0)).toFixed(2)),
-              balanceAfterPieces: updatedStock,
-              referenceType: 'order',
-              referenceId: current.id,
-              referenceNumber: current.orderNumber,
-              performedByStaffId: staffId,
-              notes: `تعديل كمية أصناف الطلبية ${current.orderNumber} (فارق ${diff} قطعة)`,
-            });
+          if (updatedStock < 0) {
+            throw new Error(
+              `المخزون غير كافٍ للمنتج (${prod.name}) لتعديل الكمية: المطلوب إضافة ${Math.abs(diff)} قطعة بينما المتاح فقط ${currentStock}`
+            );
           }
+
+          await tx
+            .update(products)
+            .set({ currentStockPieces: updatedStock })
+            .where(eq(products.id, prod.id));
+
+          await tx.insert(inventoryMovements).values({
+            productId: prod.id,
+            movementType: diff > 0 ? 'customer_return' : 'sale',
+            quantityPieces: diff,
+            unitCostPieces: String(prod.pieceCostPrice || '0.0000'),
+            totalCost: String((Math.abs(diff) * Number(prod.pieceCostPrice || 0)).toFixed(2)),
+            balanceAfterPieces: updatedStock,
+            referenceType: 'order',
+            referenceId: current.id,
+            referenceNumber: current.orderNumber,
+            performedByStaffId: staffId,
+            notes: `تعديل كمية أصناف الطلبية ${current.orderNumber} (فارق ${diff} قطعة)`,
+          });
         }
       }
 
@@ -1780,61 +1924,94 @@ export async function pgUpdateOrder(
           conversionFactorSnap: it.conversionFactorSnap,
           baseQuantityDeducted: it.baseQuantityDeducted,
           unitPriceSnap: String(it.unitPriceSnap.toFixed(2)),
+          originalPriceSnap: it.originalPriceSnap != null ? String(it.originalPriceSnap.toFixed(2)) : null,
+          offerIdSnap: it.offerIdSnap,
+          offerDiscountSnap: String(it.offerDiscountSnap.toFixed(2)),
+          pricingTierSnap: it.pricingTierSnap,
           unitCostSnap: String(it.unitCostSnap.toFixed(4)),
-          earnedCashback: String(it.earnedCashback.toFixed(2)),
+          earnedCashback: '0.00',
           image: it.image,
         });
       }
 
-      updates.subtotal = newCalculatedSubtotal;
+      // Recalculate totals server-side (Never trust client total or subtotal)
+      const newDeliveryFee = updates.deliveryFee !== undefined ? Math.max(0, toNumber(updates.deliveryFee)) : toNumber(current.deliveryFee);
+      const newTotal = Math.max(0, newCalculatedSubtotal + newDeliveryFee);
+
+      const updateFields: any = {
+        subtotal: String(newCalculatedSubtotal.toFixed(2)),
+        deliveryFee: String(newDeliveryFee.toFixed(2)),
+        discount: '0.00',
+        usedCashbackDiscount: '0.00',
+        total: String(newTotal.toFixed(2)),
+        remainingDebtAmount: String(newTotal.toFixed(2)),
+        updatedAt: new Date(),
+      };
+
+      if (updates.paymentMethod) updateFields.paymentMethod = updates.paymentMethod;
+      if (updates.notes !== undefined) updateFields.notes = updates.notes;
+      if (updates.driverNotes !== undefined) updateFields.driverNotes = updates.driverNotes;
+      if (updates.customer?.name) updateFields.customerNameSnap = updates.customer.name.trim();
+      if (updates.customer?.phone) updateFields.customerPhoneSnap = normalizePhone(updates.customer.phone);
+      if (updates.customer?.address) updateFields.deliveryAddressSnap = updates.customer.address.trim();
+
+      const [updatedOrder] = await tx
+        .update(orders)
+        .set(updateFields)
+        .where(eq(orders.id, current.id))
+        .returning();
+
+      await tx.insert(auditLogs).values({
+        actionType: 'order_updated',
+        actionLabel: 'تعديل أصناف وبيانات الفاتورة',
+        category: 'commerce',
+        categoryLabel: 'الطلبات والمبيعات',
+        staffId,
+        operatorSnapshot: options?.operator || null,
+        targetType: 'order',
+        targetId: current.id,
+        targetReferenceNumber: current.orderNumber,
+        financialImpact: {
+          previousTotal: toNumber(current.total),
+          newTotal,
+        },
+        details: `تعديل أصناف الفاتورة ${current.orderNumber} - الإجمالي الجديد: ${newTotal.toLocaleString()} د.ع`,
+        severity: 'info',
+      });
+
+      const itemsFromDb = await tx.select().from(orderItems).where(eq(orderItems.orderId, current.id));
+      return formatOrderRecord(updatedOrder, itemsFromDb, undefined, undefined, customerAccount);
     }
 
-    const newSubtotal = updates.subtotal !== undefined ? toNumber(updates.subtotal) : current.subtotal;
-    const newDeliveryFee = updates.deliveryFee !== undefined ? toNumber(updates.deliveryFee) : (current.deliveryFee || 0);
-    const newDiscount = updates.discount !== undefined ? toNumber(updates.discount) : current.discount;
-    const newUsedCashback = updates.usedCashbackDiscount !== undefined ? toNumber(updates.usedCashbackDiscount) : (current.usedCashbackDiscount || 0);
-    const newTotal = updates.total !== undefined ? toNumber(updates.total) : Math.max(0, newSubtotal + newDeliveryFee - newDiscount - newUsedCashback);
-
+    // 7. Non-Item Updates (Notes, Delivery Fee adjustments on pending order, Driver Notes, Address)
     const updateFields: any = {
-      subtotal: String(newSubtotal.toFixed(2)),
-      deliveryFee: String(newDeliveryFee.toFixed(2)),
-      discount: String(newDiscount.toFixed(2)),
-      usedCashbackDiscount: String(newUsedCashback.toFixed(2)),
-      total: String(newTotal.toFixed(2)),
       updatedAt: new Date(),
     };
 
-    if (updates.status && ['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(updates.status)) {
-      updateFields.status = updates.status;
+    if (updates.deliveryFee !== undefined) {
+      const newDeliveryFee = Math.max(0, toNumber(updates.deliveryFee));
+      const subtotal = toNumber(current.subtotal);
+      const discount = toNumber(current.discount);
+      const usedCashback = toNumber(current.usedCashbackDiscount);
+      const newTotal = Math.max(0, subtotal + newDeliveryFee - discount - usedCashback);
+
+      updateFields.deliveryFee = String(newDeliveryFee.toFixed(2));
+      updateFields.total = String(newTotal.toFixed(2));
+      updateFields.remainingDebtAmount = String(newTotal.toFixed(2));
     }
-    if (updates.paymentMethod) {
-      updateFields.paymentMethod = updates.paymentMethod;
-    }
-    if (updates.notes !== undefined) {
-      updateFields.notes = updates.notes;
-    }
-    if (updates.driverNotes !== undefined) {
-      updateFields.driverNotes = updates.driverNotes;
-    }
-    if (updates.customer?.name) {
-      updateFields.customerNameSnap = updates.customer.name.trim();
-    }
-    if (updates.customer?.phone) {
-      updateFields.customerPhoneSnap = normalizePhone(updates.customer.phone);
-    }
-    if (updates.customer?.address) {
-      updateFields.deliveryAddressSnap = updates.customer.address.trim();
-    }
+
+    if (updates.paymentMethod) updateFields.paymentMethod = updates.paymentMethod;
+    if (updates.notes !== undefined) updateFields.notes = updates.notes;
+    if (updates.driverNotes !== undefined) updateFields.driverNotes = updates.driverNotes;
+    if (updates.customer?.name) updateFields.customerNameSnap = updates.customer.name.trim();
+    if (updates.customer?.phone) updateFields.customerPhoneSnap = normalizePhone(updates.customer.phone);
+    if (updates.customer?.address) updateFields.deliveryAddressSnap = updates.customer.address.trim();
 
     const [updatedOrder] = await tx
       .update(orders)
       .set(updateFields)
       .where(eq(orders.id, current.id))
       .returning();
-
-    if (updates.status === 'delivered' && current.status !== 'delivered') {
-      await pgCreditOrderDeliveredCashback(tx, current.id);
-    }
 
     await tx.insert(auditLogs).values({
       actionType: 'order_updated',
@@ -1847,24 +2024,23 @@ export async function pgUpdateOrder(
       targetId: current.id,
       targetReferenceNumber: current.orderNumber,
       financialImpact: {
-        previousTotal: current.total,
-        newTotal,
+        previousTotal: toNumber(current.total),
+        newTotal: toNumber(updatedOrder.total),
       },
-      details: `تعديل الفاتورة ${current.orderNumber} - الإجمالي الجديد: ${newTotal.toLocaleString()} د.ع`,
+      details: `تعديل بيانات الفاتورة ${current.orderNumber}`,
       severity: 'info',
     });
 
-    const itemsFromDb = await tx
-      .select()
-      .from(orderItems)
-      .where(eq(orderItems.orderId, current.id));
-
-    const [account] = await tx
-      .select()
-      .from(financialAccounts)
-      .where(eq(financialAccounts.id, updatedOrder.accountId))
-      .limit(1);
+    const itemsFromDb = await tx.select().from(orderItems).where(eq(orderItems.orderId, current.id));
+    const [account] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, updatedOrder.accountId)).limit(1);
 
     return formatOrderRecord(updatedOrder, itemsFromDb, undefined, undefined, account);
-  });
+  };
+
+  if (options?.tx) {
+    return await executeUpdate(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeUpdate);
+  }
 }

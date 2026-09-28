@@ -272,15 +272,18 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     // Terminal State Protection
-    if (prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') {
-      return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
-    }
-
-    // Financial Protection
-    if (status === 'cancelled' && ((prevOrder.paidAmount || 0) > 0 || (prevOrder.collectedAmount || 0) > 0)) {
+    if (['delivered', 'cancelled', 'returned'].includes(prevOrder.status) || prevOrder.collectionStatus === 'returned') {
       return NextResponse.json({
         success: false,
-        error: 'لا يمكن إلغاء الطلبية مباشرة لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). يتطلب الأمر إجراء تسوية/استرداد مالي (Financial Reversal / Refund).'
+        error: `الطلبية بحالة نهائية (${prevOrder.status}) ولا يمكن تعديلها أو إعادة فتحها`,
+      }, { status: 400 });
+    }
+
+    // Status changes must go strictly through PATCH and official lifecycle state machine
+    if (status && status !== prevOrder.status) {
+      return NextResponse.json({
+        success: false,
+        error: 'لا يمكن تغيير حالة الطلبية من خلال PUT؛ يرجى استخدام PATCH لتغيير الحالة عبر State Machine الرسمية',
       }, { status: 400 });
     }
 
@@ -341,7 +344,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       order: updated,
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const status = error.message?.includes('غير موجود') ? 404 : 400;
+    return NextResponse.json({ success: false, error: error.message }, { status });
   }
 }
 
