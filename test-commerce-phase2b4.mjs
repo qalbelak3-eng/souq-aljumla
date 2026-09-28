@@ -143,6 +143,45 @@ async function runCommercePhase2b4Tests() {
     'Category [id] route (src/app/api/categories/[id]/route.ts) has 0 imports of db.ts'
   );
 
+  const productsRouteCode = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/api/products/route.ts'),
+    'utf-8'
+  );
+  assert(
+    !productsRouteCode.includes('@/lib/db') && !productsRouteCode.includes('getDomainDataSource'),
+    'Products route (src/app/api/products/route.ts) has 0 imports of db.ts or getDomainDataSource'
+  );
+  assert(
+    productsRouteCode.includes('pgGetProducts') && productsRouteCode.includes('pgCreateProduct'),
+    'Products route directly uses PostgreSQL pgGetProducts and pgCreateProduct'
+  );
+
+  const productIdRouteCode = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/api/products/[id]/route.ts'),
+    'utf-8'
+  );
+  assert(
+    !productIdRouteCode.includes('@/lib/db') && !productIdRouteCode.includes('getDomainDataSource'),
+    'Product [id] route (src/app/api/products/[id]/route.ts) has 0 imports of db.ts or getDomainDataSource'
+  );
+  assert(
+    productIdRouteCode.includes('pgGetProductById') && productIdRouteCode.includes('pgUpdateProduct') && productIdRouteCode.includes('pgDeleteProduct'),
+    'Product [id] route directly uses PostgreSQL pgGetProductById, pgUpdateProduct, and pgDeleteProduct'
+  );
+
+  const sitemapCode = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/sitemap.ts'),
+    'utf-8'
+  );
+  assert(
+    !sitemapCode.includes('@/lib/db'),
+    'Sitemap (src/app/sitemap.ts) has 0 imports of db.ts'
+  );
+  assert(
+    sitemapCode.includes('pgGetProducts'),
+    'Sitemap uses PostgreSQL pgGetProducts directly'
+  );
+
   const checkoutPageCode = fs.readFileSync(
     path.resolve(process.cwd(), 'src/app/checkout/page.tsx'),
     'utf-8'

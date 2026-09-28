@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getDomainDataSource } from '@/db/client';
-import { getProducts, createProduct, getCategories } from '@/lib/db';
 import { pgGetProducts, pgCreateProduct, pgGetCategories } from '@/lib/postgres-catalog';
 import { auditAllProductsPricing } from '@/lib/pricing';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
@@ -18,13 +16,8 @@ export async function GET(request: Request) {
     const includeInactive = searchParams.get('includeInactive') === 'true';
     const includeArchived = searchParams.get('includeArchived') === 'true';
 
-    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    const products = usePg
-      ? await pgGetProducts({ category, query, featured, includeInactive, includeArchived })
-      : getProducts({ category, query, featured });
-    const categories = usePg
-      ? await pgGetCategories()
-      : getCategories();
+    const products = await pgGetProducts({ category, query, featured, includeInactive, includeArchived });
+    const categories = await pgGetCategories();
 
     const auditReport = audit ? auditAllProductsPricing(products) : undefined;
 
@@ -64,14 +57,11 @@ export async function POST(request: Request) {
       permissions: admin.permissions,
     };
 
-    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    const newProduct = usePg
-      ? await pgCreateProduct(productData, {
-          allowBelowCostOverride: Boolean(allowBelowCostOverride),
-          overrideReason,
-          operator: trustedOperator,
-        })
-      : createProduct(productData);
+    const newProduct = await pgCreateProduct(productData, {
+      allowBelowCostOverride: Boolean(allowBelowCostOverride),
+      overrideReason,
+      operator: trustedOperator,
+    });
 
     return NextResponse.json({ success: true, product: newProduct }, { status: 201 });
   } catch (error: any) {

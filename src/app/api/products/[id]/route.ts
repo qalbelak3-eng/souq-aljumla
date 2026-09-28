@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getDomainDataSource } from '@/db/client';
-import { getProductById, updateProduct, deleteProduct } from '@/lib/db';
 import { pgGetProductById, pgUpdateProduct, pgDeleteProduct } from '@/lib/postgres-catalog';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    const product = usePg
-      ? await pgGetProductById(params.id)
-      : getProductById(params.id);
+    const product = await pgGetProductById(params.id);
     if (!product) {
       return NextResponse.json({ success: false, error: 'المنتج غير موجود' }, { status: 404 });
     }
@@ -49,14 +44,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       permissions: admin.permissions,
     };
 
-    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    const updated = usePg
-      ? await pgUpdateProduct(params.id, updates, {
-          allowBelowCostOverride: Boolean(allowBelowCostOverride),
-          overrideReason,
-          operator: trustedOperator,
-        })
-      : updateProduct(params.id, updates);
+    const updated = await pgUpdateProduct(params.id, updates, {
+      allowBelowCostOverride: Boolean(allowBelowCostOverride),
+      overrideReason,
+      operator: trustedOperator,
+    });
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'المنتج غير موجود' }, { status: 404 });
@@ -92,23 +84,14 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       permissions: admin.permissions,
     };
 
-    const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    if (usePg) {
-      const result = await pgDeleteProduct(params.id, trustedOperator);
-      if (!result.success) {
-        return NextResponse.json({ success: false, error: 'تعذر حذف المنتج' }, { status: 404 });
-      }
-      const message = result.action === 'archived'
-        ? 'تمت أرشفة المنتج وتعطيله بنجاح لوجود سجل مبيعات مرتبط به'
-        : 'تم حذف المنتج نهائياً بنجاح';
-      return NextResponse.json({ success: true, action: result.action, message });
-    }
-
-    const ok = deleteProduct(params.id);
-    if (!ok) {
+    const result = await pgDeleteProduct(params.id, trustedOperator);
+    if (!result.success) {
       return NextResponse.json({ success: false, error: 'تعذر حذف المنتج' }, { status: 404 });
     }
-    return NextResponse.json({ success: true, message: 'تم الحذف بنجاح' });
+    const message = result.action === 'archived'
+      ? 'تمت أرشفة المنتج وتعطيله بنجاح لوجود سجل مبيعات مرتبط به'
+      : 'تم حذف المنتج نهائياً بنجاح';
+    return NextResponse.json({ success: true, action: result.action, message });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -1,5 +1,5 @@
 import { MetadataRoute } from 'next';
-import { getProducts } from '@/lib/db';
+import { pgGetProducts } from '@/lib/postgres-catalog';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://souqaljomla.com';
@@ -20,9 +20,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const products = getProducts();
+    const products = await pgGetProducts();
     const productRoutes: MetadataRoute.Sitemap = products
-      .filter((p) => typeof p.id === 'string' && p.id.trim().length > 0)
+      .filter((p) => typeof p.id === 'string' && p.id.trim().length > 0 && p.isActive !== false && !p.isArchived)
       .map((p) => ({
         url: `${baseUrl}/product/${p.id}`,
         lastModified: p.createdAt ? new Date(p.createdAt) : new Date(),
