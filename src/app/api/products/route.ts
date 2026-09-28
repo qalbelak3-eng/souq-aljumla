@@ -15,10 +15,12 @@ export async function GET(request: Request) {
     const query = searchParams.get('query') || undefined;
     const featured = searchParams.get('featured') === 'true';
     const audit = searchParams.get('audit') === 'true';
+    const includeInactive = searchParams.get('includeInactive') === 'true';
+    const includeArchived = searchParams.get('includeArchived') === 'true';
 
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
     const products = usePg
-      ? await pgGetProducts({ category, query, featured })
+      ? await pgGetProducts({ category, query, featured, includeInactive, includeArchived })
       : getProducts({ category, query, featured });
     const categories = usePg
       ? await pgGetCategories()

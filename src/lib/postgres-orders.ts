@@ -457,6 +457,13 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 
       const prod = prodRows[0];
 
+      if (prod.isArchived) {
+        throw new Error(`المنتج (${prod.name}) مؤرشف ومحذوف من المتجر ولا يمكن طلبه`);
+      }
+      if (prod.isActive === false) {
+        throw new Error(`المنتج (${prod.name}) معطل حالياً وغير متاح للطلب`);
+      }
+
       const boxesPerCarton = Math.max(1, Number(prod.boxesPerCarton) || 1);
       const itemsPerBox = Math.max(1, Number(prod.itemsPerBox) || 1);
       const piecesPerCarton = Number(prod.piecesPerCarton) || (boxesPerCarton * itemsPerBox);
@@ -494,7 +501,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       }
 
       const newStockPieces = currentStockPieces - baseQuantityDeducted;
-      let unitPrice = toNumber(item.price);
+      let unitPrice = toNumber(item.price ?? (item as any).unitPrice);
 
       // Query active, unarchived, and valid promotional offer for this product under transaction lock
       const activeOfferRows = await tx
@@ -537,7 +544,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       // Unprivileged customer/guest orders or explicit enforcement are strictly bound to official PostgreSQL pricing.
       const isUnprivilegedCustomer = data.operator?.role === 'customer' || data.operator?.role === 'guest';
       const shouldEnforceOfficialPrice = (isUnprivilegedCustomer || (data as any).enforceOfficialPrices === true) && data.trustSuppliedPrices !== true;
-      if (shouldEnforceOfficialPrice) {
+      if (shouldEnforceOfficialPrice || unitPrice <= 0) {
         unitPrice = officialPrice;
       }
 

@@ -93,10 +93,18 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     };
 
     const usePg = getDomainDataSource('CATALOG_BASE') === 'postgres';
-    const ok = usePg
-      ? await pgDeleteProduct(params.id, trustedOperator)
-      : deleteProduct(params.id);
+    if (usePg) {
+      const result = await pgDeleteProduct(params.id, trustedOperator);
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: 'تعذر حذف المنتج' }, { status: 404 });
+      }
+      const message = result.action === 'archived'
+        ? 'تمت أرشفة المنتج وتعطيله بنجاح لوجود سجل مبيعات مرتبط به'
+        : 'تم حذف المنتج نهائياً بنجاح';
+      return NextResponse.json({ success: true, action: result.action, message });
+    }
 
+    const ok = deleteProduct(params.id);
     if (!ok) {
       return NextResponse.json({ success: false, error: 'تعذر حذف المنتج' }, { status: 404 });
     }

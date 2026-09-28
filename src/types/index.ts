@@ -78,6 +78,9 @@ export interface Product {
   isFeatured?: boolean;
   isBestSeller?: boolean; // الأكثر طلباً ومبيعاً 🔥
   isNew?: boolean; // وصل حديثاً 🆕
+  isActive?: boolean; // حالة تفعيل الصنف (مفعّل / معطّل)
+  isArchived?: boolean; // أرشفة الصنف (محفوظ في السجلات التاريخية)
+  archivedAt?: string; // تاريخ ووقت الأرشفة
   rating?: number;
   reviewsCount?: number;
   origin?: string; // بلد المنشأ (مثال: العراق / تركيا)

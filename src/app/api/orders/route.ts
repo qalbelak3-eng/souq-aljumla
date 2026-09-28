@@ -176,7 +176,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'أحد الأصناف لا يحتوي على معرّف منتج صالح' }, { status: 400 });
       }
       const prod = allProducts.find((p) => p.id === prodId);
-      if (!prod || (prod as any).isActive === false || (prod as any).status === 'inactive' || (prod as any).status === 'archived') {
+      if (!prod || prod.isActive === false || prod.isArchived === true || (prod as any).status === 'inactive' || (prod as any).status === 'archived') {
         return NextResponse.json({
           success: false,
           error: `المنتج "${item.name || item.title || prodId}" غير موجود أو غير متوفر حالياً.`,

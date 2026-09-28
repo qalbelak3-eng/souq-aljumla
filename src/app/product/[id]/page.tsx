@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getProductById } from '@/lib/db';
+import { pgGetProductById } from '@/lib/postgres-catalog';
+import { resolveAuthoritativeProductPrice } from '@/lib/pricing';
 import { Product, PublicProduct } from '@/types';
 import ProductDetailClient from './ProductDetailClient';
 
-// ⚡ FRESHNESS STRATEGY (CURRENT ARCHITECTURE):
+// ⚡ FRESHNESS STRATEGY:
 // Using force-dynamic ensures that product price, active promotional offers, and stock
-// reflect real-time updates from store_db.json without serving stale cached prices to Google or users.
-// Note: When migrating to a multi-vendor scalable database in future phases, this can be transitioned
-// to targeted on-demand revalidation (e.g. revalidateTag / revalidatePath).
+// reflect real-time updates from PostgreSQL without serving stale cached prices to Google or users.
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
@@ -36,8 +35,8 @@ function sanitizeProductForPublic(product: Product): PublicProduct {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const product = getProductById(params.id);
-  if (!product) {
+  const product = await pgGetProductById(params.id);
+  if (!product || product.isArchived || product.isActive === false) {
     return {
       title: 'الصنف غير موجود | سوق جملة كربلاء',
       description: 'الصنف المطلوب غير متوفر حالياً في سوق جملة كربلاء.',
@@ -82,12 +81,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function ProductDetailPage({ params }: PageProps) {
-  const product = getProductById(params.id);
-  if (!product) {
+  const product = await pgGetProductById(params.id);
+  if (!product || product.isArchived || product.isActive === false) {
     notFound();
   }
 
-  const safeProduct = sanitizeProductForPublic(product);
+  // Calculate authoritative retail pricing
+  const authoritativePrice = resolveAuthoritativeProductPrice({
+    product,
+    saleType: 'retail',
+  });
+
+  const safeProduct = sanitizeProductForPublic({
+    ...product,
+    price: authoritativePrice.finalUnitPrice,
+  });
 
   const productImageUrl = safeProduct.images && safeProduct.images.length > 0
     ? (safeProduct.images[0].startsWith('http') ? safeProduct.images[0] : `https://souqaljomla.com${safeProduct.images[0]}`)
@@ -108,7 +116,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       '@type': 'Offer',
       url: `https://souqaljomla.com/product/${safeProduct.id}`,
       priceCurrency: 'IQD',
-      price: safeProduct.price,
+      price: authoritativePrice.finalUnitPrice,
       availability: (typeof safeProduct.stock === 'number' && safeProduct.stock > 0)
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',

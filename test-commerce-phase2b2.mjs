@@ -69,6 +69,8 @@ async function startDatabase() {
     'drizzle/0009_driver_operational_status.sql',
     'drizzle/0010_order_coupon_snapshot.sql',
     'drizzle/0011_offer_historical_snapshot.sql',
+    'drizzle/0012_reversal_governance_hardening.sql',
+    'drizzle/0013_product_active_archived.sql',
   ];
 
   for (const m of migrations) {

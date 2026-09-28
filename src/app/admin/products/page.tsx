@@ -108,6 +108,7 @@ export default function AdminProductsPage() {
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isOnOffer, setIsOnOffer] = useState(false);
   const [isNew, setIsNew] = useState(true);
+  const [isActive, setIsActive] = useState<boolean>(true);
   const [enableCashbackReward, setEnableCashbackReward] = useState<boolean>(true);
   const [cashbackCustomerAmount, setCashbackCustomerAmount] = useState<number | ''>('');
   const [cashbackMarketAmount, setCashbackMarketAmount] = useState<number | ''>('');
@@ -140,7 +141,7 @@ export default function AdminProductsPage() {
     if (products.length > 0) setIsRefreshing(true);
     try {
       const [prodRes, compRes] = await Promise.all([
-        fetch('/api/products', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/products?includeInactive=true&includeArchived=true', { cache: 'no-store' }).then((r) => r.json()),
         fetch('/api/companies', { cache: 'no-store' }).then((r) => r.json()),
       ]);
 
@@ -240,6 +241,7 @@ export default function AdminProductsPage() {
     setCashbackMarketAmount('');
     setCashbackMerchantAmount('');
     setCashbackWholesalePerCarton('');
+    setIsActive(true);
     setAllowBelowCostOverride(false);
     setOverrideReason('');
     setIsModalOpen(true);
@@ -291,6 +293,7 @@ export default function AdminProductsPage() {
     setIsBestSeller(Boolean(p.isBestSeller || p.isFeatured));
     setIsOnOffer(Boolean(p.isOnOffer || (p.originalPrice && Number(p.originalPrice) > Number(p.price)) || (p.originalWholesalePrice && Number(p.originalWholesalePrice) > Number(p.wholesalePrice)) || p.offerBadge));
     setIsNew(Boolean(p.isNew));
+    setIsActive(p.isActive !== undefined ? Boolean(p.isActive) : true);
     setEnableCashbackReward(p.enableCashbackReward !== false);
     setCashbackCustomerAmount(p.cashbackCustomerAmount !== undefined ? p.cashbackCustomerAmount : (p.customCashbackAmount ?? ''));
     setCashbackMarketAmount(p.cashbackMarketAmount ?? '');
@@ -409,6 +412,7 @@ export default function AdminProductsPage() {
       isFeatured: Boolean(isFeatured || isBestSeller),
       isBestSeller: Boolean(isBestSeller || isFeatured),
       isNew: Boolean(isNew),
+      isActive: Boolean(isActive),
       enableCashbackReward: Boolean(enableCashbackReward),
       cashbackCustomerAmount: cashbackCustomerAmount !== '' ? Number(cashbackCustomerAmount) : undefined,
       cashbackMarketAmount: cashbackMarketAmount !== '' ? Number(cashbackMarketAmount) : undefined,
@@ -472,8 +476,15 @@ export default function AdminProductsPage() {
       const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        setProducts((prev) => prev.filter((p) => p.id !== id));
-        toast.info('تم حذف المنتج بنجاح');
+        if (data.action === 'archived') {
+          setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, isActive: false, isArchived: true } : p)));
+          toast.warning(data.message || 'تمت أرشفة المنتج لوجود سجل مبيعات مرتبط به');
+        } else {
+          setProducts((prev) => prev.filter((p) => p.id !== id));
+          toast.info(data.message || 'تم حذف المنتج بنجاح');
+        }
+      } else {
+        toast.error(data.error || 'حدث خطأ أثناء حذف الصنف');
       }
     } catch (e) {
       console.error(e);
@@ -787,6 +798,19 @@ export default function AdminProductsPage() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-black text-slate-900 text-xs sm:text-sm leading-snug">{p.name}</span>
+                            {p.isArchived ? (
+                              <span className="bg-slate-200 text-slate-800 text-[10px] font-black px-1.5 py-0.5 rounded-md">
+                                مؤرشف 🗄️
+                              </span>
+                            ) : p.isActive === false ? (
+                              <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-1.5 py-0.5 rounded-md">
+                                معطل ⏸️
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-1.5 py-0.5 rounded-md">
+                                نشط ✅
+                              </span>
+                            )}
                             {Boolean(p.originalPrice && p.originalPrice > p.price) && (
                               <span className="bg-red-100 text-red-700 text-[10px] font-black px-1.5 py-0.2 rounded-md">
                                 {(p.offerBadge || 'عرض خاص').replace(/[🔥✨⚡]/g, '').trim()}
@@ -1604,6 +1628,26 @@ export default function AdminProductsPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Active Status Control */}
+              <div className="bg-emerald-50/70 border-2 border-emerald-200/80 p-3.5 rounded-2xl">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="font-black text-emerald-950 text-xs block">
+                      حالة المنتج: نشط ومتاح للطلب والبيع في المتجر 🛒
+                    </span>
+                    <span className="text-[10px] text-emerald-700 block">
+                      عند إلغاء التفعيل، يختفي المنتج من واجهة المتجر ولا يمكن شراؤه حتى لو تم استخدام الرابط المباشر
+                    </span>
+                  </div>
+                </label>
               </div>
 
               {/* Homepage Sections & Display Flags */}

@@ -78,13 +78,18 @@ export const products = pgTable('products', {
   // Cashback incentives per piece
   cashbackCustomerAmount: numeric('cashback_customer_amount', { precision: 14, scale: 2 }),
   cashbackMarketAmount: numeric('cashback_market_amount', { precision: 14, scale: 2 }),
-  cashbackMerchantAmount: numeric('cashback_merchant_amount', { precision: 14, scale: 2 }),
-  
+  // Lifecycle & Availability
+  isActive: boolean('is_active').default(true).notNull(),
+  isArchived: boolean('is_archived').default(false).notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_products_category').on(table.categoryId),
   index('idx_products_company').on(table.companyId),
   index('idx_products_barcode').on(table.barcode),
+  index('idx_products_is_active').on(table.isActive),
+  index('idx_products_is_archived').on(table.isArchived),
   check('chk_product_stock_non_negative', sql`${table.currentStockPieces} >= 0`),
   check('chk_product_boxes_carton', sql`${table.boxesPerCarton} > 0`),
   check('chk_product_items_box', sql`${table.itemsPerBox} > 0`),

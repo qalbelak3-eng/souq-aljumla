@@ -11,18 +11,21 @@ export async function pgGetCategories(): Promise<Category[]> {
   const sql = getPostgresClient();
   const rows = await sql`
     SELECT 
-      id,
-      name,
-      slug,
-      image,
-      icon,
-      color,
-      order_index as "orderIndex",
-      hide_from_home as "hideFromHome",
-      description,
-      created_at as "createdAt"
-    FROM categories
-    ORDER BY order_index ASC, name ASC;
+      c.id,
+      c.name,
+      c.slug,
+      c.image,
+      c.icon,
+      c.color,
+      c.order_index as "orderIndex",
+      c.hide_from_home as "hideFromHome",
+      c.description,
+      c.created_at as "createdAt",
+      COUNT(p.id)::int as "productsCount"
+    FROM categories c
+    LEFT JOIN products p ON c.id = p.category_id AND (p.is_archived IS NULL OR p.is_archived = false)
+    GROUP BY c.id
+    ORDER BY c.order_index ASC, c.name ASC;
   `;
 
   return rows.map((r: any) => ({
@@ -35,7 +38,7 @@ export async function pgGetCategories(): Promise<Category[]> {
     order: Number(r.orderIndex || 0),
     hideFromHome: Boolean(r.hideFromHome),
     description: r.description || '',
-    count: 0,
+    count: Number(r.productsCount || 0),
   }));
 }
 
@@ -84,7 +87,7 @@ export async function pgCreateCategory(data: {
 
 export async function pgUpdateCategory(
   id: string,
-  updates: Partial<Category>
+  updates: Partial<Category> & { orderIndex?: number; hideFromHome?: boolean; order?: number }
 ): Promise<Category | null> {
   const sql = getPostgresClient();
   const fields: Record<string, any> = {};
@@ -95,8 +98,9 @@ export async function pgUpdateCategory(
   if (updates.icon !== undefined) fields.icon = updates.icon?.trim() || null;
   if (updates.color !== undefined) fields.color = updates.color?.trim() || null;
   if (updates.description !== undefined) fields.description = updates.description?.trim() || null;
-  if (updates.order !== undefined) fields.order_index = updates.order;
-  if (updates.hideFromHome !== undefined) fields.hide_from_home = updates.hideFromHome;
+  if (updates.orderIndex !== undefined) fields.order_index = Number(updates.orderIndex);
+  else if (updates.order !== undefined) fields.order_index = Number(updates.order);
+  if (updates.hideFromHome !== undefined) fields.hide_from_home = Boolean(updates.hideFromHome);
 
   if (Object.keys(fields).length === 0) return null;
 
@@ -123,10 +127,59 @@ export async function pgUpdateCategory(
   };
 }
 
-export async function pgDeleteCategory(id: string): Promise<boolean> {
+export async function pgDeleteCategory(
+  id: string,
+  operator?: PgOperator
+): Promise<{ success: boolean; error?: string }> {
   const sql = getPostgresClient();
-  const result = await sql`DELETE FROM categories WHERE id = ${id};`;
-  return result.count > 0;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const rows = await sql`SELECT id, name FROM categories WHERE ${isUuid ? sql`id = ${id}` : sql`name = ${id} OR slug = ${id}`} LIMIT 1;`;
+  if (!rows || rows.length === 0) {
+    return { success: false, error: 'القسم غير موجود' };
+  }
+  const categoryId = String(rows[0].id);
+  const categoryName = String(rows[0].name);
+
+  // Check if any products are associated with this category
+  const [prodCountRow] = await sql`
+    SELECT COUNT(*)::int as count FROM products WHERE category_id = ${categoryId};
+  `;
+  const prodCount = Number(prodCountRow?.count || 0);
+
+  if (prodCount > 0) {
+    return {
+      success: false,
+      error: `لا يمكن حذف هذا القسم لأنه مرتبط بـ (${prodCount}) منتج. يرجى نقل المنتجات إلى قسم آخر أو حذفها أولاً.`,
+    };
+  }
+
+  const result = await sql`DELETE FROM categories WHERE id = ${categoryId};`;
+
+  if (operator && result.count > 0) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'category_deleted',
+          'حذف قسم من الكتالوج',
+          'catalog',
+          'الكتالوج والمنتجات',
+          ${operator ? JSON.stringify(operator) : null},
+          'category',
+          ${categoryId},
+          ${categoryName.substring(0, 50)},
+          ${`تم حذف القسم "${categoryName}" بنجاح.`},
+          'info'
+        );
+      `;
+    } catch {}
+  }
+
+  return { success: result.count > 0 };
 }
 
 // =========================================================================
@@ -294,6 +347,8 @@ export interface ProductFilters {
   category?: string;
   query?: string;
   featured?: boolean;
+  includeInactive?: boolean;
+  includeArchived?: boolean;
 }
 
 /**
@@ -365,6 +420,9 @@ function mapPgProductRowToProduct(r: any): Product {
     isFeatured: Boolean(r.is_featured),
     isBestSeller: Boolean(r.is_best_seller),
     isNew: Boolean(r.is_new),
+    isActive: r.is_active !== undefined && r.is_active !== null ? Boolean(r.is_active) : true,
+    isArchived: Boolean(r.is_archived),
+    archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : undefined,
     images: Array.isArray(r.images) ? r.images : [],
 
     // Cashback incentives
@@ -410,7 +468,8 @@ function mapPgProductRowToProduct(r: any): Product {
 /**
  * Phase 3: pgGetProducts
  * Queries all products from PostgreSQL with Category, Company, and Active Offer joins.
- * Applies category, featured, and multi-field query filters (name, barcode, description).
+ * Applies category, featured, multi-field query filters (name, barcode, description),
+ * and respects is_active and is_archived lifecycle flags.
  */
 export async function pgGetProducts(filters?: ProductFilters): Promise<Product[]> {
   const sql = getPostgresClient();
@@ -444,6 +503,14 @@ export async function pgGetProducts(filters?: ProductFilters): Promise<Product[]
   `;
 
   let list: Product[] = rows.map(mapPgProductRowToProduct);
+
+  if (!filters?.includeArchived) {
+    list = list.filter((p) => !p.isArchived);
+  }
+
+  if (!filters?.includeInactive) {
+    list = list.filter((p) => p.isActive !== false);
+  }
 
   if (filters?.category && filters.category !== 'الكل') {
     list = list.filter((p) => p.category === filters.category);
@@ -723,7 +790,8 @@ export async function pgCreateProduct(
       price, wholesale_price, market_price, box_price, special_price, vip_price, wholesale_min_quantity,
       production_date, expiry_date, expiry_alert_days,
       is_featured, is_best_seller, is_new, images,
-      cashback_customer_amount, cashback_market_amount, cashback_merchant_amount
+      cashback_customer_amount, cashback_market_amount, cashback_merchant_amount,
+      is_active, is_archived, archived_at
     ) VALUES (
       ${name},
       ${barcode},
@@ -757,7 +825,10 @@ export async function pgCreateProduct(
       ${images.length > 0 ? images : sql`ARRAY[]::text[]`},
       ${cashbackCustomer},
       ${cashbackMarket},
-      ${cashbackMerchant}
+      ${cashbackMerchant},
+      ${productData.isActive !== undefined ? Boolean(productData.isActive) : true},
+      ${Boolean(productData.isArchived)},
+      ${productData.archivedAt ? new Date(productData.archivedAt) : null}
     )
     RETURNING id;
   `;
@@ -777,7 +848,7 @@ export async function pgCreateProduct(
           'اعتماد تسعير استثنائي دون التكلفة',
           'pricing',
           'التسعير والأرباح',
-          ${sql.json(options.operator || null)},
+          ${options.operator ? JSON.stringify(options.operator) : null},
           'product',
           ${newProductId},
           ${(name || '').substring(0, 50)},
@@ -1077,7 +1148,10 @@ export async function pgUpdateProduct(
       images = ${updates.images !== undefined ? (Array.isArray(updates.images) && updates.images.length > 0 ? updates.images : sql`ARRAY[]::text[]`) : sql`images`},
       cashback_customer_amount = ${updates.cashbackCustomerAmount !== undefined ? (updates.cashbackCustomerAmount ? Number(updates.cashbackCustomerAmount) : null) : sql`cashback_customer_amount`},
       cashback_market_amount = ${updates.cashbackMarketAmount !== undefined ? (updates.cashbackMarketAmount ? Number(updates.cashbackMarketAmount) : null) : sql`cashback_market_amount`},
-      cashback_merchant_amount = ${updates.cashbackMerchantAmount !== undefined ? (updates.cashbackMerchantAmount ? Number(updates.cashbackMerchantAmount) : null) : sql`cashback_merchant_amount`}
+      cashback_merchant_amount = ${updates.cashbackMerchantAmount !== undefined ? (updates.cashbackMerchantAmount ? Number(updates.cashbackMerchantAmount) : null) : sql`cashback_merchant_amount`},
+      is_active = ${updates.isActive !== undefined ? Boolean(updates.isActive) : sql`is_active`},
+      is_archived = ${updates.isArchived !== undefined ? Boolean(updates.isArchived) : sql`is_archived`},
+      archived_at = ${updates.archivedAt !== undefined ? (updates.archivedAt ? new Date(updates.archivedAt) : null) : sql`archived_at`}
     WHERE id = ${productId};
   `;
 
@@ -1094,7 +1168,7 @@ export async function pgUpdateProduct(
           'اعتماد تسعير استثنائي دون التكلفة (تعديل منتج)',
           'pricing',
           'التسعير والأرباح',
-          ${sql.json(options.operator || null)},
+          ${options.operator ? JSON.stringify(options.operator) : null},
           'product',
           ${productId},
           ${(existing.name || '').substring(0, 50)},
@@ -1116,27 +1190,87 @@ export async function pgUpdateProduct(
  * Foreign key constraint (product_offers ON DELETE CASCADE) guarantees
  * that all attached offers are safely removed automatically without orphans.
  */
-export async function pgDeleteProduct(id: string, operator?: PgOperator): Promise<boolean> {
+export async function pgDeleteProduct(
+  id: string,
+  operator?: PgOperator
+): Promise<{ success: boolean; action: 'archived' | 'deleted' }> {
   const sql = getPostgresClient();
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-  let rows;
+  let targetRows;
   if (isUuid) {
-    rows = await sql`
-      DELETE FROM products 
+    targetRows = await sql`
+      SELECT id, name FROM products 
       WHERE id = ${id} OR barcode = ${id} 
-      RETURNING id, name;
+      LIMIT 1;
     `;
   } else {
-    rows = await sql`
-      DELETE FROM products 
+    targetRows = await sql`
+      SELECT id, name FROM products 
       WHERE barcode = ${id} 
-      RETURNING id, name;
+      LIMIT 1;
     `;
   }
 
-  if (rows.length > 0 && operator) {
+  if (!targetRows || targetRows.length === 0) {
+    return { success: false, action: 'deleted' };
+  }
+
+  const target = targetRows[0];
+  const prodId = String(target.id);
+  const prodName = String(target.name || id);
+
+  // Check if product is referenced in order_items
+  const [orderItemCount] = await sql`
+    SELECT COUNT(*)::int as count 
+    FROM order_items 
+    WHERE product_id = ${prodId};
+  `;
+
+  if (orderItemCount && Number(orderItemCount.count) > 0) {
+    // Soft-delete / Archive to preserve historical order integrity
+    await sql`
+      UPDATE products 
+      SET is_active = false, is_archived = true, archived_at = NOW() 
+      WHERE id = ${prodId};
+    `;
+
+    if (operator) {
+      try {
+        await sql`
+          INSERT INTO audit_logs (
+            action_type, action_label, category, category_label,
+            operator_snapshot, target_type, target_id, target_reference_number,
+            details, severity
+          ) VALUES (
+            'product_archived',
+            'أرشفة صنف مرتبط بسجل طلبات سابقة',
+            'catalog',
+            'الكتالوج والمنتجات',
+            ${operator ? JSON.stringify(operator) : null},
+            'product',
+            ${prodId},
+            ${prodName.substring(0, 50)},
+            ${'تمت أرشفة الصنف "' + prodName + '" وتعطيله حفاظاً على سجلات ' + orderItemCount.count + ' طلب مرتبط به.'},
+            'warning'
+          );
+        `;
+        } catch (e) {
+          console.error('Failed to log product archive audit:', e);
+        }
+      }
+
+    return { success: true, action: 'archived' };
+  }
+
+  // Zero order history: physical delete
+  await sql`
+    DELETE FROM products 
+    WHERE id = ${prodId};
+  `;
+
+  if (operator) {
     try {
       await sql`
         INSERT INTO audit_logs (
@@ -1148,11 +1282,11 @@ export async function pgDeleteProduct(id: string, operator?: PgOperator): Promis
           'حذف صنف من المخزون',
           'catalog',
           'الكتالوج والمنتجات',
-          ${sql.json(operator)},
+          ${operator ? JSON.stringify(operator) : null},
           'product',
-          ${String(rows[0].id)},
-          ${String(rows[0].name || id).substring(0, 50)},
-          ${`تم حذف الصنف "${rows[0].name || id}" نهائياً من النظام.`},
+          ${prodId},
+          ${prodName.substring(0, 50)},
+          ${'تم حذف الصنف "' + prodName + '" نهائياً لعدم وجود طلبات مرتبطة به.'},
           'warning'
         );
       `;
@@ -1160,6 +1294,88 @@ export async function pgDeleteProduct(id: string, operator?: PgOperator): Promis
       console.error('Failed to log product deletion audit:', e);
     }
   }
+
+  return { success: true, action: 'deleted' };
+}
+
+/**
+ * Phase Commerce-2B4: pgArchiveProduct
+ * Explicitly archives a product.
+ */
+export async function pgArchiveProduct(id: string, operator?: PgOperator): Promise<boolean> {
+  const sql = getPostgresClient();
+  const rows = await sql`
+    UPDATE products 
+    SET is_active = false, is_archived = true, archived_at = NOW() 
+    WHERE id = ${id} OR barcode = ${id} 
+    RETURNING id, name;
+  `;
+
+  if (rows.length > 0 && operator) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'product_archived',
+          'أرشفة صنف من الكتالوج',
+          'catalog',
+          'الكتالوج والمنتجات',
+          ${operator ? JSON.stringify(operator) : null},
+          'product',
+          ${String(rows[0].id)},
+          ${String(rows[0].name || id).substring(0, 50)},
+          ${'تمت أرشفة الصنف "' + (rows[0].name || id) + '".'},
+          'info'
+        );
+      `;
+      } catch (e) {
+        console.error('Failed to log product archive audit:', e);
+      }
+    }
+
+  return rows.length > 0;
+}
+
+/**
+ * Phase Commerce-2B4: pgReactivateProduct
+ * Reactivates an archived or inactive product.
+ */
+export async function pgReactivateProduct(id: string, operator?: PgOperator): Promise<boolean> {
+  const sql = getPostgresClient();
+  const rows = await sql`
+    UPDATE products 
+    SET is_active = true, is_archived = false, archived_at = NULL 
+    WHERE id = ${id} OR barcode = ${id} 
+    RETURNING id, name;
+  `;
+
+  if (rows.length > 0 && operator) {
+    try {
+      await sql`
+        INSERT INTO audit_logs (
+          action_type, action_label, category, category_label,
+          operator_snapshot, target_type, target_id, target_reference_number,
+          details, severity
+        ) VALUES (
+          'product_reactivated',
+          'إعادة تفعيل صنف في الكتالوج',
+          'catalog',
+          'الكتالوج والمنتجات',
+          ${operator ? JSON.stringify(operator) : null},
+          'product',
+          ${String(rows[0].id)},
+          ${String(rows[0].name || id).substring(0, 50)},
+          ${'تمت إعادة تفعيل الصنف "' + (rows[0].name || id) + '" وإتاحته للعرض والطلب.'},
+          'info'
+        );
+      `;
+      } catch (e) {
+        console.error('Failed to log product reactivate audit:', e);
+      }
+    }
 
   return rows.length > 0;
 }

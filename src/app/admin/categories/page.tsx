@@ -25,6 +25,8 @@ export default function AdminCategoriesPage() {
   const [selectedColor, setSelectedColor] = useState('#16a34a');
   const [image, setImage] = useState('');
   const [description, setDescription] = useState('');
+  const [orderIndex, setOrderIndex] = useState<number>(0);
+  const [hideFromHome, setHideFromHome] = useState<boolean>(false);
 
   const fetchCategories = () => {
     setIsLoading(true);
@@ -54,6 +56,8 @@ export default function AdminCategoriesPage() {
     setSelectedColor('#16a34a');
     setImage('');
     setDescription('');
+    setOrderIndex(0);
+    setHideFromHome(false);
     setIsModalOpen(true);
   };
 
@@ -65,6 +69,8 @@ export default function AdminCategoriesPage() {
     setSelectedColor(cat.color || preset.color || '#16a34a');
     setImage(cat.image || '');
     setDescription(cat.description || '');
+    setOrderIndex(cat.order !== undefined ? Number(cat.order) : 0);
+    setHideFromHome(Boolean(cat.hideFromHome));
     setIsModalOpen(true);
   };
 
@@ -93,6 +99,8 @@ export default function AdminCategoriesPage() {
             color: selectedColor,
             image,
             description,
+            orderIndex: Number(orderIndex),
+            hideFromHome: Boolean(hideFromHome),
           }),
         });
         const data = await res.json();
@@ -100,6 +108,8 @@ export default function AdminCategoriesPage() {
           setCategories((prev) => prev.map((c) => (c.id === editingCategory.id ? data.category : c)));
           setIsModalOpen(false);
           toast.success('تم تحديث بيانات القسم بنجاح ✅');
+        } else {
+          toast.error(data.error || 'تعذر تحديث القسم');
         }
       } else {
         // Add
@@ -112,6 +122,8 @@ export default function AdminCategoriesPage() {
             color: selectedColor,
             image,
             description,
+            orderIndex: Number(orderIndex),
+            hideFromHome: Boolean(hideFromHome),
           }),
         });
         const data = await res.json();
@@ -119,6 +131,8 @@ export default function AdminCategoriesPage() {
           setCategories((prev) => [...prev, data.category]);
           setIsModalOpen(false);
           toast.success('تمت إضافة القسم الجديد بنجاح ⚡');
+        } else {
+          toast.error(data.error || 'تعذر إضافة القسم');
         }
       }
     } catch (e) {
@@ -147,6 +161,8 @@ export default function AdminCategoriesPage() {
       if (data.success) {
         setCategories((prev) => prev.filter((c) => c.id !== id));
         toast.success('تم حذف القسم بنجاح 🗑️');
+      } else {
+        toast.error(data.error || 'تعذر حذف القسم');
       }
     } catch (e) {
       console.error(e);
@@ -375,6 +391,33 @@ export default function AdminCategoriesPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Order Index & Hide From Home */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div className="space-y-1">
+                  <label className="font-black text-slate-800">ترتيب العرض (Order Index):</label>
+                  <input
+                    type="number"
+                    value={orderIndex}
+                    onChange={(e) => setOrderIndex(Number(e.target.value))}
+                    placeholder="0"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 text-slate-900 font-bold focus:outline-none focus:border-brand-blue"
+                  />
+                  <p className="text-[10px] text-slate-400">الأرقام الأصغر تظهر أولاً في المتجر</p>
+                </div>
+                <div className="flex items-center gap-2 pt-4">
+                  <input
+                    type="checkbox"
+                    id="hideFromHome"
+                    checked={hideFromHome}
+                    onChange={(e) => setHideFromHome(e.target.checked)}
+                    className="w-4 h-4 text-brand-blue rounded border-slate-300 focus:ring-brand-blue cursor-pointer"
+                  />
+                  <label htmlFor="hideFromHome" className="font-bold text-slate-700 cursor-pointer">
+                    إخفاء القسم من الصفحة الرئيسية
+                  </label>
                 </div>
               </div>
 

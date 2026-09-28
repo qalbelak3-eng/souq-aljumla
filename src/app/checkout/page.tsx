@@ -698,6 +698,7 @@ export default function CheckoutPage() {
         subtotal,
         deliveryFee: calculatedDeliveryFee,
         discount,
+        couponCode: appliedCoupon?.code || undefined,
         usedCashbackDiscount: appliedCashbackDiscount,
         total: finalPayableTotal,
         paymentMethod,
