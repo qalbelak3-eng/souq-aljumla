@@ -8,6 +8,7 @@ import {
   validateIraqiPhone,
   isValidIraqiPhone,
   normalizePhoneForFinancialIdentity,
+  extractDigitsLegacy,
 } from '@/lib/phone-utils';
 
 export function normalizeIraqiPhone(rawPhone?: string | null): string | null {
@@ -20,4 +21,5 @@ export {
   validateIraqiPhone,
   isValidIraqiPhone,
   normalizePhoneForFinancialIdentity,
+  extractDigitsLegacy,
 };

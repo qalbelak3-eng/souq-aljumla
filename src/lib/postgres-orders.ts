@@ -72,7 +72,7 @@ export interface PgOrderFilters {
    ========================================================= */
 
 function normalizePhone(value?: string | null): string {
-  return normalizePhoneForFinancialIdentity(value);
+  return normalizePhoneForFinancialIdentity(value) || '';
 }
 
 export function toNumber(value: unknown): number {

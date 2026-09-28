@@ -625,10 +625,22 @@ export async function pgValidateCoupon(
   // 6. Per-Customer usage limit check
   if (coupon.perCustomerLimit && coupon.perCustomerLimit > 0) {
     if (options?.customerId || options?.customerPhone) {
+      const cleanPhone = options.customerPhone ? normalizePhoneForFinancialIdentity(options.customerPhone) : null;
+      const custId = options.customerId ? String(options.customerId).trim() : null;
+
+      if (options.customerPhone && !cleanPhone && !custId) {
+        return {
+          valid: false,
+          discount: 0,
+          eligibleSubtotal: 0,
+          message: 'رقم هاتف العميل غير صالح ولا يمكن التحقق من حد استخدام الكوبون',
+        };
+      }
+
       const db = getDb();
       const userRedemptions = await getCustomerCouponRedemptionCount(
         coupon.id!,
-        { customerId: options.customerId, customerPhone: options.customerPhone },
+        { customerId: custId, customerPhone: cleanPhone },
         db
       );
       if (userRedemptions >= coupon.perCustomerLimit) {
@@ -678,8 +690,8 @@ export async function pgConsumeCoupon(
   code: string,
   subtotal: number,
   userAccountType?: string,
-  tx?: any,
-  options?: {
+  txOrOptions?: any,
+  maybeOptions?: {
     eligibleSubtotal?: number;
     customerId?: string | null;
     customerPhone?: string | null;
@@ -693,7 +705,27 @@ export async function pgConsumeCoupon(
   eligibleSubtotal: number;
   redemptionId?: string;
 }> {
-  const runner = tx || getDb();
+  let tx = txOrOptions;
+  let options = maybeOptions;
+  if (
+    txOrOptions &&
+    typeof txOrOptions === 'object' &&
+    typeof txOrOptions.select !== 'function' &&
+    typeof txOrOptions.execute !== 'function'
+  ) {
+    if (
+      'customerPhone' in txOrOptions ||
+      'customerId' in txOrOptions ||
+      'eligibleSubtotal' in txOrOptions ||
+      'orderId' in txOrOptions ||
+      'recordRedemptionImmediately' in txOrOptions
+    ) {
+      options = txOrOptions;
+      tx = undefined;
+    }
+  }
+
+  const runner = (tx && typeof tx.select === 'function') ? tx : getDb();
   const cleanCode = (code || '').trim().toUpperCase();
   if (!cleanCode) {
     throw new Error('يرجى إدخال كود الخصم');
@@ -744,15 +776,21 @@ export async function pgConsumeCoupon(
   // Per-customer concurrency lock and usage limit enforcement
   if (cBefore.perCustomerLimit && cBefore.perCustomerLimit > 0) {
     if (options?.customerPhone || options?.customerId) {
-      const cleanPhone = options.customerPhone ? normalizePhoneForFinancialIdentity(options.customerPhone) : '';
+      const cleanPhone = options.customerPhone ? normalizePhoneForFinancialIdentity(options.customerPhone) : null;
+      const custId = options.customerId ? String(options.customerId).trim() : null;
+
+      if (!cleanPhone && !custId) {
+        throw new Error('رقم هاتف العميل غير صالح ولا يمكن تطبيق حد الاستخدام للكوبون بدونه');
+      }
+
       const lockKey = cleanPhone
         ? `coupon:${cBefore.id}:${cleanPhone}`
-        : `coupon:${cBefore.id}:${options.customerId}`;
+        : `coupon:${cBefore.id}:${custId}`;
       await runner.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 
       const redemptionsCount = await getCustomerCouponRedemptionCount(
         cBefore.id!,
-        { customerId: options.customerId, customerPhone: cleanPhone },
+        { customerId: custId, customerPhone: cleanPhone },
         runner
       );
       if (redemptionsCount >= cBefore.perCustomerLimit) {
@@ -826,7 +864,7 @@ export async function pgRecordCouponRedemption(
   }
 ): Promise<string | undefined> {
   const runner = (tx && typeof tx.insert === 'function') ? tx : getDb();
-  const cleanPhone = data.customerPhone ? normalizePhoneForFinancialIdentity(data.customerPhone) : '';
+  const cleanPhone = data.customerPhone ? normalizePhoneForFinancialIdentity(data.customerPhone) : null;
   if (!cleanPhone) {
     throw new Error(`رقم هاتف العميل غير صالح (${data.customerPhone || 'فارغ'}) ولا يمكن تسجيل استرداد الكوبون به`);
   }
@@ -846,28 +884,36 @@ export async function pgRecordCouponRedemption(
 
     return redemption?.id;
   } catch (err: any) {
-    // Check if error is PostgreSQL unique constraint violation on orderId (code 23505)
-    const isUniqueViolation =
-      err?.code === '23505' ||
-      err?.cause?.code === '23505' ||
-      err?.message?.includes('coupon_redemptions_order_id_unique') ||
-      err?.cause?.message?.includes('coupon_redemptions_order_id_unique') ||
-      err?.cause?.constraint_name === 'coupon_redemptions_order_id_unique' ||
-      err?.message?.includes('duplicate key') ||
-      err?.cause?.message?.includes('duplicate key');
+    // Specifically handle PostgreSQL unique constraint violation on coupon_redemptions_order_id_unique (code 23505)
+    const isCode23505 = err?.code === '23505' || err?.cause?.code === '23505';
+    const constraintName = err?.constraint || err?.cause?.constraint || err?.cause?.constraint_name || '';
+    const errMessage = (err?.message || '') + ' ' + (err?.cause?.message || '');
+    const isOrderUniqueViolation =
+      isCode23505 &&
+      (constraintName === 'coupon_redemptions_order_id_unique' ||
+        errMessage.includes('coupon_redemptions_order_id_unique'));
 
-    if (isUniqueViolation) {
+    if (isOrderUniqueViolation) {
       const existing = await runner
-        .select({ id: couponRedemptions.id })
+        .select({
+          id: couponRedemptions.id,
+          couponId: couponRedemptions.couponId,
+        })
         .from(couponRedemptions)
         .where(eq(couponRedemptions.orderId, data.orderId))
         .limit(1);
 
       if (existing.length > 0) {
-        return existing[0].id;
+        const prev = existing[0];
+        if (prev.couponId === data.couponId) {
+          return prev.id;
+        }
+        throw new Error(
+          `تعارض في سلامة البيانات: الطلب (${data.orderNumber}) مسجل له استرداد كوبون مسبقاً بكوبون مختلف (${prev.couponId}) عن الكوبون المطلوب (${data.couponId})`
+        );
       }
-      throw new Error(`تم تسجيل استرداد كوبون مسبقاً لهذا الطلب (${data.orderNumber})`);
     }
+
     throw err;
   }
 }

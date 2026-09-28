@@ -19,6 +19,8 @@ import {
   toLocalIraqiPhone,
   validateIraqiPhone,
   isValidIraqiPhone,
+  normalizePhoneForFinancialIdentity,
+  extractDigitsLegacy,
 } from './src/lib/phone-utils.ts';
 import { pgCreateOrder, pgGetOrderById } from './src/lib/postgres-orders.ts';
 import { pgCreateProduct, pgCreateCategory } from './src/lib/postgres-catalog.ts';
@@ -608,6 +610,8 @@ async function runCommercePhase2c1Tests() {
     { input: '0770 123 4567', expected: '9647701234567' },
     { input: '+964 770 123 4567', expected: '9647701234567' },
     { input: '٠٧٧٠١٢٣٤٥٦٧', expected: '9647701234567' },
+    { input: '۰۷۷۰۱۲۳۴۵۶۷', expected: '9647701234567' }, // Persian / Farsi digits
+    { input: '+۹۶۴۷۷۰۱۲۳۴۵۶۷', expected: '9647701234567' }, // Persian with +964
   ];
 
   for (const c of validIraqiCases) {
@@ -621,7 +625,17 @@ async function runCommercePhase2c1Tests() {
     const res = validateIraqiPhone(inv);
     assert(res.isValid === false, `Invalid phone "${inv}" rejected by validation`);
     assert(toCanonicalIraqiPhone(inv) === null, `Invalid phone "${inv}" returns null canonical`);
+    // Verify fail-closed behavior of normalizePhoneForFinancialIdentity
+    assert(normalizePhoneForFinancialIdentity(inv) === null, `Financial identity normalizer strictly returns null for invalid phone "${inv}" (fail-closed, no stripped-digits fallback)`);
   }
+
+  // Verify normalizePhoneForFinancialIdentity works for valid Persian and Arabic phones
+  assert(normalizePhoneForFinancialIdentity('۰۷۷۰۱۲۳۴۵۶۷') === '9647701234567', 'Financial identity normalizer converts Persian numerals to canonical');
+  assert(normalizePhoneForFinancialIdentity('٠٧٧٠١٢٣٤٥٦٧') === '9647701234567', 'Financial identity normalizer converts Arabic numerals to canonical');
+
+  // Verify extractDigitsLegacy operates as legacy fallback outside coupon financial identity
+  assert(extractDigitsLegacy('12345-abc') === '12345', 'extractDigitsLegacy strips non-digits without validation');
+  assert(extractDigitsLegacy('+964-770') === '964770', 'extractDigitsLegacy strips non-digits');
 
   // =========================================================================
   // Scenario 17: Multi-Format Phone Bypass Prevention (0770... vs +964770... vs 00964...)
@@ -814,7 +828,7 @@ async function runCommercePhase2c1Tests() {
     createAccountIfMissing: true,
   });
 
-  // Call pgRecordCouponRedemption a second time for the SAME order
+  // Call pgRecordCouponRedemption a second time for the SAME order with the SAME coupon (Idempotent)
   const secondCallRedemptionId = await pgRecordCouponRedemption(sql, {
     couponId: couponIdempotency.id,
     orderId: orderIdemp.id,
@@ -823,6 +837,64 @@ async function runCommercePhase2c1Tests() {
     discountAmount: 1000,
   });
   assert(Boolean(secondCallRedemptionId), 'Second call to pgRecordCouponRedemption safely returned redemption ID');
+
+  // Attempt pgRecordCouponRedemption for the SAME order with a DIFFERENT coupon (Integrity Violation)
+  let diffCouponError = null;
+  try {
+    await pgRecordCouponRedemption(sql, {
+      couponId: '00000000-0000-0000-0000-000000000099', // Different coupon ID
+      orderId: orderIdemp.id,
+      orderNumber: orderIdemp.orderNumber,
+      customerPhone: '07701239876',
+      discountAmount: 1000,
+    });
+  } catch (err) {
+    diffCouponError = err;
+  }
+  assert(
+    diffCouponError && diffCouponError.message.includes('تعارض في سلامة البيانات'),
+    `pgRecordCouponRedemption strictly rejects different coupon for same order: ${diffCouponError?.message}`
+  );
+
+  // Attempt pgRecordCouponRedemption with an invalid phone (Fail-closed)
+  let invPhoneRedempError = null;
+  try {
+    await pgRecordCouponRedemption(sql, {
+      couponId: couponIdempotency.id,
+      orderId: '00000000-0000-0000-0000-000000000098',
+      orderNumber: 'ORD-TEST-FAIL-CLOSED',
+      customerPhone: '12345',
+      discountAmount: 1000,
+    });
+  } catch (err) {
+    invPhoneRedempError = err;
+  }
+  assert(
+    invPhoneRedempError && invPhoneRedempError.message.includes('غير صالح'),
+    `pgRecordCouponRedemption fails closed on invalid phone: ${invPhoneRedempError?.message}`
+  );
+
+  // Test pgValidateCoupon fails closed with invalid phone when perCustomerLimit > 0
+  const valInvRes = await pgValidateCoupon(couponIdempotency.code, 20000, 'individual', {
+    customerPhone: '08801234567', // invalid prefix
+  });
+  // Note: couponIdempotency has perCustomerLimit null, let's test against couponMultiFormat
+  const valInvMulti = await pgValidateCoupon(couponMultiFormat.code, 20000, 'individual', {
+    customerPhone: '12345',
+  });
+  assert(valInvMulti.valid === false, 'pgValidateCoupon rejects invalid phone under perCustomerLimit');
+  assert(valInvMulti.message.includes('غير صالح'), `pgValidateCoupon returns fail-closed message: ${valInvMulti.message}`);
+
+  // Test pgConsumeCoupon fails closed with invalid phone when perCustomerLimit > 0
+  let consumeInvError = null;
+  try {
+    await pgConsumeCoupon(couponMultiFormat.code, 20000, 'individual', {
+      customerPhone: '077012', // incomplete phone
+    });
+  } catch (err) {
+    consumeInvError = err;
+  }
+  assert(consumeInvError && consumeInvError.message.includes('غير صالح'), `pgConsumeCoupon fails closed on invalid phone: ${consumeInvError?.message}`);
 
   // Verify directly from PostgreSQL that table has strictly 1 redemption for this order
   const dbRedemptions = await sql`SELECT count(*)::int as cnt FROM coupon_redemptions WHERE order_id = ${orderIdemp.id}`;

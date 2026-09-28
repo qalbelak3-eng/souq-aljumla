@@ -12,6 +12,7 @@
  * - 0770 123 4567
  * - +964 770 123 4567
  * - ٠٧٧٠١٢٣٤٥٦٧ (Eastern Arabic / Indic numerals)
+ * - ۰۷۷۰۱۲۳۴۵۶۷ (Persian / Farsi numerals)
  */
 
 export interface PhoneValidationResult {
@@ -22,14 +23,16 @@ export interface PhoneValidationResult {
 }
 
 const ARABIC_INDIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+const PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
 /**
- * Converts Eastern Arabic numerals (٠-٩) and Persian numerals to Western ASCII digits (0-9).
+ * Converts Eastern Arabic numerals (٠-٩) and Persian numerals (۰-۹) to Western ASCII digits (0-9).
  */
 export function convertArabicIndicDigits(value: string): string {
   let res = value;
-  for (let i = 0; i < ARABIC_INDIC_DIGITS.length; i++) {
+  for (let i = 0; i < 10; i++) {
     res = res.replaceAll(ARABIC_INDIC_DIGITS[i], String(i));
+    res = res.replaceAll(PERSIAN_DIGITS[i], String(i));
   }
   return res;
 }
@@ -117,12 +120,18 @@ export function isValidIraqiPhone(rawPhone?: string | null): boolean {
 
 /**
  * Authoritative financial & coupon identity phone normalizer.
- * Enforces canonical 13-digit format (9647xxxxxxxxx).
- * Fallback to stripped digits only if phone is already a validated foreign/custom ID in legacy paths.
+ * Enforces canonical 13-digit format (9647xxxxxxxxx) for valid Iraqi mobile numbers.
+ * Strictly Fail-Closed: returns null for any invalid, malformed, or non-Iraqi numbers.
+ * Stripped-digits fallback is NEVER used in financial identity, coupons, advisory locks, or redemptions.
  */
-export function normalizePhoneForFinancialIdentity(rawPhone?: string | null): string {
-  const canonical = toCanonicalIraqiPhone(rawPhone);
-  if (canonical) return canonical;
-  // If not valid Iraqi, clean non-digits without guessing
+export function normalizePhoneForFinancialIdentity(rawPhone?: string | null): string | null {
+  return toCanonicalIraqiPhone(rawPhone);
+}
+
+/**
+ * Legacy non-coupon fallback helper that extracts digits without validating Iraqi format.
+ * NEVER use this in financial identity, coupons, advisory locks, or perCustomerLimit.
+ */
+export function extractDigitsLegacy(rawPhone?: string | null): string {
   return String(rawPhone || '').replace(/\D/g, '');
 }
