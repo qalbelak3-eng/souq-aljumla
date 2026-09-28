@@ -72,14 +72,18 @@ export const couponRedemptions = pgTable('coupon_redemptions', {
   customerPhone: varchar('customer_phone', { length: 30 }).notNull(),
   discountAmount: numeric('discount_amount', { precision: 14, scale: 2 }).notNull(),
   redeemedAt: timestamp('redeemed_at', { withTimezone: true }).defaultNow().notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(), // 'active' | 'released'
+  releasedAt: timestamp('released_at', { withTimezone: true }),
 }, (table) => [
   unique('coupon_redemptions_order_id_unique').on(table.orderId),
   index('idx_coupon_redemptions_coupon_id').on(table.couponId),
   index('idx_coupon_redemptions_order_id').on(table.orderId),
   index('idx_coupon_redemptions_customer_id').on(table.customerId),
   index('idx_coupon_redemptions_phone').on(table.customerPhone),
+  index('idx_coupon_redemptions_status').on(table.status),
   index('idx_coupon_redemptions_coupon_phone').on(table.couponId, table.customerPhone),
   index('idx_coupon_redemptions_coupon_customer').on(table.couponId, table.customerId),
+  check('chk_coupon_redemptions_status', sql`${table.status} IN ('active', 'released')`),
 ]);
 
 export const driverRatings = pgTable('driver_ratings', {

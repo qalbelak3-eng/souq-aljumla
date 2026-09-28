@@ -49,7 +49,7 @@ export const orders = pgTable('orders', {
   total: numeric('total', { precision: 14, scale: 2 }).notNull(),
   
   // Status and Payment
-  status: varchar('status', { length: 20 }).notNull(), // 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  status: varchar('status', { length: 20 }).notNull(), // 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
   paymentMethod: varchar('payment_method', { length: 20 }).notNull(), // 'cod' | 'cash' | 'debt' | 'zaincash' | 'qicard' | 'bank_transfer' | 'online'
   
   // Driver and Vehicle Tracking
@@ -98,7 +98,7 @@ export const orders = pgTable('orders', {
   uniqueIndex('uq_orders_idempotency_key')
     .on(table.idempotencyKey)
     .where(sql`${table.idempotencyKey} IS NOT NULL`),
-  check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
+  check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),
   check('chk_order_settled_amount_non_negative', sql`${table.settledAmount} >= 0`),

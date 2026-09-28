@@ -527,17 +527,20 @@ export async function getCustomerCouponRedemptionCount(
   if (cleanPhone && custId) {
     condition = and(
       eq(couponRedemptions.couponId, couponId),
-      or(eq(couponRedemptions.customerPhone, cleanPhone), eq(couponRedemptions.customerId, custId))
+      or(eq(couponRedemptions.customerPhone, cleanPhone), eq(couponRedemptions.customerId, custId)),
+      eq(couponRedemptions.status, 'active')
     );
   } else if (cleanPhone) {
     condition = and(
       eq(couponRedemptions.couponId, couponId),
-      eq(couponRedemptions.customerPhone, cleanPhone)
+      eq(couponRedemptions.customerPhone, cleanPhone),
+      eq(couponRedemptions.status, 'active')
     );
   } else {
     condition = and(
       eq(couponRedemptions.couponId, couponId),
-      eq(couponRedemptions.customerId, custId!)
+      eq(couponRedemptions.customerId, custId!),
+      eq(couponRedemptions.status, 'active')
     );
   }
 
@@ -916,4 +919,74 @@ export async function pgRecordCouponRedemption(
 
     throw err;
   }
+}
+
+/**
+ * Releases a coupon redemption when an order is cancelled prior to delivery.
+ * Sets redemption status to 'released', updates releasedAt, and atomically decrements coupon usage_count.
+ * Strictly Idempotent: if already released or no coupon was used, returns { released: false }.
+ */
+export async function pgReleaseOrderCouponRedemption(
+  tx: any,
+  orderId: string,
+  operator?: any
+): Promise<{ released: boolean; couponId?: string; discountAmount?: number }> {
+  if (!orderId) return { released: false };
+  const runner = (tx && typeof tx.select === 'function') ? tx : getDb();
+
+  const redemptions = await runner
+    .select()
+    .from(couponRedemptions)
+    .where(
+      and(
+        eq(couponRedemptions.orderId, orderId),
+        eq(couponRedemptions.status, 'active')
+      )
+    )
+    .for('update');
+
+  if (redemptions.length === 0) {
+    return { released: false };
+  }
+
+  const redemption = redemptions[0];
+
+  await runner
+    .update(couponRedemptions)
+    .set({
+      status: 'released',
+      releasedAt: new Date(),
+    })
+    .where(eq(couponRedemptions.id, redemption.id));
+
+  await runner
+    .update(coupons)
+    .set({
+      usageCount: sql`GREATEST(${coupons.usageCount} - 1, 0)`,
+    })
+    .where(eq(coupons.id, redemption.couponId));
+
+  try {
+    await runner.insert(auditLogs).values({
+      actionType: 'coupon_redemption_released',
+      actionLabel: 'تحرير كود الخصم لإلغاء الطلبية',
+      category: 'commerce',
+      categoryLabel: 'الكوبونات والعروض',
+      operatorSnapshot: operator || null,
+      targetType: 'coupon_redemption',
+      targetId: redemption.id,
+      targetReferenceNumber: redemption.orderNumber,
+      financialImpact: { releasedDiscount: Number(redemption.discountAmount) },
+      details: `تم تحرير استخدام الكوبون للطلبية ${redemption.orderNumber} وإعادة إتاحته للعميل`,
+      severity: 'info',
+    });
+  } catch (e) {
+    console.error('Audit log failed for coupon release:', e);
+  }
+
+  return {
+    released: true,
+    couponId: redemption.couponId,
+    discountAmount: Number(redemption.discountAmount),
+  };
 }

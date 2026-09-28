@@ -79,7 +79,7 @@ export const cashbackLedger = pgTable('cashback_ledger', {
   accountId: uuid('account_id')
     .notNull()
     .references(() => financialAccounts.id, { onDelete: 'restrict' }),
-  type: varchar('type', { length: 20 }).notNull(), // 'earned' | 'redeemed' | 'reversed' | 'expired' | 'adjustment'
+  type: varchar('type', { length: 20 }).notNull(), // 'earned' | 'redeemed' | 'reversed' | 'expired' | 'adjustment' | 'clawback'
   amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
   // Strict Foreign Key with ON DELETE RESTRICT (Addendum #3)
   orderId: uuid('order_id')
@@ -98,6 +98,9 @@ export const cashbackLedger = pgTable('cashback_ledger', {
   uniqueIndex('uq_cashback_ledger_order_reversed')
     .on(table.orderId)
     .where(sql`${table.type} = 'reversed' AND ${table.orderId} IS NOT NULL`),
-  check('chk_cashback_type', sql`${table.type} IN ('earned', 'redeemed', 'reversed', 'expired', 'adjustment')`),
+  uniqueIndex('uq_cashback_ledger_order_clawback')
+    .on(table.orderId)
+    .where(sql`${table.type} = 'clawback' AND ${table.orderId} IS NOT NULL`),
+  check('chk_cashback_type', sql`${table.type} IN ('earned', 'redeemed', 'reversed', 'expired', 'adjustment', 'clawback')`),
   check('chk_cashback_amount_positive', sql`${table.amount} > 0`),
 ]);

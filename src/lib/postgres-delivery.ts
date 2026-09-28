@@ -639,7 +639,7 @@ export async function pgDeliverDriverOrder(
     }
 
     // Terminal State Checks
-    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+    if (order.status === 'cancelled' || order.status === 'returned' || order.collectionStatus === 'returned') {
       throw new Error('الطلب ملغى أو راجع ولا يمكن إتمام تسليمه');
     }
 
@@ -860,7 +860,7 @@ export async function pgAdminOverrideDelivery(
     const order = orderRows[0];
 
     // Terminal State Checks
-    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+    if (order.status === 'cancelled' || order.status === 'returned' || order.collectionStatus === 'returned') {
       throw new Error('الطلب ملغى أو راجع ولا يمكن إتمام تسليمه');
     }
 

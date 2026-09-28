@@ -309,6 +309,7 @@ export default function OrderSuccessPage() {
     shipped: 2,
     delivered: 3,
     cancelled: -1,
+    returned: -1,
   };
 
   const currentStepIndex = stepIndexMap[order.status] ?? 0;

@@ -94,7 +94,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة الطلبات' }, { status: 403 });
     }
 
-    const operator = { name: admin.name, username: admin.username, role: admin.role };
+    const operator = { id: admin.id, name: admin.name, username: admin.username, role: admin.role };
 
     const body = await request.json();
     const { status, driverId, vehicleId, cancellationReason, driverNotes, action, deliveryOverride, overrideReason, reason, collectionStatus, collectedAmount, notes } = body;
@@ -141,7 +141,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     // Terminal State Protection
-    if ((prevOrder.status === 'cancelled' || prevOrder.collectionStatus === 'returned') && status !== 'cancelled') {
+    if ((prevOrder.status === 'cancelled' || prevOrder.status === 'returned' || prevOrder.collectionStatus === 'returned') && status !== prevOrder.status) {
       return NextResponse.json({ success: false, error: 'الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)' }, { status: 400 });
     }
 
@@ -172,6 +172,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       }
 
       updated = await pgCancelOrder(params.id, {
+        reason: cancellationReason || driverNotes,
+        operator,
+      });
+    } else if (status === 'returned') {
+      const { pgReturnOrder } = await import('@/lib/postgres-orders');
+      updated = await pgReturnOrder(params.id, {
         reason: cancellationReason || driverNotes,
         operator,
       });
@@ -223,6 +229,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           phone: updated.customer.phone,
           title: '❌ تم إلغاء الطلبية',
           body: `مرحباً ${updated.customer.name}، تم إلغاء طلبيتك #${updated.orderNumber}. يرجى التواصل معنا للاستفسار.`,
+          url: `/order-success/${updated.id}`,
+        });
+      } else if (status === 'returned' || (effectiveStatus === 'returned' && prevOrder.status !== 'returned')) {
+        await sendDirectCustomerAlert({
+          userId: updated.customer.userId,
+          phone: updated.customer.phone,
+          title: '↩️ تم تسجيل إرجاع الطلبية',
+          body: `مرحباً ${updated.customer.name}، تم تسجيل إرجاع طلبيتك #${updated.orderNumber} واستلام المرتجع في المستودع.`,
           url: `/order-success/${updated.id}`,
         });
       }

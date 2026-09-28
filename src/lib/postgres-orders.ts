@@ -16,11 +16,12 @@ import {
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
-import { pgConsumeCoupon, pgRecordCouponRedemption } from '@/lib/postgres-coupons';
+import { pgConsumeCoupon, pgRecordCouponRedemption, pgReleaseOrderCouponRedemption } from '@/lib/postgres-coupons';
 import {
   pgRedeemCashbackInOrder,
   pgCreditOrderDeliveredCashback,
   pgReverseOrderRedeemedCashback,
+  pgClawbackOrderDeliveredCashback,
   pgGetAccountCashbackBalance,
 } from '@/lib/postgres-cashback';
 import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity, normalizePricingIdentity } from '@/lib/pricing';
@@ -1099,7 +1100,34 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 }
 
 /* =========================================================
-   4. pgCancelOrder
+   4. State Machine & Order Lifecycle
+   ========================================================= */
+
+export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending: ['processing', 'cancelled'],
+  processing: ['shipped', 'cancelled'],
+  shipped: ['delivered', 'cancelled'],
+  delivered: ['returned'],
+  cancelled: [], // Terminal
+  returned: [],  // Terminal
+};
+
+export function validateOrderTransition(currentStatus: OrderStatus, newStatus: OrderStatus): void {
+  if (currentStatus === newStatus) return; // Idempotent no-op
+  if (currentStatus === 'cancelled') {
+    throw new Error('الطلبية ملغاة ولا يمكن تعديل حالتها (حالة نهائية)');
+  }
+  if (currentStatus === 'returned') {
+    throw new Error('الطلبية مرتجعة ولا يمكن تعديل حالتها (حالة نهائية)');
+  }
+  const allowed = VALID_ORDER_TRANSITIONS[currentStatus] || [];
+  if (!allowed.includes(newStatus)) {
+    throw new Error(`لا يمكن تغيير حالة الطلب من "${currentStatus}" إلى "${newStatus}". الانتقال غير مسموح.`);
+  }
+}
+
+/* =========================================================
+   4.1. pgCancelOrder (Pre-Delivery Cancellation)
    ========================================================= */
 
 export async function pgCancelOrder(
@@ -1140,21 +1168,8 @@ export async function pgCancelOrder(
       }
     }
 
-    // Protection: Prevent cancelling or returning orders that are already delivered
-    if (order.status === 'delivered') {
-      throw new Error('الطلب تم تسليمه بالفعل ولا يمكن إرجاعه أو إلغاؤه');
-    }
-
-    // Protection: Prevent cancelling orders with recorded payment / collection without formal reversal
-    const paid = toNumber(order.collectedAmount);
-    if (paid > 0) {
-      throw new Error(
-        'لا يمكن إلغاء الطلبية لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). تتطلب العملية تسوية واسترداد مالي (Financial Reversal / Refund Workflow).'
-      );
-    }
-
-    // Idempotency: If already returned, return current state without re-restoring inventory or creating duplicate audit logs
-    if (options?.isReturn && order.collectionStatus === 'returned') {
+    // Idempotency: If already cancelled, return existing state immediately without re-restoring inventory or creating duplicate audit logs
+    if (order.status === 'cancelled') {
       const items = await tx
         .select()
         .from(orderItems)
@@ -1169,9 +1184,32 @@ export async function pgCancelOrder(
       return formatOrderRecord(order, items, undefined, undefined, account);
     }
 
+    // Protection: Prevent cancelling orders that are already delivered
+    if (order.status === 'delivered') {
+      throw new Error('الطلب تم تسليمه بالفعل ولا يمكن إلغاؤه');
+    }
+
+    // Protection: Prevent cancelling orders that are already returned
+    if (order.status === 'returned' || order.collectionStatus === 'returned') {
+      throw new Error('الطلب مرتجع بالفعل ولا يمكن إلغاؤه');
+    }
+
+    // State Machine Check: only pending, processing, shipped can be cancelled
+    if (!['pending', 'processing', 'shipped'].includes(order.status)) {
+      throw new Error(`لا يمكن إلغاء الطلب في حالته الحالية: ${order.status}`);
+    }
+
+    // Protection: Prevent cancelling orders with recorded payment / collection without formal reversal
+    const paid = toNumber(order.collectedAmount);
+    if (paid > 0) {
+      throw new Error(
+        'لا يمكن إلغاء الطلبية لاحتوائها على حركة مالية مسجلة (دفع أو تحصيل). تتطلب العملية تسوية واسترداد مالي (Financial Reversal / Refund Workflow).'
+      );
+    }
+
     const staffId = await resolveStaffId(tx, options?.operator);
 
-    // Idempotency: Only restore inventory once
+    // 1. Inventory Restoration: Exactly once using historical baseQuantityDeducted
     if (!order.inventoryRestored) {
       const items = await tx
         .select()
@@ -1212,6 +1250,13 @@ export async function pgCancelOrder(
       }
     }
 
+    // 2. Safely and idempotently reverse any used cashback discount back to the customer's ledger
+    await pgReverseOrderRedeemedCashback(tx, order.id, options?.reason);
+
+    // 3. Safely and idempotently release any coupon redemption so customer can reuse it
+    await pgReleaseOrderCouponRedemption(tx, order.id, options?.operator);
+
+    // 4. Update order state
     const [updatedOrder] = await tx
       .update(orders)
       .set({
@@ -1226,12 +1271,10 @@ export async function pgCancelOrder(
       .where(eq(orders.id, order.id))
       .returning();
 
-    // Safely and idempotently reverse any used cashback discount back to the customer's ledger
-    await pgReverseOrderRedeemedCashback(tx, order.id, options?.reason);
-
+    // 5. Audit Log (single log event per cancellation)
     await tx.insert(auditLogs).values({
       actionType: 'order_cancelled',
-      actionLabel: options?.isReturn ? 'إرجاع طلبية واسترجاع المخزون' : 'إلغاء طلبية واسترجاع المخزون',
+      actionLabel: options?.isReturn ? 'إرجاع بضاعة غير مسلّمة واسترجاع المخزون' : 'إلغاء طلبية واسترجاع المخزون',
       category: 'commerce',
       categoryLabel: 'الطلبات والمبيعات',
       staffId,
@@ -1269,42 +1312,244 @@ export async function pgCancelOrder(
 }
 
 /* =========================================================
-   5. pgUpdateOrderStatus
+   4.2. pgReturnOrder (Post-Delivery Return Workflow)
+   ========================================================= */
+
+export async function pgReturnOrder(
+  idOrOrderNumber: string,
+  options?: {
+    reason?: string;
+    operator?: PgOperator;
+    tx?: any;
+    driverId?: string;
+  }
+): Promise<Order> {
+  const trimmed = String(idOrOrderNumber || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب');
+
+  const executeReturn = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) {
+      conditions.push(eq(orders.id, trimmed));
+    }
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const order = orderRows[0];
+
+    // Object-Level Authorization if driverId is specified
+    if (options?.driverId) {
+      if (!order.driverId || order.driverId !== options.driverId) {
+        throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إرجاعه');
+      }
+    }
+
+    // Idempotency: If already returned, return current state without re-restoring inventory or duplicate clawback or duplicate audit logs
+    if (order.status === 'returned' || order.collectionStatus === 'returned') {
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+
+      const [account] = await tx
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, order.accountId))
+        .limit(1);
+
+      return formatOrderRecord(order, items, undefined, undefined, account);
+    }
+
+    // State Machine Check: Post-delivery return is ONLY permitted from 'delivered'
+    if (order.status !== 'delivered') {
+      throw new Error(`لا يمكن إرجاع الطلب إلا بعد تسليمه (delivered). الحالة الحالية للطلب: ${order.status}`);
+    }
+
+    const staffId = await resolveStaffId(tx, options?.operator);
+
+    // 1. Inventory Restoration: Exactly once using historical baseQuantityDeducted pieces
+    if (!order.inventoryRestored) {
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+
+      for (const item of items) {
+        const prodRows = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, item.productId))
+          .for('update');
+
+        if (prodRows.length > 0) {
+          const prod = prodRows[0];
+          const restoredPieces = Number(item.baseQuantityDeducted);
+          const newStockPieces = (Number(prod.currentStockPieces) || 0) + restoredPieces;
+
+          await tx
+            .update(products)
+            .set({ currentStockPieces: newStockPieces })
+            .where(eq(products.id, prod.id));
+
+          await tx.insert(inventoryMovements).values({
+            productId: prod.id,
+            movementType: 'customer_return',
+            quantityPieces: restoredPieces, // positive for inflow
+            unitCostPieces: String(item.unitCostSnap),
+            totalCost: String((restoredPieces * toNumber(item.unitCostSnap)).toFixed(2)),
+            balanceAfterPieces: newStockPieces,
+            referenceType: 'order',
+            referenceId: order.id,
+            referenceNumber: order.orderNumber,
+            performedByStaffId: staffId,
+            notes: `استرجاع مخزون لإرجاع طلبية مسلّمة ${order.orderNumber} (${item.soldQuantity} ${item.unitLabelSnap})`,
+          });
+        }
+      }
+    }
+
+    // 2. Cashback Clawback: Idempotently claw back earned cashback for this delivered order
+    const clawbackResult = await pgClawbackOrderDeliveredCashback(tx, order.id, options?.reason);
+
+    // 3. Update Order State to 'returned'
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        status: 'returned',
+        collectionStatus: 'returned',
+        inventoryRestored: true,
+        driverNotes: options?.reason
+          ? (order.driverNotes ? `${order.driverNotes} | [مرتجع]: ${options.reason}` : `[مرتجع]: ${options.reason}`)
+          : order.driverNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    // 4. Audit Log (single log event per return)
+    await tx.insert(auditLogs).values({
+      actionType: 'order_returned',
+      actionLabel: 'إرجاع طلبية مسلّمة واسترجاع المخزون وسحب الكاشباك',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والمبيعات',
+      staffId,
+      operatorSnapshot: options?.operator || null,
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      financialImpact: {
+        total: toNumber(order.total),
+        clawedBackCashback: clawbackResult.amount,
+        cashbackDeficit: clawbackResult.deficitAmount,
+      },
+      details: clawbackResult.deficitAmount > 0
+        ? `تم إرجاع الطلبية المسلّمة ${order.orderNumber} واسترجاع المخزون وسحب ${clawbackResult.amount.toLocaleString()} د.ع كاشباك مع وجود عجز ${clawbackResult.deficitAmount.toLocaleString()} د.ع في رصيد العميل`
+        : `تم إرجاع الطلبية المسلّمة ${order.orderNumber} واسترجاع المخزون وسحب أرباح الكاشباك بنجاح`,
+      severity: clawbackResult.deficitAmount > 0 ? 'warning' : 'info',
+    });
+
+    const items = await tx
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id));
+
+    const [account] = await tx
+      .select()
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, order.accountId))
+      .limit(1);
+
+    return formatOrderRecord(updatedOrder, items, undefined, undefined, account);
+  };
+
+  if (options?.tx) {
+    return await executeReturn(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeReturn);
+  }
+}
+
+/* =========================================================
+   5. pgUpdateOrderStatus (Strict Server-Side State Machine)
    ========================================================= */
 
 export async function pgUpdateOrderStatus(
   idOrOrderNumber: string,
   newStatus: OrderStatus,
-  options?: { driverNotes?: string; cancellationReason?: string; operator?: PgOperator }
+  options?: { driverNotes?: string; cancellationReason?: string; operator?: PgOperator; tx?: any }
 ): Promise<Order> {
-  const current = await pgGetOrderById(idOrOrderNumber);
-  if (!current) {
-    throw new Error('الطلب غير موجود');
-  }
+  const trimmed = String(idOrOrderNumber || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
-  // Terminal State Protection: Never reopen cancelled or returned orders
-  if (current.status === 'cancelled' || current.collectionStatus === 'returned') {
-    if (newStatus !== 'cancelled') {
-      throw new Error('الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)');
-    }
-    // Safe idempotency if status is already cancelled
-    return current;
-  }
-
-  if (newStatus === 'cancelled') {
-    return pgCancelOrder(idOrOrderNumber, {
-      reason: options?.cancellationReason || options?.driverNotes,
-      operator: options?.operator,
-    });
-  }
-
-  const allowedStatuses: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  const allowedStatuses: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'];
   if (!allowedStatuses.includes(newStatus)) {
     throw new Error(`حالة الطلب غير صالحة: ${newStatus}`);
   }
 
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  const executeUpdate = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) {
+      conditions.push(eq(orders.id, trimmed));
+    }
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const current = orderRows[0];
+
+    // Idempotent: If status is already the target status, return existing order immediately
+    if (current.status === newStatus) {
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, current.id));
+
+      const [account] = await tx
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, current.accountId))
+        .limit(1);
+
+      return formatOrderRecord(current, items, undefined, undefined, account);
+    }
+
+    // Terminal State Protection & State Machine Validation under FOR UPDATE lock
+    validateOrderTransition(current.status as OrderStatus, newStatus);
+
+    // If newStatus is 'cancelled', delegate to cancel logic within this transaction
+    if (newStatus === 'cancelled') {
+      return await pgCancelOrder(trimmed, {
+        reason: options?.cancellationReason || options?.driverNotes,
+        operator: options?.operator,
+        tx,
+      });
+    }
+
+    // If newStatus is 'returned', delegate to return logic within this transaction
+    if (newStatus === 'returned') {
+      return await pgReturnOrder(trimmed, {
+        reason: options?.cancellationReason || options?.driverNotes,
+        operator: options?.operator,
+        tx,
+      });
+    }
+
     const staffId = await resolveStaffId(tx, options?.operator);
 
     const [updatedOrder] = await tx
@@ -1344,11 +1589,18 @@ export async function pgUpdateOrderStatus(
     const [account] = await tx
       .select()
       .from(financialAccounts)
-      .where(eq(financialAccounts.id, current.customer.userId || updatedOrder.accountId))
+      .where(eq(financialAccounts.id, current.accountId))
       .limit(1);
 
     return formatOrderRecord(updatedOrder, items, undefined, undefined, account);
-  });
+  };
+
+  if (options?.tx) {
+    return await executeUpdate(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeUpdate);
+  }
 }
 
 /* =========================================================
@@ -1366,14 +1618,21 @@ export async function pgUpdateOrder(
   }
 
   // Terminal State Protection
-  if (current.status === 'cancelled' || current.collectionStatus === 'returned') {
-    if (updates.status && updates.status !== 'cancelled') {
+  if (current.status === 'cancelled' || current.status === 'returned' || current.collectionStatus === 'returned') {
+    if (updates.status && updates.status !== current.status) {
       throw new Error('الطلبية ملغاة أو راجعة ولا يمكن تعديلها أو إعادة فتحها (حالة نهائية)');
     }
   }
 
   if (updates.status === 'cancelled' && current.status !== 'cancelled') {
     return pgCancelOrder(idOrOrderNumber, {
+      reason: updates.driverNotes || updates.notes,
+      operator: options?.operator,
+    });
+  }
+
+  if (updates.status === 'returned' && current.status !== 'returned') {
+    return pgReturnOrder(idOrOrderNumber, {
       reason: updates.driverNotes || updates.notes,
       operator: options?.operator,
     });

@@ -6,6 +6,7 @@ import {
   orders,
   auditLogs,
 } from '@/db/schema';
+import { toCanonicalIraqiPhone, toLocalIraqiPhone } from '@/lib/phone-utils';
 
 export interface CashbackSummary {
   availableBalance: number;
@@ -13,6 +14,9 @@ export interface CashbackSummary {
   totalEarned: number;
   totalRedeemed: number;
   totalReversed: number;
+  totalClawedBack?: number;
+  netBalance?: number;
+  deficitBalance?: number;
   accountId: string | null;
   history: Array<{
     id: string;
@@ -36,7 +40,7 @@ function toNumber(val: any): number {
 
 /**
  * Calculates net spendable balance directly from PostgreSQL cashback_ledger table:
- * Balance = sum(earned) + sum(reversed) + sum(adjustment) - sum(redeemed) - sum(expired)
+ * Balance = sum(earned) + sum(reversed) + sum(adjustment) - sum(redeemed) - sum(expired) - sum(clawback)
  */
 export async function pgGetAccountCashbackBalance(accountId: string, tx?: any): Promise<number> {
   if (!accountId) return 0;
@@ -55,12 +59,40 @@ export async function pgGetAccountCashbackBalance(accountId: string, tx?: any): 
     const amt = toNumber(row.amount);
     if (row.type === 'earned' || row.type === 'reversed' || row.type === 'adjustment') {
       balance += amt;
-    } else if (row.type === 'redeemed' || row.type === 'expired') {
+    } else if (row.type === 'redeemed' || row.type === 'expired' || row.type === 'clawback') {
       balance -= amt;
     }
   }
 
   return Math.max(0, Number(balance.toFixed(2)));
+}
+
+/**
+ * Calculates raw net balance without clamping to 0, allowing detection of deficits/negative balances.
+ */
+export async function pgGetAccountCashbackNetBalance(accountId: string, tx?: any): Promise<number> {
+  if (!accountId) return 0;
+  const db = tx || getDb();
+
+  const rows = await db
+    .select({
+      type: cashbackLedger.type,
+      amount: cashbackLedger.amount,
+    })
+    .from(cashbackLedger)
+    .where(eq(cashbackLedger.accountId, accountId));
+
+  let balance = 0;
+  for (const row of rows) {
+    const amt = toNumber(row.amount);
+    if (row.type === 'earned' || row.type === 'reversed' || row.type === 'adjustment') {
+      balance += amt;
+    } else if (row.type === 'redeemed' || row.type === 'expired' || row.type === 'clawback') {
+      balance -= amt;
+    }
+  }
+
+  return Number(balance.toFixed(2));
 }
 
 /**
@@ -96,14 +128,20 @@ export async function pgResolveCustomerAccount(
     if (rows.length > 0) return rows[0];
   }
 
-  const cleanPhone = normalizePhone(identifiers.phone);
-  if (cleanPhone) {
-    const rows = await db
-      .select()
-      .from(financialAccounts)
-      .where(and(eq(financialAccounts.phone, cleanPhone), eq(financialAccounts.category, 'customer')))
-      .limit(1);
-    if (rows.length > 0) return rows[0];
+  if (identifiers.phone) {
+    const canonicalPhone = toCanonicalIraqiPhone(identifiers.phone);
+    const localPhone = toLocalIraqiPhone(identifiers.phone);
+    const rawDigits = normalizePhone(identifiers.phone);
+    const phoneMatches = Array.from(new Set([canonicalPhone, localPhone, rawDigits].filter(Boolean))) as string[];
+
+    if (phoneMatches.length > 0) {
+      const rows = await db
+        .select()
+        .from(financialAccounts)
+        .where(and(inArray(financialAccounts.phone, phoneMatches), eq(financialAccounts.category, 'customer')))
+        .limit(1);
+      if (rows.length > 0) return rows[0];
+    }
   }
 
   return null;
@@ -174,12 +212,14 @@ export async function pgGetCustomerCashbackSummary(
   let totalEarned = 0;
   let totalRedeemed = 0;
   let totalReversed = 0;
+  let totalClawedBack = 0;
 
   const history = ledgerRows.map((r: any) => {
     const amt = toNumber(r.amount);
     if (r.type === 'earned') totalEarned += amt;
     else if (r.type === 'redeemed') totalRedeemed += amt;
     else if (r.type === 'reversed') totalReversed += amt;
+    else if (r.type === 'clawback') totalClawedBack += amt;
 
     return {
       id: r.id,
@@ -192,12 +232,18 @@ export async function pgGetCustomerCashbackSummary(
     };
   });
 
+  const netBalance = Number((totalEarned + totalReversed - totalRedeemed - totalClawedBack).toFixed(2));
+  const deficitBalance = netBalance < 0 ? Math.abs(netBalance) : 0;
+
   return {
     availableBalance,
     pendingCashback: Number(pendingCashback.toFixed(2)),
     totalEarned: Number(totalEarned.toFixed(2)),
     totalRedeemed: Number(totalRedeemed.toFixed(2)),
     totalReversed: Number(totalReversed.toFixed(2)),
+    totalClawedBack: Number(totalClawedBack.toFixed(2)),
+    netBalance,
+    deficitBalance,
     accountId,
     history,
   };
@@ -413,4 +459,90 @@ export async function pgReverseOrderRedeemedCashback(
   }
 
   return { reversed: true, amount: used };
+}
+
+/**
+ * Claws back earned cashback from customer account upon post-delivery order return.
+ * Strictly Idempotent: repeated calls will not claw back duplicate amounts.
+ * Backed by DB unique index: uq_cashback_ledger_order_clawback.
+ * If customer spendable balance is insufficient, full clawback is still recorded in ledger
+ * creating a deficit/negative balance without phantom money, and audited as a warning.
+ */
+export async function pgClawbackOrderDeliveredCashback(
+  tx: any,
+  orderId: string,
+  reason?: string
+): Promise<{ clawedBack: boolean; amount: number; balanceBefore: number; deficitAmount: number }> {
+  if (!orderId) return { clawedBack: false, amount: 0, balanceBefore: 0, deficitAmount: 0 };
+
+  const orderRows = await tx
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .for('update');
+
+  if (orderRows.length === 0) return { clawedBack: false, amount: 0, balanceBefore: 0, deficitAmount: 0 };
+  const order = orderRows[0];
+
+  const earned = toNumber(order.earnedCashback);
+  if (earned <= 0) {
+    return { clawedBack: false, amount: 0, balanceBefore: 0, deficitAmount: 0 };
+  }
+
+  // Idempotency: check if clawback already exists for this order
+  const existingClawback = await tx
+    .select({ id: cashbackLedger.id, amount: cashbackLedger.amount })
+    .from(cashbackLedger)
+    .where(and(eq(cashbackLedger.orderId, orderId), eq(cashbackLedger.type, 'clawback')))
+    .limit(1);
+
+  if (existingClawback.length > 0) {
+    return {
+      clawedBack: false,
+      amount: toNumber(existingClawback[0].amount),
+      balanceBefore: 0,
+      deficitAmount: 0,
+    };
+  }
+
+  const currentSpendableBalance = await pgGetAccountCashbackBalance(order.accountId, tx);
+  const deficitAmount = currentSpendableBalance < earned ? Number((earned - currentSpendableBalance).toFixed(2)) : 0;
+
+  await tx.insert(cashbackLedger).values({
+    accountId: order.accountId,
+    type: 'clawback',
+    amount: String(earned.toFixed(2)),
+    orderId: order.id,
+    notes: reason || `استرداد أرباح كاشباك لإرجاع الطلبية رقم ${order.orderNumber}`,
+  });
+
+  try {
+    await tx.insert(auditLogs).values({
+      actionType: deficitAmount > 0 ? 'cashback_clawback_deficit' : 'cashback_clawback',
+      actionLabel: 'استرداد كاشباك لطلبية مرتجعة',
+      category: 'accounting',
+      categoryLabel: 'المحاسبة والكاشباك',
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      financialImpact: {
+        clawedBackAmount: earned,
+        deficitAmount,
+        customerBalanceBefore: currentSpendableBalance,
+      },
+      details: deficitAmount > 0
+        ? `تم استرداد ${earned.toLocaleString()} د.ع أرباح كاشباك لإرجاع الطلبية ${order.orderNumber} مع تسجيل عجز بمقدار ${deficitAmount.toLocaleString()} د.ع في محفظة العميل لصرف الأرباح مسبقاً`
+        : `تم استرداد ${earned.toLocaleString()} د.ع أرباح كاشباك من العميل لإرجاع الطلبية ${order.orderNumber}`,
+      severity: deficitAmount > 0 ? 'warning' : 'info',
+    });
+  } catch (e) {
+    console.error('Audit log failed for cashback clawback:', e);
+  }
+
+  return {
+    clawedBack: true,
+    amount: earned,
+    balanceBefore: currentSpendableBalance,
+    deficitAmount,
+  };
 }

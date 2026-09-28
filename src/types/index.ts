@@ -183,7 +183,7 @@ export interface CustomerInfo {
   userId?: string;
 }
 
-export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned';
 export type PaymentMethod = 'cod' | 'zaincash' | 'qicard' | 'bank_transfer' | 'online' | 'cash' | 'debt';
 
 export interface OrderItem {
