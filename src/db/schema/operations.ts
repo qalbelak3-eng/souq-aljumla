@@ -37,6 +37,9 @@ export const coupons = pgTable('coupons', {
   discountType: varchar('discount_type', { length: 20 }).notNull(), // 'percentage' | 'fixed'
   discountValue: numeric('discount_value', { precision: 14, scale: 2 }).notNull(),
   minOrderAmount: numeric('min_order_amount', { precision: 14, scale: 2 }),
+  maxDiscountAmount: numeric('max_discount_amount', { precision: 14, scale: 2 }),
+  perCustomerLimit: integer('per_customer_limit'),
+  excludeDiscountedItems: boolean('exclude_discounted_items').default(false).notNull(),
   targetAudience: varchar('target_audience', { length: 30 }).default('all').notNull(),
   description: text('description'),
   usageLimit: integer('usage_limit'),
@@ -51,6 +54,31 @@ export const coupons = pgTable('coupons', {
   check('chk_coupon_discount_type', sql`${table.discountType} IN ('percentage', 'fixed')`),
   check('chk_coupon_discount_value', sql`${table.discountValue} > 0`),
   check('chk_coupon_usage_count', sql`${table.usageCount} >= 0`),
+  check('chk_coupon_max_discount', sql`${table.maxDiscountAmount} IS NULL OR ${table.maxDiscountAmount} > 0`),
+  check('chk_coupon_per_customer_limit', sql`${table.perCustomerLimit} IS NULL OR ${table.perCustomerLimit} > 0`),
+]);
+
+export const couponRedemptions = pgTable('coupon_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  couponId: uuid('coupon_id')
+    .notNull()
+    .references(() => coupons.id, { onDelete: 'cascade' }),
+  orderId: uuid('order_id')
+    .notNull()
+    .references(() => orders.id, { onDelete: 'cascade' }),
+  orderNumber: varchar('order_number', { length: 50 }).notNull(),
+  customerId: uuid('customer_id')
+    .references(() => financialAccounts.id, { onDelete: 'set null' }),
+  customerPhone: varchar('customer_phone', { length: 30 }).notNull(),
+  discountAmount: numeric('discount_amount', { precision: 14, scale: 2 }).notNull(),
+  redeemedAt: timestamp('redeemed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_coupon_redemptions_coupon_id').on(table.couponId),
+  index('idx_coupon_redemptions_order_id').on(table.orderId),
+  index('idx_coupon_redemptions_customer_id').on(table.customerId),
+  index('idx_coupon_redemptions_phone').on(table.customerPhone),
+  index('idx_coupon_redemptions_coupon_phone').on(table.couponId, table.customerPhone),
+  index('idx_coupon_redemptions_coupon_customer').on(table.couponId, table.customerId),
 ]);
 
 export const driverRatings = pgTable('driver_ratings', {

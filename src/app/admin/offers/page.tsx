@@ -123,6 +123,9 @@ export default function AdminOffersPage() {
   const [couponDiscountType, setCouponDiscountType] = useState<'percentage' | 'fixed'>('fixed');
   const [couponDiscountValue, setCouponDiscountValue] = useState<number | ''>('');
   const [couponMinOrderAmount, setCouponMinOrderAmount] = useState<number | ''>('');
+  const [couponMaxDiscountAmount, setCouponMaxDiscountAmount] = useState<number | ''>('');
+  const [couponPerCustomerLimit, setCouponPerCustomerLimit] = useState<number | ''>('');
+  const [couponExcludeDiscountedItems, setCouponExcludeDiscountedItems] = useState(false);
   const [couponTargetAudience, setCouponTargetAudience] = useState<'all' | 'individual' | 'market' | 'wholesale'>('all');
   const [couponDescription, setCouponDescription] = useState('');
   const [couponExpiresAt, setCouponExpiresAt] = useState('');
@@ -384,6 +387,9 @@ export default function AdminOffersPage() {
     setCouponDiscountType('fixed');
     setCouponDiscountValue('');
     setCouponMinOrderAmount('');
+    setCouponMaxDiscountAmount('');
+    setCouponPerCustomerLimit('');
+    setCouponExcludeDiscountedItems(false);
     setCouponTargetAudience('all');
     setCouponDescription('');
     setCouponExpiresAt(getDefaultEndDate(30));
@@ -397,6 +403,9 @@ export default function AdminOffersPage() {
     setCouponDiscountType(c.discountType);
     setCouponDiscountValue(c.discountValue);
     setCouponMinOrderAmount(c.minOrderAmount ?? '');
+    setCouponMaxDiscountAmount(c.maxDiscountAmount ?? '');
+    setCouponPerCustomerLimit(c.perCustomerLimit ?? '');
+    setCouponExcludeDiscountedItems(Boolean(c.excludeDiscountedItems));
     setCouponTargetAudience(c.targetAudience ?? 'all');
     setCouponDescription(c.description ?? '');
     if (c.expiresAt) {
@@ -437,6 +446,9 @@ export default function AdminOffersPage() {
       discountType: couponDiscountType,
       discountValue: Number(couponDiscountValue),
       minOrderAmount: couponMinOrderAmount !== '' ? Number(couponMinOrderAmount) : undefined,
+      maxDiscountAmount: couponMaxDiscountAmount !== '' ? Number(couponMaxDiscountAmount) : null,
+      perCustomerLimit: couponPerCustomerLimit !== '' ? Number(couponPerCustomerLimit) : null,
+      excludeDiscountedItems: couponExcludeDiscountedItems,
       targetAudience: couponTargetAudience,
       description: couponDescription.trim(),
       expiresAt: validExpiresAt,
@@ -1245,6 +1257,27 @@ export default function AdminOffersPage() {
                           <div className="flex items-center justify-between border-t border-amber-200/60 pt-1 text-[11px]">
                             <span className="text-slate-600 font-bold">الحد الأدنى للطلب:</span>
                             <span className="font-mono font-black text-slate-800">{c.minOrderAmount.toLocaleString()} د.ع</span>
+                          </div>
+                        )}
+
+                        {c.maxDiscountAmount && (
+                          <div className="flex items-center justify-between border-t border-amber-200/60 pt-1 text-[11px]">
+                            <span className="text-amber-800 font-bold">سقف الخصم الأعلى:</span>
+                            <span className="font-mono font-black text-amber-900">{c.maxDiscountAmount.toLocaleString()} د.ع</span>
+                          </div>
+                        )}
+
+                        {c.perCustomerLimit && (
+                          <div className="flex items-center justify-between border-t border-amber-200/60 pt-1 text-[11px]">
+                            <span className="text-blue-700 font-bold">حد الاستخدام لكل عميل:</span>
+                            <span className="font-mono font-black text-blue-900">{c.perCustomerLimit} مرة</span>
+                          </div>
+                        )}
+
+                        {c.excludeDiscountedItems && (
+                          <div className="flex items-center justify-between border-t border-amber-200/60 pt-1 text-[10px] text-amber-900 font-bold">
+                            <span>🚫 يستثني المنتجات المخفضة</span>
+                            <span className="text-[9px] bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded-md font-black">عروض خاصة</span>
                           </div>
                         )}
 
@@ -2375,6 +2408,69 @@ export default function AdminOffersPage() {
                   />
                   <span className="text-[11px] font-bold text-slate-600 shrink-0">د.ع</span>
                 </div>
+              </div>
+
+              {/* Financial Hardening: Max Discount Cap & Per-Customer Limit */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {/* Max Discount Cap */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    سقف الخصم الأعلى (اختياري):
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="مثال: 25000 (بدون سقف)"
+                      value={couponMaxDiscountAmount}
+                      onChange={(e) => setCouponMaxDiscountAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold font-mono text-slate-900 focus:border-amber-500"
+                    />
+                    <span className="text-[11px] font-bold text-slate-600 shrink-0">د.ع</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-medium">
+                    يمنع تجاوز الخصم هذا السقف في الكوبونات المئوية.
+                  </span>
+                </div>
+
+                {/* Per Customer Usage Limit */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block text-xs">
+                    حد الاستخدام لكل عميل:
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="مثال: 1 (مرة واحدة لكل زبون)"
+                      value={couponPerCustomerLimit}
+                      onChange={(e) => setCouponPerCustomerLimit(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold font-mono text-slate-900 focus:border-amber-500"
+                    />
+                    <span className="text-[11px] font-bold text-slate-600 shrink-0">مرة</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-medium">
+                    يقيد عدد مرات الاستفادة لكل رقم هاتف/حساب زبون.
+                  </span>
+                </div>
+              </div>
+
+              {/* Policy on Discounted Items (Exclude Discounted Items) */}
+              <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-1.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={couponExcludeDiscountedItems}
+                    onChange={(e) => setCouponExcludeDiscountedItems(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded-md border-amber-300 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-slate-900">
+                    استثناء المنتجات التي عليها عروض تخفيض مسبقة
+                  </span>
+                </label>
+                <p className="text-[10px] text-slate-500 leading-relaxed pr-6">
+                  عند تفعيل هذا الخيار: لن يُطبق الخصم على المنتجات التي خُفضت أسعارها بعروض ترويجية، ويقتصر الخصم فقط على المنتجات ذات السعر العادي.
+                </p>
               </div>
 
               {/* Description */}

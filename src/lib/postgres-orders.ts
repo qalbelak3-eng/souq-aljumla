@@ -12,10 +12,11 @@ import {
   staffProfiles,
   drivers,
   vehicles,
+  coupons,
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
-import { pgConsumeCoupon } from '@/lib/postgres-coupons';
+import { pgConsumeCoupon, pgRecordCouponRedemption } from '@/lib/postgres-coupons';
 import {
   pgRedeemCashbackInOrder,
   pgCreditOrderDeliveredCashback,
@@ -149,6 +150,12 @@ export function formatOrderRecord(
     couponDiscountType: orderRow.couponDiscountTypeSnap ? String(orderRow.couponDiscountTypeSnap) : undefined,
     couponDiscountValue: orderRow.couponDiscountValueSnap !== null && orderRow.couponDiscountValueSnap !== undefined
       ? toNumber(orderRow.couponDiscountValueSnap)
+      : undefined,
+    couponMaxDiscountSnap: orderRow.couponMaxDiscountSnap !== null && orderRow.couponMaxDiscountSnap !== undefined
+      ? toNumber(orderRow.couponMaxDiscountSnap)
+      : undefined,
+    couponEligibleSubtotalSnap: orderRow.couponEligibleSubtotalSnap !== null && orderRow.couponEligibleSubtotalSnap !== undefined
+      ? toNumber(orderRow.couponEligibleSubtotalSnap)
       : undefined,
     customerAccountTypeSnap: orderRow.customerAccountTypeSnap ? String(orderRow.customerAccountTypeSnap) : undefined,
     customerMerchantTierSnap: orderRow.customerMerchantTierSnap ? String(orderRow.customerMerchantTierSnap) : undefined,
@@ -438,6 +445,7 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     });
 
     let calculatedSubtotal = 0;
+    let calculatedNonDiscountedSubtotal = 0;
 
     for (const item of data.items) {
       if (!item.productId || !isUuid(item.productId)) {
@@ -574,6 +582,13 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       const itemEarnedCashback = toNumber(item.earnedCashback);
 
       calculatedSubtotal += unitPrice * soldQuantity;
+      const isDiscountedItem = Boolean(
+        authoritativePricing.isOfferApplied ||
+        (offerIdSnap && offerDiscountSnap && offerDiscountSnap > 0)
+      );
+      if (!isDiscountedItem) {
+        calculatedNonDiscountedSubtotal += unitPrice * soldQuantity;
+      }
 
       processedItems.push({
         productId: prod.id,
@@ -597,17 +612,37 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
 
     const subtotal = calculatedSubtotal;
     let discount = 0;
+    const newOrderId = crypto.randomUUID();
+
     let consumedCouponSnapshot: {
       id?: string;
       code?: string;
       discountType?: string;
       discountValue?: number;
+      maxDiscountAmount?: number | null;
+      eligibleSubtotal?: number;
     } | null = null;
 
     if (data.couponCode && data.couponCode.trim()) {
-      const cleanCoupon = data.couponCode.trim();
+      const cleanCoupon = data.couponCode.trim().toUpperCase();
       const accountType = data.userAccountType || customerAccount?.pricingTier || (data.customer as any)?.accountType || 'individual';
-      const couponRes = await pgConsumeCoupon(cleanCoupon, subtotal, accountType, tx);
+
+      const couponRows = await tx
+        .select()
+        .from(coupons)
+        .where(sql`UPPER(TRIM(${coupons.code})) = ${cleanCoupon}`)
+        .limit(1);
+
+      let eligibleSubtotal = calculatedSubtotal;
+      if (couponRows.length > 0 && couponRows[0].excludeDiscountedItems) {
+        eligibleSubtotal = calculatedNonDiscountedSubtotal;
+      }
+
+      const couponRes = await pgConsumeCoupon(cleanCoupon, subtotal, accountType, tx, {
+        eligibleSubtotal,
+        customerId: customerAccount.id,
+        customerPhone: normalizePhone(data.customer.phone),
+      });
       discount = couponRes.discount;
       if (couponRes.coupon) {
         consumedCouponSnapshot = {
@@ -615,6 +650,8 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
           code: couponRes.coupon.code,
           discountType: couponRes.coupon.discountType,
           discountValue: couponRes.coupon.discountValue,
+          maxDiscountAmount: couponRes.coupon.maxDiscountAmount || null,
+          eligibleSubtotal: couponRes.eligibleSubtotal,
         };
       }
     } else if (data.discount !== undefined && data.discount !== null && Number(data.discount) > 0) {
@@ -630,8 +667,6 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     const earnedCashback = data.earnedCashback !== undefined
       ? toNumber(data.earnedCashback)
       : processedItems.reduce((acc, it) => acc + it.earnedCashback, 0);
-
-    const newOrderId = crypto.randomUUID();
 
     // -------------------------------------------------------------
     // Step C.2: Atomically Lock Account & Validate Cashback (FOR UPDATE)
@@ -690,6 +725,12 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         couponDiscountValueSnap: consumedCouponSnapshot?.discountValue !== undefined
           ? String(consumedCouponSnapshot.discountValue.toFixed(2))
           : null,
+        couponMaxDiscountSnap: consumedCouponSnapshot?.maxDiscountAmount !== undefined && consumedCouponSnapshot.maxDiscountAmount !== null
+          ? String(consumedCouponSnapshot.maxDiscountAmount.toFixed(2))
+          : null,
+        couponEligibleSubtotalSnap: consumedCouponSnapshot?.eligibleSubtotal !== undefined
+          ? String(consumedCouponSnapshot.eligibleSubtotal.toFixed(2))
+          : null,
         customerAccountTypeSnap: effectiveUser.accountType || null,
         customerMerchantTierSnap: effectiveUser.merchantTier || null,
         usedCashbackDiscount: String(verifiedCashbackDiscount.toFixed(2)),
@@ -712,6 +753,20 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         notes: data.notes?.trim() || null,
       })
       .returning();
+
+    // -------------------------------------------------------------
+    // Step D.2: Record Coupon Redemption in Database (Audit & Tracking)
+    // -------------------------------------------------------------
+    if (consumedCouponSnapshot?.id) {
+      await pgRecordCouponRedemption(tx, {
+        couponId: consumedCouponSnapshot.id,
+        orderId: insertedOrder.id,
+        orderNumber: insertedOrder.orderNumber,
+        customerId: customerAccount.id,
+        customerPhone: normalizePhone(data.customer.phone),
+        discountAmount: discount,
+      });
+    }
 
     // -------------------------------------------------------------
     // Step E: Insert Order Items, Update Product Stock, & Log Movements

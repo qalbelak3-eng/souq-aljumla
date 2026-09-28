@@ -62,6 +62,7 @@ async function setup() {
     'drizzle/0011_offer_historical_snapshot.sql',
     'drizzle/0012_pricing_tier_snapshots.sql',
     'drizzle/0013_product_active_archived.sql',
+    'drizzle/0014_coupon_financial_hardening.sql',
   ];
 
   for (const m of migrations) {

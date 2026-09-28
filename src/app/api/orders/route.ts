@@ -296,10 +296,24 @@ export async function POST(request: Request) {
     // Strictly recomputed server-side without trusting client deliveryFee (Requirement 8)
     const verifiedDeliveryFee = getEffectiveDeliveryFee(calculatedSubtotal, settings, customer);
 
-    // Server-side coupon verification (Requirement 3, 7, 10)
+    // Server-side coupon verification (Requirement 3, 7, 10 & Commerce-2C1)
     let verifiedDiscount = 0;
     if (couponCode && String(couponCode).trim()) {
-      const couponRes = await pgValidateCoupon(String(couponCode).trim(), calculatedSubtotal, effectiveAccountType);
+      const calculatedNonDiscountedSubtotal = verifiedItems.reduce((acc: number, it: any) => {
+        const isDiscounted = Boolean(it.offerIdSnap || (it.offerDiscountSnap && it.offerDiscountSnap > 0));
+        return isDiscounted ? acc : acc + (Number(it.price) * Number(it.quantity));
+      }, 0);
+
+      const couponRes = await pgValidateCoupon(
+        String(couponCode).trim(),
+        calculatedSubtotal,
+        effectiveAccountType,
+        {
+          eligibleSubtotal: calculatedNonDiscountedSubtotal,
+          customerId: customer.userId || null,
+          customerPhone: customer.phone ? String(customer.phone).replace(/\D/g, '') : null,
+        }
+      );
       if (!couponRes.valid) {
         return NextResponse.json({ success: false, error: couponRes.message }, { status: 400 });
       }

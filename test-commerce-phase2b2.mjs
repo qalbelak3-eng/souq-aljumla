@@ -71,6 +71,7 @@ async function startDatabase() {
     'drizzle/0011_offer_historical_snapshot.sql',
     'drizzle/0012_reversal_governance_hardening.sql',
     'drizzle/0013_product_active_archived.sql',
+    'drizzle/0014_coupon_financial_hardening.sql',
   ];
 
   for (const m of migrations) {

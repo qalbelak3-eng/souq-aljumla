@@ -335,6 +335,8 @@ export interface Order {
   couponCode?: string;
   couponDiscountType?: string;
   couponDiscountValue?: number;
+  couponMaxDiscountSnap?: number; // لقطة تاريخية لسقف الخصم الأعلى للكوبون وقت إنشاء الطلب
+  couponEligibleSubtotalSnap?: number; // لقطة تاريخية للمبلغ المؤهل للخصم وقت إنشاء الطلب
   customerAccountTypeSnap?: string; // لقطة تاريخية لنوع حساب العميل وقت إنشاء الطلب
   customerMerchantTierSnap?: string; // لقطة تاريخية لرتبة التاجر وقت إنشاء الطلب
   usedCashbackDiscount?: number; // مبلغ الخصم المستقطع من رصيد الأرباح والمكافآت (كاش باك)
@@ -438,6 +440,9 @@ export interface Coupon {
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   minOrderAmount?: number;
+  maxDiscountAmount?: number; // سقف الخصم الأعلى للكوبونات المئوية
+  perCustomerLimit?: number; // الحد الأقصى للاستخدام لكل عميل
+  excludeDiscountedItems?: boolean; // استثناء المنتجات المخفضة (التي عليها عروض)
   isActive: boolean;
   targetAudience?: 'all' | 'individual' | 'market' | 'wholesale'; // الشريحة المستهدفة
   description?: string; // وصف الكوبون والغرض منه

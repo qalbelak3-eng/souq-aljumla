@@ -29,6 +29,8 @@ export const orders = pgTable('orders', {
   couponCodeSnap: varchar('coupon_code_snap', { length: 50 }),
   couponDiscountTypeSnap: varchar('coupon_discount_type_snap', { length: 20 }),
   couponDiscountValueSnap: numeric('coupon_discount_value_snap', { precision: 14, scale: 2 }),
+  couponMaxDiscountSnap: numeric('coupon_max_discount_snap', { precision: 14, scale: 2 }),
+  couponEligibleSubtotalSnap: numeric('coupon_eligible_subtotal_snap', { precision: 14, scale: 2 }),
 
   // Customer Pricing Identity Snapshots (Phase Commerce-2B3)
   customerAccountTypeSnap: varchar('customer_account_type_snap', { length: 30 }),

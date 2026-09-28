@@ -24,10 +24,13 @@ export async function POST(request: Request) {
       ? (body.userAccountType || 'individual')
       : (customer ? (customer.accountType || 'individual') : 'individual');
 
+    let eligibleSubtotal: number | undefined = undefined;
+
     // If items are passed, calculate trusted subtotal strictly from verified PostgreSQL products
     if (items && Array.isArray(items) && items.length > 0) {
       const allProducts = await pgGetProducts();
       let calculated = 0;
+      let nonDiscounted = 0;
       for (const item of items) {
         const prod = allProducts.find((p) => p.id === item.productId || p.id === item.id);
         if (!prod || (prod as any).isActive === false) {
@@ -46,9 +49,14 @@ export async function POST(request: Request) {
         const qty = qtyRes.quantity!;
         const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
         const pricingRes = resolveAuthoritativeProductPrice({ product: prod, saleType: saleType as any, user: customer as any });
-        calculated += pricingRes.finalUnitPrice * qty;
+        const itemTotal = pricingRes.finalUnitPrice * qty;
+        calculated += itemTotal;
+        if (!pricingRes.isOfferApplied) {
+          nonDiscounted += itemTotal;
+        }
       }
       subtotal = calculated;
+      eligibleSubtotal = nonDiscounted;
     } else {
       // If items are missing or empty:
       // Admins may provide arbitrary subtotal for simulation, but customers/guests subtotal is strictly 0
@@ -57,7 +65,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await pgValidateCoupon(code, subtotal, trustedAccountType);
+    const rawPhone = customer?.phone || body.phone;
+    const cleanPhone = rawPhone ? String(rawPhone).replace(/\D/g, '') : null;
+    const customerId = customer?.id || null;
+
+    const result = await pgValidateCoupon(code, subtotal, trustedAccountType, {
+      eligibleSubtotal,
+      customerId,
+      customerPhone: cleanPhone,
+    });
     if (!result.valid) {
       return NextResponse.json({ success: false, error: result.message }, { status: 400 });
     }
@@ -65,6 +81,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       discount: result.discount,
+      eligibleSubtotal: result.eligibleSubtotal,
+      subtotal,
       message: result.message,
       coupon: result.coupon,
     });

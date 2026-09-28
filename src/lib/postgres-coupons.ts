@@ -1,6 +1,6 @@
-import { eq, sql, desc, and } from 'drizzle-orm';
+import { eq, sql, desc, and, or } from 'drizzle-orm';
 import { getDb } from '@/db/client';
-import { coupons, auditLogs } from '@/db/schema';
+import { coupons, couponRedemptions, auditLogs } from '@/db/schema';
 import { Coupon } from '@/types';
 import { initialCoupons } from '@/data/initialData';
 
@@ -15,6 +15,10 @@ export type PgOperator = {
  * Maps a PostgreSQL coupons row to the standard Coupon domain interface.
  */
 export function mapPgCouponRowToCoupon(r: any): Coupon {
+  const maxDiscountRaw = r.maxDiscountAmount ?? r.max_discount_amount;
+  const perCustomerLimitRaw = r.perCustomerLimit ?? r.per_customer_limit;
+  const excludeDiscountedRaw = r.excludeDiscountedItems ?? r.exclude_discounted_items;
+
   return {
     id: r.id,
     code: String(r.code).toUpperCase().trim(),
@@ -23,6 +27,13 @@ export function mapPgCouponRowToCoupon(r: any): Coupon {
     minOrderAmount: (r.minOrderAmount ?? r.min_order_amount) !== null && (r.minOrderAmount ?? r.min_order_amount) !== undefined
       ? Number(r.minOrderAmount ?? r.min_order_amount)
       : undefined,
+    maxDiscountAmount: maxDiscountRaw !== null && maxDiscountRaw !== undefined && !isNaN(Number(maxDiscountRaw)) && Number(maxDiscountRaw) > 0
+      ? Number(maxDiscountRaw)
+      : undefined,
+    perCustomerLimit: perCustomerLimitRaw !== null && perCustomerLimitRaw !== undefined && !isNaN(Number(perCustomerLimitRaw)) && Number(perCustomerLimitRaw) > 0
+      ? Math.round(Number(perCustomerLimitRaw))
+      : undefined,
+    excludeDiscountedItems: Boolean(excludeDiscountedRaw ?? false),
     targetAudience: ((r.targetAudience ?? r.target_audience) || 'all') as 'all' | 'individual' | 'market' | 'wholesale',
     description: (r.description ?? '') ? String(r.description).trim() : undefined,
     usageLimit: (r.usageLimit ?? r.usage_limit) !== null && (r.usageLimit ?? r.usage_limit) !== undefined
@@ -145,6 +156,9 @@ export interface CreateCouponInput {
   discountType: 'percentage' | 'fixed';
   discountValue: number | string;
   minOrderAmount?: number | string | null;
+  maxDiscountAmount?: number | string | null;
+  perCustomerLimit?: number | string | null;
+  excludeDiscountedItems?: boolean;
   targetAudience?: 'all' | 'individual' | 'market' | 'wholesale';
   description?: string | null;
   usageLimit?: number | string | null;
@@ -191,6 +205,16 @@ export async function pgCreateCoupon(
     ? String(Number(data.minOrderAmount))
     : null;
 
+  const maxDiscount = data.maxDiscountAmount !== undefined && data.maxDiscountAmount !== null && !isNaN(Number(data.maxDiscountAmount)) && Number(data.maxDiscountAmount) > 0
+    ? String(Number(data.maxDiscountAmount))
+    : null;
+
+  const perCustomerLimit = data.perCustomerLimit !== undefined && data.perCustomerLimit !== null && !isNaN(Number(data.perCustomerLimit)) && Number(data.perCustomerLimit) > 0
+    ? Math.round(Number(data.perCustomerLimit))
+    : null;
+
+  const excludeDiscountedItems = Boolean(data.excludeDiscountedItems ?? false);
+
   const usageLimit = data.usageLimit !== undefined && data.usageLimit !== null && !isNaN(Number(data.usageLimit)) && Number(data.usageLimit) > 0
     ? Math.round(Number(data.usageLimit))
     : null;
@@ -207,6 +231,9 @@ export async function pgCreateCoupon(
       discountType: data.discountType,
       discountValue: String(val.toFixed(2)),
       minOrderAmount: minOrder,
+      maxDiscountAmount: maxDiscount,
+      perCustomerLimit,
+      excludeDiscountedItems,
       targetAudience: data.targetAudience || 'all',
       description: data.description?.trim() || null,
       usageLimit,
@@ -297,6 +324,22 @@ export async function pgUpdateCoupon(
     updateFields.minOrderAmount = updates.minOrderAmount !== null && !isNaN(Number(updates.minOrderAmount)) && Number(updates.minOrderAmount) > 0
       ? String(Number(updates.minOrderAmount))
       : null;
+  }
+
+  if (updates.maxDiscountAmount !== undefined) {
+    updateFields.maxDiscountAmount = updates.maxDiscountAmount !== null && !isNaN(Number(updates.maxDiscountAmount)) && Number(updates.maxDiscountAmount) > 0
+      ? String(Number(updates.maxDiscountAmount))
+      : null;
+  }
+
+  if (updates.perCustomerLimit !== undefined) {
+    updateFields.perCustomerLimit = updates.perCustomerLimit !== null && !isNaN(Number(updates.perCustomerLimit)) && Number(updates.perCustomerLimit) > 0
+      ? Math.round(Number(updates.perCustomerLimit))
+      : null;
+  }
+
+  if (updates.excludeDiscountedItems !== undefined) {
+    updateFields.excludeDiscountedItems = Boolean(updates.excludeDiscountedItems);
   }
 
   if (updates.targetAudience !== undefined) {
@@ -436,93 +479,219 @@ export async function pgDeleteCoupon(
 }
 
 /**
+ * Calculates coupon discount server-side based on authoritative rules:
+ * - Percentage: min(eligibleSubtotal * percentage / 100, maxDiscountAmount || infinity)
+ * - Fixed: min(discountValue, eligibleSubtotal)
+ * - Discount cannot exceed eligibleSubtotal and cannot be negative.
+ */
+export function calculateCouponDiscount(
+  coupon: {
+    discountType: 'percentage' | 'fixed';
+    discountValue: number;
+    maxDiscountAmount?: number | null;
+  },
+  eligibleSubtotal: number
+): number {
+  if (eligibleSubtotal <= 0) return 0;
+  let discount = 0;
+  if (coupon.discountType === 'percentage') {
+    discount = Math.round((eligibleSubtotal * coupon.discountValue) / 100);
+    if (coupon.maxDiscountAmount !== undefined && coupon.maxDiscountAmount !== null && Number(coupon.maxDiscountAmount) > 0) {
+      discount = Math.min(discount, Number(coupon.maxDiscountAmount));
+    }
+  } else {
+    discount = Math.min(eligibleSubtotal, coupon.discountValue);
+  }
+  return Math.max(0, Math.min(eligibleSubtotal, discount));
+}
+
+/**
+ * Counts successful coupon redemptions for a specific customer identity.
+ * Evaluates both registered customer ID and normalized phone number.
+ */
+export async function getCustomerCouponRedemptionCount(
+  couponId: string,
+  customer: { customerId?: string | null; customerPhone?: string | null },
+  runner?: any
+): Promise<number> {
+  const client = (runner && typeof runner.select === 'function') ? runner : getDb();
+  const cleanPhone = customer.customerPhone ? String(customer.customerPhone).replace(/\D/g, '') : null;
+  const custId = customer.customerId ? String(customer.customerId).trim() : null;
+
+  if (!cleanPhone && !custId) {
+    return 0;
+  }
+
+  let condition;
+  if (cleanPhone && custId) {
+    condition = and(
+      eq(couponRedemptions.couponId, couponId),
+      or(eq(couponRedemptions.customerPhone, cleanPhone), eq(couponRedemptions.customerId, custId))
+    );
+  } else if (cleanPhone) {
+    condition = and(
+      eq(couponRedemptions.couponId, couponId),
+      eq(couponRedemptions.customerPhone, cleanPhone)
+    );
+  } else {
+    condition = and(
+      eq(couponRedemptions.couponId, couponId),
+      eq(couponRedemptions.customerId, custId!)
+    );
+  }
+
+  const rows = await client
+    .select({ count: sql<number>`count(*)` })
+    .from(couponRedemptions)
+    .where(condition);
+
+  return Number(rows[0]?.count || 0);
+}
+
+/**
  * Strictly validates a coupon server-side without altering usageCount.
- * Validates existence, active flag, expiration, usage limit, target audience, and minimum order.
+ * Validates existence, active flag, expiration, global usage limit, per-customer limit,
+ * target audience, minimum order amount, and calculates discount on eligible subtotal.
  */
 export async function pgValidateCoupon(
   code: string,
   subtotal: number,
-  userAccountType?: string
-): Promise<{ valid: boolean; coupon?: Coupon; discount: number; message: string }> {
+  userAccountType?: string,
+  options?: {
+    eligibleSubtotal?: number;
+    customerId?: string | null;
+    customerPhone?: string | null;
+  }
+): Promise<{
+  valid: boolean;
+  coupon?: Coupon;
+  discount: number;
+  eligibleSubtotal: number;
+  message: string;
+}> {
   const cleanCode = (code || '').trim().toUpperCase();
   if (!cleanCode) {
-    return { valid: false, discount: 0, message: 'يرجى إدخال كود الخصم' };
+    return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'يرجى إدخال كود الخصم' };
   }
 
   const coupon = await pgGetCouponByCode(cleanCode);
   if (!coupon) {
-    return { valid: false, discount: 0, message: 'كود الخصم غير صالح أو غير موجود' };
+    return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'كود الخصم غير صالح أو غير موجود' };
   }
 
   // 1. Active status check
   if (!coupon.isActive) {
-    return { valid: false, discount: 0, message: 'كود الخصم غير مفعّل حالياً' };
+    return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'كود الخصم غير مفعّل حالياً' };
   }
 
   // 2. Expiration check
   if (coupon.expiresAt) {
     const expTime = new Date(coupon.expiresAt).getTime();
     if (expTime < Date.now()) {
-      return { valid: false, discount: 0, message: 'كود الخصم منتهي الصلاحية' };
+      return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'كود الخصم منتهي الصلاحية' };
     }
   }
 
-  // 3. Usage limit check
+  // 3. Global usage limit check
   if (coupon.usageLimit !== undefined && coupon.usageLimit !== null && (coupon.usageCount || 0) >= coupon.usageLimit) {
-    return { valid: false, discount: 0, message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون' };
+    return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون' };
   }
 
   // 4. Target audience check
   if (coupon.targetAudience && coupon.targetAudience !== 'all') {
     const effectiveType = userAccountType || 'individual';
     if (coupon.targetAudience === 'market' && effectiveType !== 'market') {
-      return { valid: false, discount: 0, message: 'هذا الكوبون مخصص لحسابات أصحاب الماركتات والمحلات فقط 🏪' };
+      return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'هذا الكوبون مخصص لحسابات أصحاب الماركتات والمحلات فقط 🏪' };
     }
     if (coupon.targetAudience === 'wholesale' && effectiveType !== 'wholesale' && effectiveType !== 'merchant') {
-      return { valid: false, discount: 0, message: 'هذا الكوبون مخصص لحسابات كبار تجار الجملة VIP فقط 👑' };
+      return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'هذا الكوبون مخصص لحسابات كبار تجار الجملة VIP فقط 👑' };
     }
     if (coupon.targetAudience === 'individual' && effectiveType !== 'individual') {
-      return { valid: false, discount: 0, message: 'هذا الكوبون مخصص لزبائن الشراء بالمفرد فقط 🛒' };
+      return { valid: false, discount: 0, eligibleSubtotal: 0, message: 'هذا الكوبون مخصص لزبائن الشراء بالمفرد فقط 🛒' };
     }
   }
 
-  // 5. Minimum order amount check
+  // 5. Minimum order amount check (evaluated against overall cart subtotal)
   if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {
     return {
       valid: false,
       discount: 0,
+      eligibleSubtotal: 0,
       message: `الحد الأدنى لتطبيق هذا الكوبون هو ${coupon.minOrderAmount.toLocaleString()} د.ع`,
     };
   }
 
-  // 6. Discount calculation
-  let discount = 0;
-  if (coupon.discountType === 'percentage') {
-    discount = Math.round((subtotal * coupon.discountValue) / 100);
-  } else {
-    discount = Math.min(subtotal, coupon.discountValue);
+  // 6. Per-Customer usage limit check
+  if (coupon.perCustomerLimit && coupon.perCustomerLimit > 0) {
+    if (options?.customerId || options?.customerPhone) {
+      const db = getDb();
+      const userRedemptions = await getCustomerCouponRedemptionCount(
+        coupon.id!,
+        { customerId: options.customerId, customerPhone: options.customerPhone },
+        db
+      );
+      if (userRedemptions >= coupon.perCustomerLimit) {
+        return {
+          valid: false,
+          discount: 0,
+          eligibleSubtotal: 0,
+          message: `لقد استنفدت الحد الأقصى المسموح به لاستخدام هذا الكوبون (${coupon.perCustomerLimit} مرة)`,
+        };
+      }
+    }
   }
-  discount = Math.max(0, Math.min(subtotal, discount));
+
+  // 7. Determine eligible subtotal based on excludeDiscountedItems
+  const effectiveEligibleSubtotal = coupon.excludeDiscountedItems
+    ? (options?.eligibleSubtotal !== undefined ? Math.max(0, options.eligibleSubtotal) : subtotal)
+    : subtotal;
+
+  if (coupon.excludeDiscountedItems && effectiveEligibleSubtotal <= 0) {
+    return {
+      valid: false,
+      discount: 0,
+      eligibleSubtotal: 0,
+      message: 'كافة المنتجات في السلة مشمولة بعروض خاصة ومستثناة من تطبيق هذا الكوبون',
+    };
+  }
+
+  // 8. Calculate authoritative discount
+  const discount = calculateCouponDiscount(coupon, effectiveEligibleSubtotal);
 
   return {
     valid: true,
     coupon,
     discount,
+    eligibleSubtotal: effectiveEligibleSubtotal,
     message: `تم تطبيق خصم ${discount.toLocaleString()} د.ع بنجاح!`,
   };
 }
 
 /**
  * Atomically validates and consumes a coupon during order creation.
- * Increments usage_count atomically using PostgreSQL row lock and conditional update
- * to prevent race conditions past usage_limit.
+ * Increments usage_count atomically using PostgreSQL row lock and conditional update,
+ * enforces per-customer limit via transaction-level advisory locks and redemption history,
+ * records coupon redemption details, and calculates discount on eligible subtotal.
  */
 export async function pgConsumeCoupon(
   code: string,
   subtotal: number,
   userAccountType?: string,
-  tx?: any
-): Promise<{ coupon: Coupon; discount: number }> {
+  tx?: any,
+  options?: {
+    eligibleSubtotal?: number;
+    customerId?: string | null;
+    customerPhone?: string | null;
+    orderId?: string;
+    orderNumber?: string;
+    recordRedemptionImmediately?: boolean;
+  }
+): Promise<{
+  coupon: Coupon;
+  discount: number;
+  eligibleSubtotal: number;
+  redemptionId?: string;
+}> {
   const runner = tx || getDb();
   const cleanCode = (code || '').trim().toUpperCase();
   if (!cleanCode) {
@@ -571,7 +740,27 @@ export async function pgConsumeCoupon(
     throw new Error(`الحد الأدنى لتطبيق هذا الكوبون هو ${cBefore.minOrderAmount.toLocaleString()} د.ع`);
   }
 
-  // Atomic row-level conditional update
+  // Per-customer concurrency lock and usage limit enforcement
+  if (cBefore.perCustomerLimit && cBefore.perCustomerLimit > 0) {
+    if (options?.customerPhone || options?.customerId) {
+      const cleanPhone = options.customerPhone ? String(options.customerPhone).replace(/\D/g, '') : '';
+      const lockKey = cleanPhone
+        ? `coupon:${cBefore.id}:${cleanPhone}`
+        : `coupon:${cBefore.id}:${options.customerId}`;
+      await runner.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+
+      const redemptionsCount = await getCustomerCouponRedemptionCount(
+        cBefore.id!,
+        { customerId: options.customerId, customerPhone: options.customerPhone },
+        runner
+      );
+      if (redemptionsCount >= cBefore.perCustomerLimit) {
+        throw new Error(`لقد تم استنفاد الحد الأقصى المسموح به لاستخدام هذا الكوبون (${cBefore.perCustomerLimit} مرة) لهذا الحساب/الهاتف`);
+      }
+    }
+  }
+
+  // Atomic row-level conditional update for global usage limit
   const updatedRows = await runner.execute(sql`
     UPDATE coupons
     SET usage_count = usage_count + 1
@@ -590,16 +779,64 @@ export async function pgConsumeCoupon(
 
   const consumedCoupon = mapPgCouponRowToCoupon(updatedRow);
 
-  let discount = 0;
-  if (consumedCoupon.discountType === 'percentage') {
-    discount = Math.round((subtotal * consumedCoupon.discountValue) / 100);
-  } else {
-    discount = Math.min(subtotal, consumedCoupon.discountValue);
+  const effectiveEligible = consumedCoupon.excludeDiscountedItems
+    ? (options?.eligibleSubtotal !== undefined ? Math.max(0, options.eligibleSubtotal) : subtotal)
+    : subtotal;
+
+  if (consumedCoupon.excludeDiscountedItems && effectiveEligible <= 0) {
+    throw new Error('كافة المنتجات في السلة مشمولة بعروض خاصة ومستثناة من تطبيق هذا الكوبون');
   }
-  discount = Math.max(0, Math.min(subtotal, discount));
+
+  const discount = calculateCouponDiscount(consumedCoupon, effectiveEligible);
+
+  let redemptionId: string | undefined = undefined;
+  if (options?.recordRedemptionImmediately && options?.orderId && options?.orderNumber) {
+    redemptionId = await pgRecordCouponRedemption(runner, {
+      couponId: consumedCoupon.id!,
+      orderId: options.orderId,
+      orderNumber: options.orderNumber,
+      customerId: options.customerId,
+      customerPhone: options.customerPhone,
+      discountAmount: discount,
+    });
+  }
 
   return {
     coupon: consumedCoupon,
     discount,
+    eligibleSubtotal: effectiveEligible,
+    redemptionId,
   };
+}
+
+/**
+ * Records a successful coupon redemption linked to an existing order.
+ * Must be executed within the order creation transaction or directly with db runner.
+ */
+export async function pgRecordCouponRedemption(
+  tx: any,
+  data: {
+    couponId: string;
+    orderId: string;
+    orderNumber: string;
+    customerId?: string | null;
+    customerPhone?: string | null;
+    discountAmount: number;
+  }
+): Promise<string | undefined> {
+  const runner = tx || getDb();
+  const cleanPhone = data.customerPhone ? String(data.customerPhone).replace(/\D/g, '') : '';
+  const [redemption] = await runner
+    .insert(couponRedemptions)
+    .values({
+      couponId: data.couponId,
+      orderId: data.orderId,
+      orderNumber: data.orderNumber,
+      customerId: data.customerId || null,
+      customerPhone: cleanPhone,
+      discountAmount: String(Number(data.discountAmount || 0).toFixed(2)),
+    })
+    .returning();
+
+  return redemption?.id;
 }

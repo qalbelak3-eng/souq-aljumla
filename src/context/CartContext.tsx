@@ -278,11 +278,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   let discount = 0;
   if (appliedCoupon && subtotal > 0) {
-    if (appliedCoupon.discountType === 'percentage') {
-      discount = Math.round((subtotal * appliedCoupon.discountValue) / 100);
-    } else {
-      discount = Math.min(subtotal, appliedCoupon.discountValue);
+    let eligibleSubtotal = subtotal;
+    if (appliedCoupon.excludeDiscountedItems) {
+      eligibleSubtotal = validCart.reduce((acc, item) => {
+        const hasOffer = Boolean(item.product.isOnOffer || item.product.offerId);
+        return hasOffer ? acc : acc + (Number(item.pricePerUnit) || 0) * (Number(item.quantity) || 0);
+      }, 0);
     }
+    if (appliedCoupon.discountType === 'percentage') {
+      discount = Math.round((eligibleSubtotal * appliedCoupon.discountValue) / 100);
+      if (appliedCoupon.maxDiscountAmount && appliedCoupon.maxDiscountAmount > 0) {
+        discount = Math.min(discount, appliedCoupon.maxDiscountAmount);
+      }
+    } else {
+      discount = Math.min(eligibleSubtotal, appliedCoupon.discountValue);
+    }
+    discount = Math.max(0, Math.min(eligibleSubtotal, discount));
   }
 
   const total = Math.max(0, subtotal - discount + deliveryFee);
