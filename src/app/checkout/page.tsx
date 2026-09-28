@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -318,6 +318,14 @@ export default function CheckoutPage() {
   const [isRefreshingCart, setIsRefreshingCart] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+
+  // Client-side idempotency key generated per checkout session / cart state
+  const idempotencyKeyRef = useRef<string>('');
+  useEffect(() => {
+    idempotencyKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `chk-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }, [cart]);
 
   // Selected area object matching city
   const selectedAreaObj = KARBALA_AREAS.find((a) => a.name === city) || KARBALA_AREAS[0];
@@ -703,17 +711,22 @@ export default function CheckoutPage() {
         total: finalPayableTotal,
         paymentMethod,
         rejectStaleCartPrice: true,
+        idempotencyKey: idempotencyKeyRef.current,
       };
 
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKeyRef.current,
+        },
         body: JSON.stringify(orderPayload),
       });
 
       const data = await res.json();
 
       if (data.success && data.order) {
+        idempotencyKeyRef.current = '';
         try {
           clearCart();
         } catch {}

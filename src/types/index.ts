@@ -347,6 +347,8 @@ export interface Order {
   whatsappSent?: boolean;
   notes?: string;
   paidAmount?: number;
+  idempotencyKey?: string; // مفتاح منع تكرار الطلب (Commerce-2C2)
+  requestFingerprint?: string; // بصمة حمولة الطلب للتحقق من تطابق محاولة الإعادة
   
   // Driver Assignment & Delivery Tracking (نظام السائقين والتوصيل)
   driverId?: string;

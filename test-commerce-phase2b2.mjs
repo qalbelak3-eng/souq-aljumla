@@ -73,6 +73,7 @@ async function startDatabase() {
     'drizzle/0013_product_active_archived.sql',
     'drizzle/0014_coupon_financial_hardening.sql',
     'drizzle/0015_coupon_redemption_idempotency.sql',
+    'drizzle/0016_order_idempotency_cashback_integrity.sql',
   ];
 
   for (const m of migrations) {

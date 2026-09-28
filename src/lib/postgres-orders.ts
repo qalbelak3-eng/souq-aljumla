@@ -57,6 +57,7 @@ export interface PgCreateOrderInput {
   createAccountIfMissing?: boolean;
   operator?: PgOperator;
   trustSuppliedPrices?: boolean;
+  idempotencyKey?: string;
 }
 
 export interface PgOrderFilters {
@@ -68,7 +69,7 @@ export interface PgOrderFilters {
 }
 
 /* =========================================================
-   Helpers
+   Helpers & Idempotency / Identity Resolution
    ========================================================= */
 
 function normalizePhone(value?: string | null): string {
@@ -86,6 +87,136 @@ function generateAccountCode(): string {
 
 export function isUuid(value?: string | null): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+/**
+ * Computes deterministic SHA-256 payload fingerprint for order idempotency protection.
+ * Client prices are untrusted and excluded; canonicalizes phone, items, discounts, and destinations.
+ */
+export function computeOrderPayloadFingerprint(data: PgCreateOrderInput): string {
+  const phone = normalizePhone(data.customer?.phone);
+  const userId = String(data.customer?.userId || '').trim();
+  const city = String(data.customer?.city || '').trim().toLowerCase();
+  const address = String(data.customer?.address || '').trim().toLowerCase();
+  const sortedItems = [...(data.items || [])]
+    .map((item) => ({
+      productId: String(item.productId || (item as any).id || '').trim(),
+      quantity: Number(item.quantity) || 0,
+      saleType: String(item.saleType || 'retail').trim().toLowerCase(),
+    }))
+    .sort((a, b) => {
+      const cmp = a.productId.localeCompare(b.productId);
+      if (cmp !== 0) return cmp;
+      return a.saleType.localeCompare(b.saleType);
+    });
+  const couponCode = (data.couponCode || '').trim().toUpperCase();
+  const usedCashbackDiscount = Number(data.usedCashbackDiscount || 0);
+  const paymentMethod = (data.paymentMethod || 'cod').trim().toLowerCase();
+
+  const canonicalPayload = {
+    phone,
+    userId,
+    city,
+    address,
+    items: sortedItems,
+    couponCode,
+    usedCashbackDiscount,
+    paymentMethod,
+  };
+
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalPayload)).digest('hex');
+}
+
+/**
+ * Authoritative PostgreSQL customer identity resolver:
+ * Fetches and resolves trusted customer profile and normalized pricing identity from financial_accounts.
+ * Fully eliminates legacy data stores and in-memory user lists from order creation runtime.
+ */
+export async function pgResolveCustomerIdentity(
+  identifier: string | { userId?: string; phone?: string; accountId?: string; merchantTier?: string },
+  tx?: any
+): Promise<any | null> {
+  const db = tx || getDb();
+  let accountId: string | undefined;
+  let userId: string | undefined;
+  let phone: string | undefined;
+  let merchantTier: string | undefined;
+
+  if (typeof identifier === 'string') {
+    if (isUuid(identifier)) {
+      userId = identifier;
+      accountId = identifier;
+    } else {
+      phone = identifier;
+    }
+  } else if (identifier && typeof identifier === 'object') {
+    accountId = identifier.accountId;
+    userId = identifier.userId;
+    phone = identifier.phone;
+    merchantTier = identifier.merchantTier;
+  }
+
+  let account: any = null;
+
+  if (accountId && isUuid(accountId)) {
+    const rows = await db
+      .select()
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.category, 'customer')))
+      .limit(1);
+    if (rows.length > 0) account = rows[0];
+  }
+
+  if (!account && userId && isUuid(userId)) {
+    const rows = await db
+      .select()
+      .from(financialAccounts)
+      .where(
+        and(
+          eq(financialAccounts.category, 'customer'),
+          sql`${financialAccounts.authIdentityId} = ${userId} OR ${financialAccounts.id} = ${userId}`
+        )
+      )
+      .limit(1);
+    if (rows.length > 0) account = rows[0];
+  }
+
+  if (!account && phone) {
+    const cleanPhone = normalizePhone(phone);
+    if (cleanPhone) {
+      const rows = await db
+        .select()
+        .from(financialAccounts)
+        .where(and(eq(financialAccounts.phone, cleanPhone), eq(financialAccounts.category, 'customer')))
+        .limit(1);
+      if (rows.length > 0) account = rows[0];
+    }
+  }
+
+  if (!account) return null;
+
+  const pricingIdentity = normalizePricingIdentity({
+    pricingTier: account.pricingTier,
+    accountType: account.category === 'customer' ? undefined : account.category,
+    merchantTier,
+  });
+
+  return {
+    id: account.id,
+    authIdentityId: account.authIdentityId || undefined,
+    name: account.name,
+    businessName: account.businessName || undefined,
+    phone: account.phone || '',
+    role: 'customer',
+    accountType: pricingIdentity.accountType,
+    pricingTier: account.pricingTier,
+    merchantTier: pricingIdentity.merchantTier,
+    merchantStatus: account.isActive && !account.archivedAt ? 'approved' : 'pending',
+    fixedDiscountPercent: Number(account.fixedDiscountPercent || 0),
+    city: account.city || undefined,
+    address: account.address || undefined,
+    isActive: Boolean(account.isActive && !account.archivedAt),
+  };
 }
 
 export async function resolveStaffId(tx: any, operator?: PgOperator): Promise<string | null> {
@@ -194,6 +325,8 @@ export function formatOrderRecord(
       orderRow.status !== 'cancelled'
         ? (decryptPin(orderRow.deliveryPinEncrypted) || undefined)
         : undefined,
+    idempotencyKey: orderRow.idempotencyKey || undefined,
+    requestFingerprint: orderRow.requestFingerprint || undefined,
     createdAt: new Date(orderRow.createdAt).toISOString(),
     updatedAt: new Date(orderRow.updatedAt).toISOString(),
   };
@@ -326,7 +459,67 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     throw new Error('لا يمكن إنشاء طلبية بدون أصناف');
   }
 
-  return db.transaction(async (tx) => {
+  const rawKey = data.idempotencyKey ? String(data.idempotencyKey).trim() : undefined;
+  if (rawKey && rawKey.length > 128) {
+    throw new Error('مفتاح عدم التكرار idempotency key يتجاوز الحد الأقصى المسموح (128 حرف)');
+  }
+  const cleanKey = rawKey || undefined;
+  const requestFingerprint = cleanKey ? computeOrderPayloadFingerprint(data) : undefined;
+
+  const validateAndFormatExisting = async (
+    existingOrder: any,
+    existingItems: any[],
+    driver?: any,
+    vehicle?: any,
+    account?: any
+  ): Promise<Order> => {
+    // 1. Verify caller ownership
+    const callerCanonicalPhone = normalizePhone(data.customer?.phone);
+    const existingPhone = existingOrder.customerPhoneSnap;
+    if (existingPhone && callerCanonicalPhone && existingPhone !== callerCanonicalPhone) {
+      throw new Error('Idempotency Conflict: Key belongs to another customer or phone number');
+    }
+
+    if (data.accountId && existingOrder.accountId && data.accountId !== existingOrder.accountId) {
+      throw new Error('Idempotency Conflict: Key belongs to another customer account');
+    }
+
+    // 2. Verify payload fingerprint
+    if (existingOrder.requestFingerprint && requestFingerprint && existingOrder.requestFingerprint !== requestFingerprint) {
+      throw new Error('Idempotency Conflict: Key reused with different order payload');
+    }
+
+    return formatOrderRecord(existingOrder, existingItems, driver, vehicle, account);
+  };
+
+  // Pre-check for already completed order with the same idempotency key
+  if (cleanKey) {
+    const existingRows = await db
+      .select({
+        order: orders,
+        account: financialAccounts,
+        driver: drivers,
+        vehicle: vehicles,
+      })
+      .from(orders)
+      .leftJoin(financialAccounts, eq(orders.accountId, financialAccounts.id))
+      .leftJoin(drivers, eq(orders.driverId, drivers.id))
+      .leftJoin(vehicles, eq(orders.vehicleId, vehicles.id))
+      .where(eq(orders.idempotencyKey, cleanKey))
+      .limit(1);
+
+    if (existingRows.length > 0) {
+      const { order: existingOrder, account, driver, vehicle } = existingRows[0];
+      const items = await db
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, existingOrder.id));
+      return await validateAndFormatExisting(existingOrder, items, driver, vehicle, account);
+    }
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
     // -------------------------------------------------------------
     // Step A: Resolve Customer Financial Account
     // -------------------------------------------------------------
@@ -756,6 +949,8 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         deliveryPinEncrypted: pinData.encrypted,
         deliveryPinAttempts: 0,
         notes: data.notes?.trim() || null,
+        idempotencyKey: cleanKey || null,
+        requestFingerprint: requestFingerprint || null,
       })
       .returning();
 
@@ -867,7 +1062,40 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       .where(eq(orderItems.orderId, insertedOrder.id));
 
     return formatOrderRecord(insertedOrder, itemsFromDb, undefined, undefined, customerAccount);
-  });
+    });
+  } catch (error: any) {
+    // Concurrent execution resolution via DB unique constraint uq_orders_idempotency_key
+    if (
+      cleanKey &&
+      (error?.code === '23505' ||
+        String(error?.message).includes('uq_orders_idempotency_key') ||
+        String(error?.detail).includes('idempotency_key'))
+    ) {
+      const concurrentRows = await db
+        .select({
+          order: orders,
+          account: financialAccounts,
+          driver: drivers,
+          vehicle: vehicles,
+        })
+        .from(orders)
+        .leftJoin(financialAccounts, eq(orders.accountId, financialAccounts.id))
+        .leftJoin(drivers, eq(orders.driverId, drivers.id))
+        .leftJoin(vehicles, eq(orders.vehicleId, vehicles.id))
+        .where(eq(orders.idempotencyKey, cleanKey))
+        .limit(1);
+
+      if (concurrentRows.length > 0) {
+        const { order: existingOrder, account, driver, vehicle } = concurrentRows[0];
+        const items = await db
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.orderId, existingOrder.id));
+        return await validateAndFormatExisting(existingOrder, items, driver, vehicle, account);
+      }
+    }
+    throw error;
+  }
 }
 
 /* =========================================================

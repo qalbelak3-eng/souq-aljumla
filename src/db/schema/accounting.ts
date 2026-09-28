@@ -89,6 +89,15 @@ export const cashbackLedger = pgTable('cashback_ledger', {
 }, (table) => [
   index('idx_cashback_account_id').on(table.accountId),
   index('idx_cashback_order_id').on(table.orderId),
+  uniqueIndex('uq_cashback_ledger_order_earned')
+    .on(table.orderId)
+    .where(sql`${table.type} = 'earned' AND ${table.orderId} IS NOT NULL`),
+  uniqueIndex('uq_cashback_ledger_order_redeemed')
+    .on(table.orderId)
+    .where(sql`${table.type} = 'redeemed' AND ${table.orderId} IS NOT NULL`),
+  uniqueIndex('uq_cashback_ledger_order_reversed')
+    .on(table.orderId)
+    .where(sql`${table.type} = 'reversed' AND ${table.orderId} IS NOT NULL`),
   check('chk_cashback_type', sql`${table.type} IN ('earned', 'redeemed', 'reversed', 'expired', 'adjustment')`),
   check('chk_cashback_amount_positive', sql`${table.amount} > 0`),
 ]);

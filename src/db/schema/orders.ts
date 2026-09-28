@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, integer, boolean, timestamp, text, index, primaryKey, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, integer, boolean, timestamp, text, index, uniqueIndex, primaryKey, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { financialAccounts } from './accounts';
 import { products, productOffers } from './catalog';
@@ -13,6 +13,10 @@ export const orders = pgTable('orders', {
     .notNull()
     .references(() => financialAccounts.id, { onDelete: 'restrict' }),
   
+  // Idempotency Tracking (Commerce-2C2)
+  idempotencyKey: varchar('idempotency_key', { length: 128 }),
+  requestFingerprint: varchar('request_fingerprint', { length: 64 }),
+
   // Historical Snapshots
   customerNameSnap: varchar('customer_name_snap', { length: 150 }).notNull(),
   customerPhoneSnap: varchar('customer_phone_snap', { length: 20 }).notNull(),
@@ -91,6 +95,9 @@ export const orders = pgTable('orders', {
   index('idx_orders_delivery_verified_at').on(table.deliveryVerifiedAt),
   index('idx_orders_coupon_code_snap').on(table.couponCodeSnap),
   index('idx_orders_customer_account_type_snap').on(table.customerAccountTypeSnap),
+  uniqueIndex('uq_orders_idempotency_key')
+    .on(table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
   check('chk_order_status', sql`${table.status} IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')`),
   check('chk_order_total_non_negative', sql`${table.total} >= 0`),
   check('chk_order_subtotal_non_negative', sql`${table.subtotal} >= 0`),

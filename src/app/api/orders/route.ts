@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getUsers } from '@/lib/db';
 import { pgGetStoreSettings } from '@/lib/postgres-settings';
-import { pgGetOrders, pgCreateOrder } from '@/lib/postgres-orders';
+import { pgGetOrders, pgCreateOrder, pgResolveCustomerIdentity } from '@/lib/postgres-orders';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgResolveCustomerAccount, pgGetAccountCashbackBalance } from '@/lib/postgres-cashback';
@@ -119,13 +118,17 @@ export async function POST(request: Request) {
     const admin = getAuthenticatedAdmin(request);
     const customerSession = getAuthenticatedCustomer(request);
 
-    const allUsers = getUsers();
     let trustedUser: any = null;
 
     if (admin && customer.userId) {
-      trustedUser = allUsers.find((u) => u.id === customer.userId) || null;
+      trustedUser = await pgResolveCustomerIdentity(customer.userId);
     } else if (customerSession) {
-      trustedUser = allUsers.find((u) => u.id === customerSession.id) || {
+      const pgUser = await pgResolveCustomerIdentity({
+        userId: customerSession.id,
+        phone: customerSession.phone,
+        merchantTier: customerSession.merchantTier,
+      });
+      trustedUser = pgUser || {
         id: customerSession.id,
         phone: customerSession.phone,
         name: customerSession.name,
@@ -391,6 +394,13 @@ export async function POST(request: Request) {
       ? { name: customerSession.name || customer.name, username: customerSession.phone, role: 'customer', id: customerSession.id }
       : { name: customer.name, username: customer.phone, role: 'guest' };
 
+    const idempotencyKey =
+      request.headers.get('idempotency-key') ||
+      request.headers.get('Idempotency-Key') ||
+      request.headers.get('x-idempotency-key') ||
+      (body.idempotencyKey ? String(body.idempotencyKey).trim() : undefined) ||
+      undefined;
+
     const newOrder = await pgCreateOrder({
       customer,
       items: verifiedItems,
@@ -409,6 +419,7 @@ export async function POST(request: Request) {
       accountId,
       createAccountIfMissing: true,
       operator,
+      idempotencyKey,
     });
 
     // Generate cryptographic order access token for secure tracking (especially for guests)
@@ -452,6 +463,16 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: any) {
+    const isConflict =
+      error?.code === 'IDEMPOTENCY_CONFLICT' ||
+      String(error?.message).toLowerCase().includes('idempotency conflict');
+    if (isConflict) {
+      return NextResponse.json({
+        success: false,
+        code: 'IDEMPOTENCY_CONFLICT',
+        error: error.message,
+      }, { status: 409 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }
 }
