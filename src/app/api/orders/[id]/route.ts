@@ -8,6 +8,7 @@ import {
 } from '@/lib/postgres-orders';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+import { toCanonicalIraqiPhone } from '@/lib/phone-utils';
 import {
   getAuthenticatedAdmin,
   hasPermission,
@@ -33,8 +34,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     // 2. Authenticated Customer who owns the order
     const authenticatedCustomer = getAuthenticatedCustomer(request);
-    const orderPhoneClean = (order.customer?.phone || '').replace(/\D/g, '');
-    const authPhoneClean = (authenticatedCustomer?.phone || '').replace(/\D/g, '');
+    const orderPhoneClean = toCanonicalIraqiPhone(order.customer?.phone) || (order.customer?.phone || '').replace(/\D/g, '');
+    const authPhoneClean = toCanonicalIraqiPhone(authenticatedCustomer?.phone) || (authenticatedCustomer?.phone || '').replace(/\D/g, '');
     const isCustomerOwner = !!(
       authenticatedCustomer && (
         (order.customer?.userId && order.customer.userId === authenticatedCustomer.id) ||

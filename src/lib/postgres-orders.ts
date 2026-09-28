@@ -24,6 +24,7 @@ import {
   pgGetAccountCashbackBalance,
 } from '@/lib/postgres-cashback';
 import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity, normalizePricingIdentity } from '@/lib/pricing';
+import { toCanonicalIraqiPhone, toLocalIraqiPhone, normalizePhoneForFinancialIdentity } from '@/lib/phone-utils';
 
 /* =========================================================
    Types & Interfaces
@@ -71,7 +72,7 @@ export interface PgOrderFilters {
    ========================================================= */
 
 function normalizePhone(value?: string | null): string {
-  return String(value || '').replace(/\D/g, '');
+  return normalizePhoneForFinancialIdentity(value);
 }
 
 export function toNumber(value: unknown): number {
@@ -346,12 +347,16 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
       }
       customerAccount = accountRows[0];
     } else {
-      const cleanPhone = normalizePhone(data.customer.phone);
-      if (cleanPhone) {
+      const canonicalPhone = toCanonicalIraqiPhone(data.customer.phone);
+      const localPhone = toLocalIraqiPhone(data.customer.phone);
+      const rawDigits = String(data.customer.phone || '').replace(/\D/g, '');
+      const phoneMatches = Array.from(new Set([canonicalPhone, localPhone, rawDigits].filter(Boolean))) as string[];
+
+      if (phoneMatches.length > 0) {
         const accountRows = await tx
           .select()
           .from(financialAccounts)
-          .where(and(eq(financialAccounts.phone, cleanPhone), eq(financialAccounts.category, 'customer')))
+          .where(and(inArray(financialAccounts.phone, phoneMatches), eq(financialAccounts.category, 'customer')))
           .limit(1);
 
         if (accountRows.length > 0) {

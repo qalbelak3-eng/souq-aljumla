@@ -3,6 +3,7 @@ import { getDb } from '@/db/client';
 import { coupons, couponRedemptions, auditLogs } from '@/db/schema';
 import { Coupon } from '@/types';
 import { initialCoupons } from '@/data/initialData';
+import { normalizePhoneForFinancialIdentity } from '@/lib/phone-utils';
 
 export type PgOperator = {
   id?: string | null;
@@ -515,7 +516,7 @@ export async function getCustomerCouponRedemptionCount(
   runner?: any
 ): Promise<number> {
   const client = (runner && typeof runner.select === 'function') ? runner : getDb();
-  const cleanPhone = customer.customerPhone ? String(customer.customerPhone).replace(/\D/g, '') : null;
+  const cleanPhone = customer.customerPhone ? normalizePhoneForFinancialIdentity(customer.customerPhone) : null;
   const custId = customer.customerId ? String(customer.customerId).trim() : null;
 
   if (!cleanPhone && !custId) {
@@ -743,7 +744,7 @@ export async function pgConsumeCoupon(
   // Per-customer concurrency lock and usage limit enforcement
   if (cBefore.perCustomerLimit && cBefore.perCustomerLimit > 0) {
     if (options?.customerPhone || options?.customerId) {
-      const cleanPhone = options.customerPhone ? String(options.customerPhone).replace(/\D/g, '') : '';
+      const cleanPhone = options.customerPhone ? normalizePhoneForFinancialIdentity(options.customerPhone) : '';
       const lockKey = cleanPhone
         ? `coupon:${cBefore.id}:${cleanPhone}`
         : `coupon:${cBefore.id}:${options.customerId}`;
@@ -751,7 +752,7 @@ export async function pgConsumeCoupon(
 
       const redemptionsCount = await getCustomerCouponRedemptionCount(
         cBefore.id!,
-        { customerId: options.customerId, customerPhone: options.customerPhone },
+        { customerId: options.customerId, customerPhone: cleanPhone },
         runner
       );
       if (redemptionsCount >= cBefore.perCustomerLimit) {
@@ -824,19 +825,49 @@ export async function pgRecordCouponRedemption(
     discountAmount: number;
   }
 ): Promise<string | undefined> {
-  const runner = tx || getDb();
-  const cleanPhone = data.customerPhone ? String(data.customerPhone).replace(/\D/g, '') : '';
-  const [redemption] = await runner
-    .insert(couponRedemptions)
-    .values({
-      couponId: data.couponId,
-      orderId: data.orderId,
-      orderNumber: data.orderNumber,
-      customerId: data.customerId || null,
-      customerPhone: cleanPhone,
-      discountAmount: String(Number(data.discountAmount || 0).toFixed(2)),
-    })
-    .returning();
+  const runner = (tx && typeof tx.insert === 'function') ? tx : getDb();
+  const cleanPhone = data.customerPhone ? normalizePhoneForFinancialIdentity(data.customerPhone) : '';
+  if (!cleanPhone) {
+    throw new Error(`رقم هاتف العميل غير صالح (${data.customerPhone || 'فارغ'}) ولا يمكن تسجيل استرداد الكوبون به`);
+  }
 
-  return redemption?.id;
+  try {
+    const [redemption] = await runner
+      .insert(couponRedemptions)
+      .values({
+        couponId: data.couponId,
+        orderId: data.orderId,
+        orderNumber: data.orderNumber,
+        customerId: data.customerId || null,
+        customerPhone: cleanPhone,
+        discountAmount: String(Number(data.discountAmount || 0).toFixed(2)),
+      })
+      .returning();
+
+    return redemption?.id;
+  } catch (err: any) {
+    // Check if error is PostgreSQL unique constraint violation on orderId (code 23505)
+    const isUniqueViolation =
+      err?.code === '23505' ||
+      err?.cause?.code === '23505' ||
+      err?.message?.includes('coupon_redemptions_order_id_unique') ||
+      err?.cause?.message?.includes('coupon_redemptions_order_id_unique') ||
+      err?.cause?.constraint_name === 'coupon_redemptions_order_id_unique' ||
+      err?.message?.includes('duplicate key') ||
+      err?.cause?.message?.includes('duplicate key');
+
+    if (isUniqueViolation) {
+      const existing = await runner
+        .select({ id: couponRedemptions.id })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.orderId, data.orderId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return existing[0].id;
+      }
+      throw new Error(`تم تسجيل استرداد كوبون مسبقاً لهذا الطلب (${data.orderNumber})`);
+    }
+    throw err;
+  }
 }

@@ -3,6 +3,7 @@ import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgGetProducts } from '@/lib/postgres-catalog';
 import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity } from '@/lib/pricing';
+import { toCanonicalIraqiPhone } from '@/lib/phone-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
     }
 
     const rawPhone = customer?.phone || body.phone;
-    const cleanPhone = rawPhone ? String(rawPhone).replace(/\D/g, '') : null;
+    const cleanPhone = rawPhone ? toCanonicalIraqiPhone(rawPhone) : null;
     const customerId = customer?.id || null;
 
     const result = await pgValidateCoupon(code, subtotal, trustedAccountType, {

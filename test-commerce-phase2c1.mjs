@@ -12,7 +12,14 @@ import {
   pgConsumeCoupon,
   calculateCouponDiscount,
   getCustomerCouponRedemptionCount,
+  pgRecordCouponRedemption,
 } from './src/lib/postgres-coupons.ts';
+import {
+  toCanonicalIraqiPhone,
+  toLocalIraqiPhone,
+  validateIraqiPhone,
+  isValidIraqiPhone,
+} from './src/lib/phone-utils.ts';
 import { pgCreateOrder, pgGetOrderById } from './src/lib/postgres-orders.ts';
 import { pgCreateProduct, pgCreateCategory } from './src/lib/postgres-catalog.ts';
 import { pgCreateOffer } from './src/lib/postgres-offers.ts';
@@ -78,6 +85,7 @@ async function startDatabase() {
     'drizzle/0012_pricing_tier_snapshots.sql',
     'drizzle/0013_product_active_archived.sql',
     'drizzle/0014_coupon_financial_hardening.sql',
+    'drizzle/0015_coupon_redemption_idempotency.sql',
   ];
 
   for (const m of migrations) {
@@ -586,6 +594,280 @@ async function runCommercePhase2c1Tests() {
   assert(orderRegression.discount === 4000, `Coupon discount capped at 4,000 IQD (actual: ${orderRegression.discount})`);
   assert(orderRegression.deliveryFee === 0, `Free delivery applied because subtotal 60,000 >= 50,000 (actual: ${orderRegression.deliveryFee})`);
   assert(orderRegression.total === 56000, `Final total = 60,000 - 4,000 + 0 = 56,000 IQD (actual: ${orderRegression.total})`);
+
+  // =========================================================================
+  // Scenario 16: Central Phone Normalization & Validation Unit Tests
+  // =========================================================================
+  console.log('\n=== Scenario 16: Canonical Iraqi Phone Normalization Unit Tests ===');
+  const validIraqiCases = [
+    { input: '07701234567', expected: '9647701234567' },
+    { input: '+9647701234567', expected: '9647701234567' },
+    { input: '9647701234567', expected: '9647701234567' },
+    { input: '009647701234567', expected: '9647701234567' },
+    { input: '0770-123-4567', expected: '9647701234567' },
+    { input: '0770 123 4567', expected: '9647701234567' },
+    { input: '+964 770 123 4567', expected: '9647701234567' },
+    { input: '٠٧٧٠١٢٣٤٥٦٧', expected: '9647701234567' },
+  ];
+
+  for (const c of validIraqiCases) {
+    const canonical = toCanonicalIraqiPhone(c.input);
+    assert(canonical === c.expected, `Phone ${c.input} normalized to ${c.expected} (actual: ${canonical})`);
+    assert(isValidIraqiPhone(c.input) === true, `Phone ${c.input} is recognized as valid Iraqi phone`);
+  }
+
+  const invalidIraqiCases = ['12345', '08801234567', '0770123', '07701234567890', 'abcdef', ''];
+  for (const inv of invalidIraqiCases) {
+    const res = validateIraqiPhone(inv);
+    assert(res.isValid === false, `Invalid phone "${inv}" rejected by validation`);
+    assert(toCanonicalIraqiPhone(inv) === null, `Invalid phone "${inv}" returns null canonical`);
+  }
+
+  // =========================================================================
+  // Scenario 17: Multi-Format Phone Bypass Prevention (0770... vs +964770... vs 00964...)
+  // =========================================================================
+  console.log('\n=== Scenario 17: Multi-Format Phone Bypass Prevention ===');
+  const couponMultiFormat = await pgCreateCoupon({
+    code: 'MULTI1',
+    discountType: 'fixed',
+    discountValue: 3000,
+    perCustomerLimit: 1,
+    minOrderAmount: 10000,
+  });
+
+  // Order 1: local format 07709990001
+  const orderMF1 = await pgCreateOrder({
+    customer: { name: 'زبون الصيغ 1', phone: '07709990001', city: 'بغداد', address: 'المنصور' },
+    items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+    couponCode: 'MULTI1',
+    createAccountIfMissing: true,
+  });
+  assert(Boolean(orderMF1?.id), 'First order with 07709990001 succeeded');
+
+  // Attempt Order 2: same phone with +964 international prefix
+  let errMF2 = null;
+  try {
+    await pgCreateOrder({
+      customer: { name: 'زبون الصيغ 2 (+964)', phone: '+9647709990001', city: 'بغداد', address: 'المنصور' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'MULTI1',
+      createAccountIfMissing: true,
+    });
+  } catch (e) {
+    errMF2 = e.message;
+  }
+  assert(errMF2 && (errMF2.includes('استنفاد') || errMF2.includes('الحد الأقصى')), `Attempt with +964 format strictly blocked: ${errMF2}`);
+
+  // Attempt Order 3: same phone with 00964 prefix
+  let errMF3 = null;
+  try {
+    await pgCreateOrder({
+      customer: { name: 'زبون الصيغ 3 (00964)', phone: '009647709990001', city: 'بغداد', address: 'المنصور' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'MULTI1',
+      createAccountIfMissing: true,
+    });
+  } catch (e) {
+    errMF3 = e.message;
+  }
+  assert(errMF3 && (errMF3.includes('استنفاد') || errMF3.includes('الحد الأقصى')), `Attempt with 00964 format strictly blocked: ${errMF3}`);
+
+  // Attempt Order 4: same phone with dashes
+  let errMF4 = null;
+  try {
+    await pgCreateOrder({
+      customer: { name: 'زبون الصيغ 4 (dashes)', phone: '0770-999-0001', city: 'بغداد', address: 'المنصور' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'MULTI1',
+      createAccountIfMissing: true,
+    });
+  } catch (e) {
+    errMF4 = e.message;
+  }
+  assert(errMF4 && (errMF4.includes('استنفاد') || errMF4.includes('الحد الأقصى')), `Attempt with dashes format strictly blocked: ${errMF4}`);
+
+  // =========================================================================
+  // Scenario 18: Guest uses coupon then registers with different format
+  // =========================================================================
+  console.log('\n=== Scenario 18: Guest then Register with Different Format ===');
+  const couponGuestReg = await pgCreateCoupon({
+    code: 'GUESTREG1',
+    discountType: 'fixed',
+    discountValue: 2000,
+    perCustomerLimit: 1,
+    minOrderAmount: 10000,
+  });
+
+  // Guest order with local format
+  await pgCreateOrder({
+    customer: { name: 'زائر تجريبي', phone: '07801112233', city: 'النجف', address: 'الغري' },
+    items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+    couponCode: 'GUESTREG1',
+    createAccountIfMissing: true,
+  });
+
+  // Customer now logs in / submits with international format +9647801112233
+  let errGuestReg = null;
+  try {
+    await pgCreateOrder({
+      customer: { name: 'مسجل جديد', phone: '+9647801112233', city: 'النجف', address: 'الغري' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'GUESTREG1',
+      createAccountIfMissing: true,
+    });
+  } catch (e) {
+    errGuestReg = e.message;
+  }
+  assert(errGuestReg && (errGuestReg.includes('استنفاد') || errGuestReg.includes('الحد الأقصى')), `Registered order with different format strictly blocked: ${errGuestReg}`);
+
+  // =========================================================================
+  // Scenario 19: Registered customer then Guest with different format
+  // =========================================================================
+  console.log('\n=== Scenario 19: Registered Customer then Guest with Different Format ===');
+  const couponRegGuest = await pgCreateCoupon({
+    code: 'REGGUEST1',
+    discountType: 'fixed',
+    discountValue: 2000,
+    perCustomerLimit: 1,
+    minOrderAmount: 10000,
+  });
+
+  // Registered order with +964
+  await pgCreateOrder({
+    customer: { name: 'عميل معتمد', phone: '+9647503334455', city: 'أربيل', address: 'عينكاوة' },
+    items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+    couponCode: 'REGGUEST1',
+    createAccountIfMissing: true,
+  });
+
+  // Logged out guest with local dashes 0750-333-4455
+  let errRegGuest = null;
+  try {
+    await pgCreateOrder({
+      customer: { name: 'زائر لنفس العميل', phone: '0750-333-4455', city: 'أربيل', address: 'عينكاوة' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'REGGUEST1',
+      createAccountIfMissing: true,
+    });
+  } catch (e) {
+    errRegGuest = e.message;
+  }
+  assert(errRegGuest && (errRegGuest.includes('استنفاد') || errRegGuest.includes('الحد الأقصى')), `Guest order with local format strictly blocked: ${errRegGuest}`);
+
+  // =========================================================================
+  // Scenario 20: Concurrent Requests with 2 Different Phone Formats
+  // =========================================================================
+  console.log('\n=== Scenario 20: Concurrent Requests with 2 Different Phone Formats ===');
+  const couponRaceFormats = await pgCreateCoupon({
+    code: 'RACEDIFF1',
+    discountType: 'fixed',
+    discountValue: 5000,
+    perCustomerLimit: 1,
+    minOrderAmount: 10000,
+  });
+
+  const concurrentDiffPromises = [
+    pgCreateOrder({
+      customer: { name: 'تزامن صيغة 1', phone: '07707778899', city: 'بابل', address: 'الحلة' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'RACEDIFF1',
+      createAccountIfMissing: true,
+    }),
+    pgCreateOrder({
+      customer: { name: 'تزامن صيغة 2', phone: '+9647707778899', city: 'بابل', address: 'الحلة' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'RACEDIFF1',
+      createAccountIfMissing: true,
+    }),
+  ];
+
+  const resultsDiff = await Promise.allSettled(concurrentDiffPromises);
+  const successDiff = resultsDiff.filter((r) => r.status === 'fulfilled');
+  const rejectedDiff = resultsDiff.filter((r) => r.status === 'rejected');
+
+  assert(successDiff.length === 1, `Exactly 1 concurrent request with different format succeeded (actual: ${successDiff.length})`);
+  assert(rejectedDiff.length === 1, `Exactly 1 concurrent request was rejected by advisory lock & limit (actual: ${rejectedDiff.length})`);
+
+  // Verify DB recorded exactly 1 redemption
+  const countCanonicalDb = await getCustomerCouponRedemptionCount(
+    couponRaceFormats.id,
+    { customerPhone: '9647707778899' },
+    sql
+  );
+  assert(countCanonicalDb === 1, `DB recorded exactly 1 redemption under canonical phone: ${countCanonicalDb}`);
+
+  // =========================================================================
+  // Scenario 21: DB-Level UNIQUE Constraint & Redemption Idempotency
+  // =========================================================================
+  console.log('\n=== Scenario 21: DB-Level UNIQUE Constraint & Idempotent Redemption ===');
+  const couponIdempotency = await pgCreateCoupon({
+    code: 'IDEMP1',
+    discountType: 'fixed',
+    discountValue: 1000,
+    minOrderAmount: 10000,
+  });
+
+  const orderIdemp = await pgCreateOrder({
+    customer: { name: 'زبون التحقق من التكرار', phone: '07701239876', city: 'بغداد', address: 'الدورة' },
+    items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+    couponCode: 'IDEMP1',
+    createAccountIfMissing: true,
+  });
+
+  // Call pgRecordCouponRedemption a second time for the SAME order
+  const secondCallRedemptionId = await pgRecordCouponRedemption(sql, {
+    couponId: couponIdempotency.id,
+    orderId: orderIdemp.id,
+    orderNumber: orderIdemp.orderNumber,
+    customerPhone: '07701239876',
+    discountAmount: 1000,
+  });
+  assert(Boolean(secondCallRedemptionId), 'Second call to pgRecordCouponRedemption safely returned redemption ID');
+
+  // Verify directly from PostgreSQL that table has strictly 1 redemption for this order
+  const dbRedemptions = await sql`SELECT count(*)::int as cnt FROM coupon_redemptions WHERE order_id = ${orderIdemp.id}`;
+  assert(dbRedemptions[0].cnt === 1, `PostgreSQL has strictly 1 redemption row for this order (actual: ${dbRedemptions[0].cnt})`);
+
+  // Directly attempt raw duplicate insert in PostgreSQL to verify engine-level UNIQUE constraint
+  let rawDbError = null;
+  try {
+    await sql`
+      INSERT INTO coupon_redemptions (coupon_id, order_id, order_number, customer_phone, discount_amount)
+      VALUES (${couponIdempotency.id}, ${orderIdemp.id}, ${orderIdemp.orderNumber}, '9647701239876', 1000.00);
+    `;
+  } catch (err) {
+    rawDbError = err;
+  }
+  assert(
+    rawDbError && (rawDbError.code === '23505' || rawDbError.message.includes('unique')),
+    `PostgreSQL engine strictly blocked duplicate insert with 23505 unique violation: ${rawDbError?.message}`
+  );
+
+  // =========================================================================
+  // Scenario 22: Coupons without perCustomerLimit (Unlimited) Function Freely
+  // =========================================================================
+  console.log('\n=== Scenario 22: Coupons without perCustomerLimit Function Freely ===');
+  const couponUnlimited = await pgCreateCoupon({
+    code: 'UNLIMITED1',
+    discountType: 'fixed',
+    discountValue: 1000,
+    perCustomerLimit: null, // Unlimited per customer
+    usageLimit: 10,
+    minOrderAmount: 10000,
+  });
+
+  const phoneRepeat = '07705551212';
+  for (let i = 1; i <= 3; i++) {
+    const repOrder = await pgCreateOrder({
+      customer: { name: `طلب تكرار ${i}`, phone: phoneRepeat, city: 'بغداد', address: 'الكاظمية' },
+      items: [{ productId: prodRegular.id, quantity: 1, saleType: 'retail' }],
+      couponCode: 'UNLIMITED1',
+      createAccountIfMissing: true,
+    });
+    assert(Boolean(repOrder?.id), `Order ${i} for unlimited coupon succeeded`);
+  }
+  const repCount = await getCustomerCouponRedemptionCount(couponUnlimited.id, { customerPhone: phoneRepeat }, sql);
+  assert(repCount === 3, `Customer placed 3 orders successfully under unlimited coupon (actual: ${repCount})`);
 
   console.log(`\n=================================================================`);
   console.log(`Test Summary: Passed: ${passed}, Failed: ${failed}`);

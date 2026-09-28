@@ -9,6 +9,7 @@ import { getProductPriceForUser, resolveAuthoritativeProductPrice, getProductCas
 import { getEffectiveDeliveryFee } from '@/lib/delivery';
 import { generateWhatsAppLink } from '@/lib/whatsapp';
 import { sendDirectCustomerAlert } from '@/lib/pushService';
+import { toCanonicalIraqiPhone } from '@/lib/phone-utils';
 import {
   getAuthenticatedAdmin,
   hasPermission,
@@ -311,7 +312,7 @@ export async function POST(request: Request) {
         {
           eligibleSubtotal: calculatedNonDiscountedSubtotal,
           customerId: customer.userId || null,
-          customerPhone: customer.phone ? String(customer.phone).replace(/\D/g, '') : null,
+          customerPhone: customer.phone ? toCanonicalIraqiPhone(customer.phone) : null,
         }
       );
       if (!couponRes.valid) {

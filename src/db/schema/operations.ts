@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, integer, boolean, timestamp, text, jsonb, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, integer, boolean, timestamp, text, jsonb, index, check, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { staffProfiles, authIdentities } from './auth';
 import { financialAccounts } from './accounts';
@@ -73,6 +73,7 @@ export const couponRedemptions = pgTable('coupon_redemptions', {
   discountAmount: numeric('discount_amount', { precision: 14, scale: 2 }).notNull(),
   redeemedAt: timestamp('redeemed_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
+  unique('coupon_redemptions_order_id_unique').on(table.orderId),
   index('idx_coupon_redemptions_coupon_id').on(table.couponId),
   index('idx_coupon_redemptions_order_id').on(table.orderId),
   index('idx_coupon_redemptions_customer_id').on(table.customerId),

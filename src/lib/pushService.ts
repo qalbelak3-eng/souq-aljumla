@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { PushSubscriptionRecord, PushNotificationLog, NotificationTargetAudience } from '@/types';
 import { getPushSubscriptions, deletePushSubscription, recordPushNotificationLog } from '@/lib/db';
+import { toCanonicalIraqiPhone } from '@/lib/phone-utils';
 
 export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BCemmhMkVO3oWHVRJkLIsaTBbBq6yV_be5pZQR7PREU-nbbYzIcMExgpYlkq5uJREvytFXHCMtYaI--BKuXDG2E';
 export const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'ZjoxCbfjm0gNP6x6IU0OYZgAIUsFa1_ibgXzrV11aoc';
@@ -156,11 +157,7 @@ export async function sendWebPushNotification(payload: SendPushPayload): Promise
 
 function normalizePhone(phone?: string): string {
   if (!phone) return '';
-  let digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('00964')) digits = digits.slice(5);
-  else if (digits.startsWith('964')) digits = digits.slice(3);
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  return digits;
+  return toCanonicalIraqiPhone(phone) || phone.replace(/\D/g, '');
 }
 
 /**
