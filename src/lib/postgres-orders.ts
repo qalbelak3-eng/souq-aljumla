@@ -14,6 +14,10 @@ import {
   vehicles,
   coupons,
   orderRefunds,
+  customerRefundClaims,
+  customerRefunds,
+  vouchers,
+  cashVaultMovements,
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, DeliverySubState, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
@@ -307,7 +311,6 @@ export function formatOrderRecord(
     paymentMethod: orderRow.paymentMethod as PaymentMethod,
     notes: orderRow.notes || undefined,
     driverNotes: orderRow.driverNotes || undefined,
-    paidAmount: toNumber(orderRow.collectedAmount),
     collectedAmount: toNumber(orderRow.collectedAmount),
     remainingDebtAmount: toNumber(orderRow.remainingDebtAmount),
     driverId: orderRow.driverId ? String(orderRow.driverId) : undefined,
@@ -320,13 +323,14 @@ export function formatOrderRecord(
     outForDeliveryAt: orderRow.outForDeliveryAt ? new Date(orderRow.outForDeliveryAt).toISOString() : undefined,
     driverArrivedAt: orderRow.driverArrivedAt ? new Date(orderRow.driverArrivedAt).toISOString() : undefined,
     deliveredAt: orderRow.deliveredAt ? new Date(orderRow.deliveredAt).toISOString() : undefined,
+    paidAmount: toNumber(orderRow.paidAmount),
     collectionStatus: orderRow.collectionStatus as DeliveryCollectionStatus,
     driverCashSettled: Boolean(orderRow.driverCashSettled),
     settlementId: orderRow.settlementId ? String(orderRow.settlementId) : undefined,
     inventoryRestored: Boolean(orderRow.inventoryRestored),
     deliverySubState: orderRow.deliverySubState ? (orderRow.deliverySubState as DeliverySubState) : undefined,
     refundedAmount: toNumber(orderRow.refundedAmount),
-    refundStatus: (orderRow.refundStatus || 'none') as 'none' | 'pending' | 'refunded',
+    refundStatus: (orderRow.refundStatus || 'none') as 'none' | 'pending' | 'partially_refunded' | 'refunded',
     deliveryProofMethod: orderRow.deliveryProofMethod || undefined,
     deliveryVerifiedAt: orderRow.deliveryVerifiedAt ? new Date(orderRow.deliveryVerifiedAt).toISOString() : undefined,
     deliveryOverrideReason: orderRow.deliveryOverrideReason || undefined,
@@ -609,20 +613,14 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
     const staffId = await resolveStaffId(tx, data.operator);
 
     // -------------------------------------------------------------
-    // Step B: Monotonic Sequence for Order Number
+    // Step B: Monotonic Sequence for Order Number (Fail-Fast)
     // -------------------------------------------------------------
-    let orderNumber = '';
-    try {
-      const seqRows: any = await tx.execute(sql`SELECT nextval('order_number_seq') as seq`);
-      const seqVal = seqRows[0]?.seq || seqRows?.rows?.[0]?.seq;
-      orderNumber = `INV-${seqVal}`;
-    } catch {
-      const maxRows: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(order_number FROM '[0-9]+')::int), 1000) + 1 as seq FROM orders
-      `);
-      const maxVal = maxRows[0]?.seq || maxRows?.rows?.[0]?.seq || 1001;
-      orderNumber = `INV-${maxVal}`;
+    const seqRows: any = await tx.execute(sql`SELECT nextval('order_number_seq') as seq`);
+    const seqVal = seqRows[0]?.seq ?? seqRows?.rows?.[0]?.seq;
+    if (!seqVal) {
+      throw new Error("فشل توليد رقم الطلبية: تعذر الحصول على قيمة من التسلسل 'order_number_seq'");
     }
+    const orderNumber = `INV-${seqVal}`;
 
     // -------------------------------------------------------------
     // Step C: Lock Products FOR UPDATE, Check & Deduct Inventory
@@ -974,9 +972,16 @@ export async function pgCreateOrder(data: PgCreateOrderInput): Promise<Order> {
         paymentMethod: data.paymentMethod && ['cod', 'cash', 'debt', 'zaincash', 'qicard', 'bank_transfer', 'online'].includes(data.paymentMethod)
           ? data.paymentMethod
           : 'cod',
-        collectionStatus: 'pending',
+        paidAmount: ['online', 'zaincash', 'qicard', 'bank_transfer'].includes(data.paymentMethod || '')
+          ? String(total.toFixed(2))
+          : '0.00',
+        collectionStatus: ['online', 'zaincash', 'qicard', 'bank_transfer'].includes(data.paymentMethod || '')
+          ? 'collected_cash'
+          : 'pending',
         collectedAmount: '0.00',
-        remainingDebtAmount: String(total.toFixed(2)),
+        remainingDebtAmount: ['online', 'zaincash', 'qicard', 'bank_transfer'].includes(data.paymentMethod || '')
+          ? '0.00'
+          : String(total.toFixed(2)),
         driverCashSettled: false,
         inventoryRestored: false,
         deliveryPinHash: pinData.hash,
@@ -1465,18 +1470,20 @@ export async function pgReturnOrder(
     // 2. Cashback Clawback: Idempotently claw back earned cashback for this delivered order
     const clawbackResult = await pgClawbackOrderDeliveredCashback(tx, order.id, options?.reason);
 
-    // 3. Update Order State to 'returned'
+    // 3. Update Order State to 'returned' and clear remaining debt
+    const totalPaid = Math.max(toNumber(order.paidAmount), toNumber(order.collectedAmount));
     const returnUpdates: any = {
       status: 'returned',
       collectionStatus: 'returned',
       inventoryRestored: true,
+      remainingDebtAmount: '0.00',
       driverNotes: options?.reason
         ? (order.driverNotes ? `${order.driverNotes} | [مرتجع]: ${options.reason}` : `[مرتجع]: ${options.reason}`)
         : order.driverNotes,
       updatedAt: new Date(),
     };
 
-    if (toNumber(order.collectedAmount) > 0 && (!order.refundStatus || order.refundStatus === 'none')) {
+    if (totalPaid > 0 && (!order.refundStatus || order.refundStatus === 'none')) {
       returnUpdates.refundStatus = 'pending';
     }
 
@@ -1485,6 +1492,32 @@ export async function pgReturnOrder(
       .set(returnUpdates)
       .where(eq(orders.id, order.id))
       .returning();
+
+    // 3.1 Customer Refund Claim: Open claim if customer paid money
+    if (totalPaid > 0) {
+      const existingClaims = await tx
+        .select()
+        .from(customerRefundClaims)
+        .where(eq(customerRefundClaims.orderId, order.id))
+        .limit(1);
+
+      if (existingClaims.length === 0) {
+        const seqResult = await tx.execute(sql`SELECT nextval('customer_claim_seq') AS nextval`);
+        const nextSeq = seqResult[0]?.nextval || (seqResult as any)?.rows?.[0]?.nextval;
+        if (!nextSeq) throw new Error('فشل توليد رقم مطالبة الاسترداد من customer_claim_seq');
+        const claimNumber = `CLM-${nextSeq}`;
+
+        await tx.insert(customerRefundClaims).values({
+          claimNumber,
+          orderId: order.id,
+          accountId: order.accountId,
+          claimAmount: String(totalPaid.toFixed(2)),
+          refundedAmount: '0.00',
+          status: 'pending',
+          reason: options?.reason || 'إرجاع طلبية مسلّمة',
+        });
+      }
+    }
 
     // 4. Audit Log (single log event per return)
     await tx.insert(auditLogs).values({
@@ -1545,7 +1578,7 @@ export async function pgRefundOrder(
     operator?: PgOperator;
     tx?: any;
   }
-): Promise<{ order: Order; refund: any }> {
+): Promise<{ order: Order; refund: any; claim?: any }> {
   const trimmed = String(idOrOrderNumber || '').trim();
   if (!trimmed) throw new Error('معرف الطلب أو رقمه مطلوب للاسترداد');
 
@@ -1577,30 +1610,138 @@ export async function pgRefundOrder(
       throw new Error(`تم استرداد مبالغ هذه الطلبية مسبقاً (refunded). الطلبية: ${order.orderNumber}`);
     }
 
-    const collected = toNumber(order.collectedAmount);
-    if (collected <= 0) {
-      throw new Error(`لا توجد مبالغ محصلة في هذه الطلبية للاسترداد. المبلغ المحصل: ${collected}`);
+    const totalPaid = Math.max(toNumber(order.paidAmount), toNumber(order.collectedAmount));
+    if (totalPaid <= 0) {
+      throw new Error(`لا توجد مبالغ مدفوعة في هذه الطلبية للاسترداد. المبلغ المدفوع: ${totalPaid}`);
     }
 
-    const refundAmount = data?.amount !== undefined ? Math.max(0, toNumber(data.amount)) : collected;
+    // Lock customer refund claim FOR UPDATE
+    let claimRows = await tx
+      .select()
+      .from(customerRefundClaims)
+      .where(eq(customerRefundClaims.orderId, order.id))
+      .for('update');
+
+    let claim = claimRows[0];
+    if (!claim) {
+      // Create claim on the fly if missing (e.g. historical orders returned prior to 2C4D)
+      const claimSeqRes = await tx.execute(sql`SELECT nextval('customer_claim_seq') AS nextval`);
+      const nextClaimSeq = claimSeqRes[0]?.nextval || (claimSeqRes as any)?.rows?.[0]?.nextval;
+      if (!nextClaimSeq) throw new Error('فشل توليد رقم مطالبة الاسترداد من customer_claim_seq');
+      const claimNumber = `CLM-${nextClaimSeq}`;
+
+      const [newClaim] = await tx
+        .insert(customerRefundClaims)
+        .values({
+          claimNumber,
+          orderId: order.id,
+          accountId: order.accountId,
+          claimAmount: String(totalPaid.toFixed(2)),
+          refundedAmount: String(order.refundedAmount || '0.00'),
+          status: toNumber(order.refundedAmount) > 0 ? (toNumber(order.refundedAmount) >= totalPaid ? 'completed' : 'partially_refunded') : 'pending',
+          reason: data?.reason || 'مطالبة استرداد لطلبية مرتجعة',
+        })
+        .returning();
+      claim = newClaim;
+    }
+
+    if (claim.status === 'completed') {
+      throw new Error(`تم استرداد مبالغ هذه الطلبية مسبقاً (refunded). الطلبية: ${order.orderNumber}`);
+    }
+
+    const claimAmount = toNumber(claim.claimAmount);
+    const currentRefunded = toNumber(claim.refundedAmount);
+    const remainingClaim = Math.max(0, claimAmount - currentRefunded);
+
+    if (remainingClaim <= 0) {
+      throw new Error(`تم استرداد كامل قيمة المطالبة مسبقاً. الطلبية: ${order.orderNumber}`);
+    }
+
+    const refundAmount = data?.amount !== undefined ? Math.max(0, toNumber(data.amount)) : remainingClaim;
     if (refundAmount <= 0) {
       throw new Error('مبلغ الاسترداد يجب أن يكون أكبر من الصفر');
     }
-    if (refundAmount > collected) {
-      throw new Error(`مبلغ الاسترداد (${refundAmount.toLocaleString()}) لا يمكن أن يتجاوز المبلغ المحصل (${collected.toLocaleString()})`);
+    if (refundAmount > remainingClaim + 0.01) {
+      throw new Error(`مبلغ الاسترداد (${refundAmount.toLocaleString()}) لا يمكن أن يتجاوز المبلغ المتبقي للاسترداد (${remainingClaim.toLocaleString()})`);
     }
 
-    // Generate refund number from refund_seq
-    const seqResult = await tx.execute(sql`SELECT nextval('refund_seq') AS nextval`);
-    const nextSeq = seqResult[0]?.nextval || Math.floor(1000 + Math.random() * 9000);
+    // Fail-fast sequence for customer refund number
+    const seqResult = await tx.execute(sql`SELECT nextval('customer_refund_seq') AS nextval`);
+    const nextSeq = seqResult[0]?.nextval || (seqResult as any)?.rows?.[0]?.nextval;
+    if (!nextSeq) throw new Error('فشل توليد رقم الاسترداد من customer_refund_seq');
     const refundNumber = `REF-${nextSeq}`;
 
     const staffId = await resolveStaffId(tx, options?.operator);
     const method = data?.method || 'cash';
 
+    let voucherId: string | null = null;
+
+    // Cash payouts require disbursement voucher and cash vault movement
+    if (method === 'cash') {
+      const disbSeqRes = await tx.execute(sql`SELECT nextval('voucher_disb_seq') as nextval`);
+      const disbSeq = disbSeqRes[0]?.nextval || (disbSeqRes as any)?.rows?.[0]?.nextval;
+      if (!disbSeq) throw new Error('فشل توليد رقم سند الصرف من voucher_disb_seq');
+      const receiptNumber = `DISB-${disbSeq}`;
+
+      const [voucher] = await tx
+        .insert(vouchers)
+        .values({
+          receiptNumber,
+          accountId: order.accountId,
+          voucherType: 'disbursement',
+          amount: String(refundAmount.toFixed(2)),
+          paymentMethod: 'cash',
+          receivedByStaffId: staffId,
+          notes: data?.notes || `صرف استرداد نقدي للعميل عن الطلبية ${order.orderNumber}`,
+        })
+        .returning();
+      voucherId = voucher.id;
+
+      const vSeqRes = await tx.execute(sql`SELECT nextval('vault_csh_seq') as nextval`);
+      const vSeq = vSeqRes[0]?.nextval || (vSeqRes as any)?.rows?.[0]?.nextval;
+      if (!vSeq) throw new Error('فشل توليد رقم حركة الصندوق من vault_csh_seq');
+      const vaultNumber = `CSH-${vSeq}`;
+
+      await tx.insert(cashVaultMovements).values({
+        transactionNumber: vaultNumber,
+        type: 'outflow',
+        category: 'customer_refund',
+        categoryLabel: 'استرداد نقدي لعميل',
+        amount: String(refundAmount.toFixed(2)),
+        referenceType: 'order',
+        referenceId: order.id,
+        referenceNumber: order.orderNumber,
+        partyName: order.customerNameSnap || null,
+        staffId,
+        notes: data?.notes || `صرف استرداد نقدي عن الطلبية ${order.orderNumber}`,
+      });
+    }
+
+    // Append-only ledger in customer_refunds
     const [refundRecord] = await tx
-      .insert(orderRefunds)
+      .insert(customerRefunds)
       .values({
+        refundNumber,
+        claimId: claim.id,
+        orderId: order.id,
+        accountId: order.accountId,
+        amount: String(refundAmount.toFixed(2)),
+        method,
+        voucherId,
+        processedByStaffId: staffId,
+        notes: data?.notes || null,
+      })
+      .returning();
+
+    // Maintain orderRefunds table for backwards compatibility
+    const existingOrderRefunds = await tx
+      .select()
+      .from(orderRefunds)
+      .where(eq(orderRefunds.orderId, order.id))
+      .limit(1);
+
+    if (existingOrderRefunds.length === 0) {
+      await tx.insert(orderRefunds).values({
         refundNumber,
         orderId: order.id,
         accountId: order.accountId,
@@ -1609,15 +1750,45 @@ export async function pgRefundOrder(
         status: 'completed',
         reason: data?.reason || 'استرداد قيمة طلبية مرتجعة',
         processedByStaffId: staffId,
+        voucherId,
         notes: data?.notes || null,
+      });
+    } else {
+      const newTotalRefunded = toNumber(existingOrderRefunds[0].amount) + refundAmount;
+      await tx
+        .update(orderRefunds)
+        .set({
+          amount: String(newTotalRefunded.toFixed(2)),
+          notes: data?.notes || existingOrderRefunds[0].notes,
+        })
+        .where(eq(orderRefunds.id, existingOrderRefunds[0].id));
+    }
+
+    // Update claim status
+    const newClaimRefunded = currentRefunded + refundAmount;
+    const isClaimFullyRefunded = newClaimRefunded >= claimAmount - 0.01;
+    const newClaimStatus = isClaimFullyRefunded ? 'completed' : 'partially_refunded';
+
+    const [updatedClaim] = await tx
+      .update(customerRefundClaims)
+      .set({
+        refundedAmount: String(newClaimRefunded.toFixed(2)),
+        status: newClaimStatus,
+        updatedAt: new Date(),
       })
+      .where(eq(customerRefundClaims.id, claim.id))
       .returning();
+
+    // Update order status
+    const newOrderRefunded = toNumber(order.refundedAmount) + refundAmount;
+    const isOrderFullyRefunded = newOrderRefunded >= totalPaid - 0.01;
+    const newOrderRefundStatus = isOrderFullyRefunded ? 'refunded' : 'partially_refunded';
 
     const [updatedOrder] = await tx
       .update(orders)
       .set({
-        refundedAmount: String(refundAmount.toFixed(2)),
-        refundStatus: 'refunded',
+        refundedAmount: String(newOrderRefunded.toFixed(2)),
+        refundStatus: newOrderRefundStatus,
         updatedAt: new Date(),
       })
       .where(eq(orders.id, order.id))
@@ -1625,7 +1796,7 @@ export async function pgRefundOrder(
 
     await tx.insert(auditLogs).values({
       actionType: 'order_refunded',
-      actionLabel: 'استرداد مالي للعميل عن طلبية مرتجعة',
+      actionLabel: isOrderFullyRefunded ? 'استرداد مالي كامل للعميل عن طلبية مرتجعة' : 'استرداد مالي جزئي للعميل عن طلبية مرتجعة',
       category: 'commerce',
       categoryLabel: 'الطلبات والمبيعات',
       staffId,
@@ -1637,6 +1808,9 @@ export async function pgRefundOrder(
         refundAmount,
         refundNumber,
         method,
+        voucherId,
+        newClaimStatus,
+        newOrderRefundStatus,
       },
       details: `تم صرف استرداد مالي بقيمة ${refundAmount.toLocaleString()} د.ع للطلبية ${order.orderNumber} عبر ${method} برقم مستند ${refundNumber}`,
       severity: 'info',
@@ -1662,10 +1836,18 @@ export async function pgRefundOrder(
         accountId: String(refundRecord.accountId),
         amount: toNumber(refundRecord.amount),
         method: refundRecord.method,
-        status: refundRecord.status,
-        reason: refundRecord.reason || undefined,
+        status: 'completed',
+        reason: (refundRecord as any).reason || data?.reason || undefined,
+        voucherId: refundRecord.voucherId || undefined,
         notes: refundRecord.notes || undefined,
         createdAt: new Date(refundRecord.createdAt).toISOString(),
+      },
+      claim: {
+        id: String(updatedClaim.id),
+        claimNumber: String(updatedClaim.claimNumber),
+        claimAmount: toNumber(updatedClaim.claimAmount),
+        refundedAmount: toNumber(updatedClaim.refundedAmount),
+        status: updatedClaim.status,
       },
     };
   };
@@ -1785,6 +1967,7 @@ export async function pgUpdateOrderStatus(
         const amt = Math.max(0, toNumber(options.collectedAmount));
         const total = toNumber(current.total);
         updatePayload.collectedAmount = String(amt.toFixed(2));
+        updatePayload.paidAmount = String(Math.max(toNumber(current.paidAmount), amt).toFixed(2));
         if (amt >= total) {
           updatePayload.collectionStatus = 'collected_cash';
         } else if (amt > 0) {

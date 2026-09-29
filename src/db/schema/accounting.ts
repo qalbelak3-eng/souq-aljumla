@@ -70,7 +70,7 @@ export const cashVaultMovements = pgTable('cash_vault_movements', {
   index('idx_vault_number').on(table.transactionNumber),
   check('chk_vault_type', sql`${table.type} IN ('inflow', 'outflow')`),
   check('chk_vault_amount_positive', sql`${table.amount} > 0`),
-  check('chk_vault_category', sql`${table.category} IN ('sales_cash', 'debt_collection', 'driver_settlement', 'purchase_payment', 'expense', 'owner_withdrawal', 'deposit_adjustment', 'adjustment', 'supplier_refund')`),
+  check('chk_vault_category', sql`${table.category} IN ('sales_cash', 'debt_collection', 'driver_settlement', 'purchase_payment', 'expense', 'owner_withdrawal', 'deposit_adjustment', 'adjustment', 'supplier_refund', 'customer_refund')`),
 ]);
 
 export const cashbackLedger = pgTable('cashback_ledger', {
@@ -133,4 +133,58 @@ export const orderRefunds = pgTable('order_refunds', {
   check('chk_refund_amount_positive', sql`${table.amount} > 0`),
   check('chk_refund_status', sql`${table.status} IN ('pending', 'completed', 'cancelled')`),
   check('chk_refund_method', sql`${table.method} IN ('cash', 'store_credit', 'electronic', 'bank_transfer', 'other')`),
+]);
+
+export const customerRefundClaims = pgTable('customer_refund_claims', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  claimNumber: varchar('claim_number', { length: 50 }).notNull().unique(),
+  orderId: uuid('order_id')
+    .notNull()
+    .references(() => orders.id, { onDelete: 'restrict' }),
+  accountId: uuid('account_id')
+    .notNull()
+    .references(() => financialAccounts.id, { onDelete: 'restrict' }),
+  claimAmount: numeric('claim_amount', { precision: 14, scale: 2 }).notNull(),
+  refundedAmount: numeric('refunded_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  status: varchar('status', { length: 30 }).default('pending').notNull(), // 'pending' | 'partially_refunded' | 'completed'
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('uq_customer_refund_claims_order_id').on(table.orderId),
+  index('idx_customer_refund_claims_account_id').on(table.accountId),
+  index('idx_customer_refund_claims_status').on(table.status),
+  check('chk_cclaim_amount_positive', sql`${table.claimAmount} > 0`),
+  check('chk_cclaim_refunded_non_negative', sql`${table.refundedAmount} >= 0`),
+  check('chk_cclaim_refunded_le_claim', sql`${table.refundedAmount} <= ${table.claimAmount}`),
+  check('chk_cclaim_status', sql`${table.status} IN ('pending', 'partially_refunded', 'completed')`),
+]);
+
+export const customerRefunds = pgTable('customer_refunds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  refundNumber: varchar('refund_number', { length: 50 }).notNull().unique(),
+  claimId: uuid('claim_id')
+    .notNull()
+    .references(() => customerRefundClaims.id, { onDelete: 'restrict' }),
+  orderId: uuid('order_id')
+    .notNull()
+    .references(() => orders.id, { onDelete: 'restrict' }),
+  accountId: uuid('account_id')
+    .notNull()
+    .references(() => financialAccounts.id, { onDelete: 'restrict' }),
+  amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+  method: varchar('method', { length: 30 }).default('cash').notNull(), // 'cash' | 'store_credit' | 'electronic' | 'bank_transfer' | 'other'
+  voucherId: uuid('voucher_id')
+    .references(() => vouchers.id, { onDelete: 'set null' }),
+  processedByStaffId: uuid('processed_by_staff_id')
+    .references(() => staffProfiles.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_customer_refunds_claim_id').on(table.claimId),
+  index('idx_customer_refunds_order_id').on(table.orderId),
+  index('idx_customer_refunds_account_id').on(table.accountId),
+  index('idx_customer_refunds_voucher_id').on(table.voucherId),
+  check('chk_crefund_amount_positive', sql`${table.amount} > 0`),
+  check('chk_crefund_method', sql`${table.method} IN ('cash', 'store_credit', 'electronic', 'bank_transfer', 'other')`),
 ]);

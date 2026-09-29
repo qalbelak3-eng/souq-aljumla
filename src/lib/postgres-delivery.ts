@@ -94,6 +94,7 @@ export interface DriverOrderView {
   total: number;
   status: OrderStatus;
   paymentMethod: string;
+  paidAmount?: number;
   collectionStatus: DeliveryCollectionStatus;
   collectedAmount: number;
   remainingDebtAmount: number;
@@ -173,7 +174,7 @@ export async function pgAssignOrderDriver(input: AssignDriverInput): Promise<Ord
         targetType: 'order',
         targetId: order.id,
         targetReferenceNumber: order.orderNumber,
-        details: `قام المشرف ${input.adminOperator.username} بإلغاء إسناد الطلبية ${order.orderNumber} من السائق السابق (${order.driverId || 'غير محدد'})`,
+        details: `قام المشرف ${input.adminOperator?.username || 'النظام'} بإلغاء إسناد الطلبية ${order.orderNumber} من السائق السابق (${order.driverId || 'غير محدد'})`,
         severity: 'info',
       });
 
@@ -260,8 +261,8 @@ export async function pgAssignOrderDriver(input: AssignDriverInput): Promise<Ord
       targetId: order.id,
       targetReferenceNumber: order.orderNumber,
       details: isReassignment
-        ? `قام المشرف ${input.adminOperator.username} بإعادة إسناد الطلبية ${order.orderNumber} من السائق (${oldDriverId}) إلى السائق ${drv.name} (${drv.phone})`
-        : `قام المشرف ${input.adminOperator.username} بإسناد الطلبية ${order.orderNumber} إلى السائق ${drv.name} (${drv.phone})`,
+        ? `قام المشرف ${input.adminOperator?.username || 'النظام'} بإعادة إسناد الطلبية ${order.orderNumber} من السائق (${oldDriverId}) إلى السائق ${drv.name} (${drv.phone})`
+        : `قام المشرف ${input.adminOperator?.username || 'النظام'} بإسناد الطلبية ${order.orderNumber} إلى السائق ${drv.name} (${drv.phone})`,
       severity: 'info',
     });
 
@@ -345,6 +346,7 @@ export async function pgGetDriverOrders(driverId: string): Promise<{
       total: toNumber(o.total),
       status: o.status as OrderStatus,
       paymentMethod: o.paymentMethod,
+      paidAmount: toNumber(o.paidAmount),
       collectionStatus: o.collectionStatus as DeliveryCollectionStatus,
       collectedAmount: toNumber(o.collectedAmount),
       remainingDebtAmount: toNumber(o.remainingDebtAmount),
@@ -423,6 +425,7 @@ export async function pgGetDriverOrderById(driverId: string, orderId: string): P
     total: toNumber(order.total),
     status: order.status as OrderStatus,
     paymentMethod: order.paymentMethod,
+    paidAmount: toNumber(order.paidAmount),
     collectionStatus: order.collectionStatus as DeliveryCollectionStatus,
     collectedAmount: toNumber(order.collectedAmount),
     remainingDebtAmount: toNumber(order.remainingDebtAmount),
@@ -666,6 +669,11 @@ export async function pgDeliverDriverOrder(
       throw new Error(`لا يمكن إتمام تسليم الطلبية إلا عندما تكون في حالة خروج للتوصيل (shipped). حالة الطلب الحالية: ${order.status}`);
     }
 
+    // Commerce-2C4C C4C-F3: Block delivery while return_requested
+    if (order.deliverySubState === 'return_requested') {
+      throw new Error('لا يمكن تسليم الطلبية لأنها في حالة طلب إرجاع للمستودع (return_requested). يجب إلغاء طلب الإرجاع أولاً للمتابعة');
+    }
+
     // Brute-force Protection Check (Rule 12)
     if (
       (order.deliveryPinAttempts && order.deliveryPinAttempts >= 5) ||
@@ -725,34 +733,40 @@ export async function pgDeliverDriverOrder(
     // Determine Collection Status & Amounts Server-Side (Do NOT trust total from client)
     const orderTotal = toNumber(order.total);
     let finalCollectionStatus: DeliveryCollectionStatus = 'collected_cash';
+    let finalPaidAmount = 0;
     let finalCollectedAmount = 0;
     let finalRemainingDebt = 0;
 
     if (order.paymentMethod === 'cod' || order.paymentMethod === 'cash') {
       if (input?.collectionStatus === 'debt_unpaid') {
         finalCollectionStatus = 'debt_unpaid';
+        finalPaidAmount = 0;
         finalCollectedAmount = 0;
         finalRemainingDebt = orderTotal;
       } else if (input?.collectionStatus === 'partial') {
         const rawCollected = toNumber(input.collectedAmount);
         const validCollected = Math.min(orderTotal, Math.max(0, rawCollected));
+        finalPaidAmount = validCollected;
         finalCollectedAmount = validCollected;
         finalRemainingDebt = Math.max(0, orderTotal - validCollected);
         finalCollectionStatus = validCollected >= orderTotal ? 'collected_cash' : (validCollected > 0 ? 'partial' : 'debt_unpaid');
       } else {
         // Full cash collection on delivery
         finalCollectionStatus = 'collected_cash';
+        finalPaidAmount = orderTotal;
         finalCollectedAmount = orderTotal;
         finalRemainingDebt = 0;
       }
     } else if (order.paymentMethod === 'debt') {
       finalCollectionStatus = 'debt_unpaid';
+      finalPaidAmount = 0;
       finalCollectedAmount = 0;
       finalRemainingDebt = orderTotal;
     } else {
-      // Prepaid online / zaincash / qicard / bank transfer
+      // Prepaid online / zaincash / qicard / bank transfer (Commerce-2C4D F1)
       finalCollectionStatus = 'collected_cash';
-      finalCollectedAmount = 0; // Digital payment already recorded, driver holds 0 cash
+      finalPaidAmount = orderTotal;
+      finalCollectedAmount = 0; // Digital payment recorded, driver holds 0 cash
       finalRemainingDebt = 0;
     }
 
@@ -769,6 +783,7 @@ export async function pgDeliverDriverOrder(
         deliveryPinEncrypted: null,
         deliveryPinAttempts: 0,
         deliveryPinLockedUntil: null,
+        paidAmount: String(finalPaidAmount.toFixed(2)),
         collectionStatus: finalCollectionStatus,
         collectedAmount: String(finalCollectedAmount.toFixed(2)),
         remainingDebtAmount: String(finalRemainingDebt.toFixed(2)),
@@ -872,6 +887,11 @@ export async function pgAdminOverrideDelivery(
       throw new Error('الطلب ملغى أو راجع ولا يمكن إتمام تسليمه');
     }
 
+    // Commerce-2C4C C4C-F3: Block delivery while return_requested
+    if (order.deliverySubState === 'return_requested') {
+      throw new Error('لا يمكن تسليم الطلبية لأنها في حالة طلب إرجاع للمستودع (return_requested). يجب إلغاء طلب الإرجاع أولاً للمتابعة');
+    }
+
     // Idempotency check
     if (order.status === 'delivered') {
       const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
@@ -883,31 +903,38 @@ export async function pgAdminOverrideDelivery(
     // Determine Collection Status & Amounts Server-Side
     const orderTotal = toNumber(order.total);
     let finalCollectionStatus: DeliveryCollectionStatus = 'collected_cash';
+    let finalPaidAmount = 0;
     let finalCollectedAmount = 0;
     let finalRemainingDebt = 0;
 
     if (order.paymentMethod === 'cod' || order.paymentMethod === 'cash') {
       if (input?.collectionStatus === 'debt_unpaid') {
         finalCollectionStatus = 'debt_unpaid';
+        finalPaidAmount = 0;
         finalCollectedAmount = 0;
         finalRemainingDebt = orderTotal;
       } else if (input?.collectionStatus === 'partial') {
         const rawCollected = toNumber(input.collectedAmount);
         const validCollected = Math.min(orderTotal, Math.max(0, rawCollected));
+        finalPaidAmount = validCollected;
         finalCollectedAmount = validCollected;
         finalRemainingDebt = Math.max(0, orderTotal - validCollected);
         finalCollectionStatus = validCollected >= orderTotal ? 'collected_cash' : (validCollected > 0 ? 'partial' : 'debt_unpaid');
       } else {
         finalCollectionStatus = 'collected_cash';
+        finalPaidAmount = orderTotal;
         finalCollectedAmount = orderTotal;
         finalRemainingDebt = 0;
       }
     } else if (order.paymentMethod === 'debt') {
       finalCollectionStatus = 'debt_unpaid';
+      finalPaidAmount = 0;
       finalCollectedAmount = 0;
       finalRemainingDebt = orderTotal;
     } else {
+      // Prepaid online / zaincash / qicard / bank transfer (Commerce-2C4D F1)
       finalCollectionStatus = 'collected_cash';
+      finalPaidAmount = orderTotal;
       finalCollectedAmount = 0;
       finalRemainingDebt = 0;
     }
@@ -927,6 +954,7 @@ export async function pgAdminOverrideDelivery(
         deliveryPinEncrypted: null,
         deliveryPinAttempts: 0,
         deliveryPinLockedUntil: null,
+        paidAmount: String(finalPaidAmount.toFixed(2)),
         collectionStatus: finalCollectionStatus,
         collectedAmount: String(finalCollectedAmount.toFixed(2)),
         remainingDebtAmount: String(finalRemainingDebt.toFixed(2)),
@@ -1110,12 +1138,12 @@ export async function pgFailDriverDelivery(
       throw new Error('هذا الطلب غير مسند إليك');
     }
 
-    // Terminal State Checks
-    if (order.status === 'delivered') {
-      throw new Error('الطلب تم تسليمه بالفعل ولا يمكن تسجيل فشل التسليم له');
+    // Status checks (Commerce-2C4C C4C-F1)
+    if (order.status !== 'shipped') {
+      throw new Error(`لا يمكن تسجيل تعذر التسليم إلا لطلبية خرجت للتوصيل بالفعل (shipped). حالة الطلب الحالية: ${order.status}`);
     }
-    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
-      throw new Error('الطلب ملغى أو راجع بالفعل');
+    if (order.inventoryRestored) {
+      throw new Error('لا يمكن تسجيل تعذر التسليم لطلبية تم استرجاع مخزونها مسبقاً');
     }
 
     const reasonNote = `[تعذر التسليم: ${input.reason}] ${input.notes || ''}`.trim();
@@ -1258,6 +1286,87 @@ export async function pgReturnDriverOrder(
 }
 
 /* =========================================================
+   9.1. pgCancelDriverReturnRequest (Authorized Cancel Return Request)
+   ========================================================= */
+
+export async function pgCancelDriverReturnRequest(
+  driverId: string,
+  orderId: string,
+  driverOperator: DriverOperatorInfo,
+  options?: { reason?: string; tx?: any }
+): Promise<Order> {
+  const trimmed = String(orderId || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب');
+
+  const executeCancelReturn = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const order = orderRows[0];
+
+    // Object-Level Authorization
+    if (!order.driverId || order.driverId !== driverId) {
+      throw new Error('هذا الطلب غير مسند إليك');
+    }
+
+    if (order.status !== 'shipped') {
+      throw new Error(`لا يمكن إلغاء طلب الإرجاع إلا لطلبية مشحونة (shipped). حالة الطلب الحالية: ${order.status}`);
+    }
+
+    if (order.deliverySubState !== 'return_requested') {
+      throw new Error(`الطلبية ليست في حالة طلب إرجاع للمستودع (الحالة الحالية: ${order.deliverySubState || 'none'})`);
+    }
+
+    const reasonNote = `[إلغاء طلب الإرجاع: ${options?.reason || 'إلغاء طلب الإرجاع واستئناف محاولة التسليم'}]`;
+
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        deliverySubState: 'out_for_delivery',
+        driverNotes: order.driverNotes ? `${order.driverNotes} | ${reasonNote}` : reasonNote,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    await tx.insert(auditLogs).values({
+      actionType: 'driver_return_request_cancelled',
+      actionLabel: 'إلغاء طلب إرجاع البضاعة واستئناف التوصيل',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والتوصيل',
+      operatorSnapshot: { role: 'driver', ...driverOperator },
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      details: `قام السائق ${driverOperator.name} بإلغاء طلب إرجاع الطلبية ${order.orderNumber} للمستودع واستئناف محاولة التوصيل. السبب: ${options?.reason || 'استئناف التوصيل'}`,
+      severity: 'info',
+    });
+
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+    const [drv] = await tx.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
+    return formatOrderRecord(updatedOrder, items, drv, undefined, acc);
+  };
+
+  if (options?.tx) {
+    return await executeCancelReturn(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeCancelReturn);
+  }
+}
+
+/* =========================================================
    10. pgConfirmWarehouseReturnReceipt (Physical Warehouse Check-in)
    ========================================================= */
 
@@ -1293,14 +1402,20 @@ export async function pgConfirmWarehouseReturnReceipt(
       return formatOrderRecord(order, items, drv, undefined, acc);
     }
 
-    // Verify order state: must be shipped or cancelled
-    if (order.status !== 'shipped' && order.status !== 'cancelled') {
+    // Verify order state & physical custody invariants (Commerce-2C4C C4C-F2)
+    if (order.status === 'cancelled') {
+      if (order.inventoryRestored) {
+        throw new Error('الطلب ملغى وتم استرجاع مخزونه مسبقاً، لا توجد عهدة فيزيائية معلقة للاستلام');
+      }
+      if (order.deliverySubState !== 'return_requested' || !order.driverId) {
+        throw new Error('لا يمكن استلام إرجاع بالمستودع لطلب ملغى لا توجد له عهدة فيزيائية معلقة مع سائق (return_requested)');
+      }
+    } else if (order.status === 'shipped') {
+      if (order.deliverySubState !== 'return_requested' && order.deliverySubState !== 'delivery_failed') {
+        throw new Error('الطلبية المشحونة ليست في مسار إرجاع مشروع (يجب أن تكون return_requested أو delivery_failed)');
+      }
+    } else {
       throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح باستلام الإرجاع في المستودع`);
-    }
-
-    // Verify sub-state or cancellation: must be return_requested, delivery_failed, or cancelled while with driver
-    if (order.deliverySubState !== 'return_requested' && order.deliverySubState !== 'delivery_failed' && order.status !== 'cancelled') {
-      throw new Error('الطلبية لم يتم تقديم طلب إرجاع لها من السائق أو إلغاؤها');
     }
 
     // Check paid amount: Cannot check-in returned order if customer paid money without refund workflow

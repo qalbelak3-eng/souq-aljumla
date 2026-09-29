@@ -156,7 +156,6 @@ export async function pgGetDriverCustody(driverId: string): Promise<DriverCustod
     .where(
       and(
         eq(orders.driverId, driverId),
-        ne(orders.status, 'cancelled'),
         gt(orders.collectedAmount, '0.00')
       )
     )
@@ -280,7 +279,6 @@ export async function pgGetAllDriversCustodySummary(): Promise<DriverCustodySumm
     .from(orders)
     .where(
       and(
-        ne(orders.status, 'cancelled'),
         gt(orders.collectedAmount, '0.00')
       )
     );
@@ -389,7 +387,6 @@ export async function pgCreateDriverSettlement(
       .where(
         and(
           eq(orders.driverId, driverId),
-          ne(orders.status, 'cancelled'),
           gt(orders.collectedAmount, orders.settledAmount)
         )
       )
@@ -403,7 +400,6 @@ export async function pgCreateDriverSettlement(
       .where(
         and(
           eq(orders.driverId, driverId),
-          ne(orders.status, 'cancelled'),
           gt(orders.collectedAmount, '0.00')
         )
       );
@@ -434,20 +430,11 @@ export async function pgCreateDriverSettlement(
     // Step 5: Resolve Staff Profile ID Server-side
     const staffId = await ensureStaffProfile(tx, adminOperator);
 
-    // Step 6: Generate sequential settlement number
-    let settlementNumber = '';
-    try {
-      const seqRows: any = await tx.execute(sql`SELECT nextval('settlement_seq') as seq`);
-      const seqVal = seqRows[0]?.seq || seqRows?.rows?.[0]?.seq;
-      settlementNumber = `SET-${seqVal}`;
-    } catch {
-      const maxRows: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(settlement_number FROM '[0-9]+')::int), 1000) + 1 as seq
-        FROM driver_settlements
-      `);
-      const maxVal = maxRows[0]?.seq || maxRows?.rows?.[0]?.seq || 1001;
-      settlementNumber = `SET-${maxVal}`;
-    }
+    // Step 6: Generate sequential settlement number (Fail-Fast sequence)
+    const seqRows: any = await tx.execute(sql`SELECT nextval('settlement_seq') as seq`);
+    const seqVal = seqRows[0]?.seq || (seqRows as any)?.rows?.[0]?.seq;
+    if (!seqVal) throw new Error('فشل توليد رقم التسوية من settlement_seq');
+    const settlementNumber = `SET-${seqVal}`;
 
     // Step 7: Insert driver settlement record
     const [insertedSettlement] = await tx
@@ -509,19 +496,10 @@ export async function pgCreateDriverSettlement(
     }
 
     // Step 9: Record Cash Vault Inflow Movement (Transfer from driver custody -> company vault)
-    let vaultNumber = '';
-    try {
-      const vSeqRows: any = await tx.execute(sql`SELECT nextval('vault_csh_seq') as seq`);
-      const vSeqVal = vSeqRows[0]?.seq || vSeqRows?.rows?.[0]?.seq;
-      vaultNumber = `CSH-${vSeqVal}`;
-    } catch {
-      const maxV: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(transaction_number FROM '[0-9]+')::int), 1000) + 1 as seq
-        FROM cash_vault_movements
-      `);
-      const maxVal = maxV[0]?.seq || maxV?.rows?.[0]?.seq || 1001;
-      vaultNumber = `CSH-${maxVal}`;
-    }
+    const vSeqRows: any = await tx.execute(sql`SELECT nextval('vault_csh_seq') as seq`);
+    const vSeqVal = vSeqRows[0]?.seq || (vSeqRows as any)?.rows?.[0]?.seq;
+    if (!vSeqVal) throw new Error('فشل توليد رقم حركة الصندوق من vault_csh_seq');
+    const vaultNumber = `CSH-${vSeqVal}`;
 
     await tx.insert(cashVaultMovements).values({
       transactionNumber: vaultNumber,
@@ -655,8 +633,10 @@ export async function pgReverseDriverSettlement(
       .from(settlementOrders)
       .where(eq(settlementOrders.settlementId, target.id));
 
-    // Step 5: Roll back each order's settled amount atomically
-    for (const alloc of linkedAllocations) {
+    const sortedAllocations = [...linkedAllocations].sort((a, b) => a.orderId.localeCompare(b.orderId));
+
+    // Step 5: Roll back each order's settled amount atomically in deterministic order
+    for (const alloc of sortedAllocations) {
       const [order] = await tx
         .select()
         .from(orders)
@@ -684,20 +664,11 @@ export async function pgReverseDriverSettlement(
     // Step 6: Resolve Staff Profile ID Server-side
     const staffId = await ensureStaffProfile(tx, adminOperator);
 
-    // Step 7: Generate sequential reversal settlement number
-    let revNumber = '';
-    try {
-      const seqRows: any = await tx.execute(sql`SELECT nextval('settlement_seq') as seq`);
-      const seqVal = seqRows[0]?.seq || seqRows?.rows?.[0]?.seq;
-      revNumber = `REV-${seqVal}`;
-    } catch {
-      const maxRows: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(settlement_number FROM '[0-9]+')::int), 1000) + 1 as seq
-        FROM driver_settlements
-      `);
-      const maxVal = maxRows[0]?.seq || maxRows?.rows?.[0]?.seq || 1001;
-      revNumber = `REV-${maxVal}`;
-    }
+    // Step 7: Generate sequential reversal settlement number (Fail-Fast sequence)
+    const seqRows: any = await tx.execute(sql`SELECT nextval('settlement_seq') as seq`);
+    const seqVal = seqRows[0]?.seq || (seqRows as any)?.rows?.[0]?.seq;
+    if (!seqVal) throw new Error('فشل توليد رقم تسوية العكس من settlement_seq');
+    const revNumber = `REV-${seqVal}`;
 
     // Step 8: Insert dedicated reversal settlement record
     const [reversalRecord] = await tx
@@ -733,19 +704,10 @@ export async function pgReverseDriverSettlement(
       .returning();
 
     // Step 10: Cash Vault Outflow Movement (Reversing previous cash vault inflow)
-    let vaultNumber = '';
-    try {
-      const vSeqRows: any = await tx.execute(sql`SELECT nextval('vault_csh_seq') as seq`);
-      const vSeqVal = vSeqRows[0]?.seq || vSeqRows?.rows?.[0]?.seq;
-      vaultNumber = `CSH-${vSeqVal}`;
-    } catch {
-      const maxV: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(transaction_number FROM '[0-9]+')::int), 1000) + 1 as seq
-        FROM cash_vault_movements
-      `);
-      const maxVal = maxV[0]?.seq || maxV?.rows?.[0]?.seq || 1001;
-      vaultNumber = `CSH-${maxVal}`;
-    }
+    const vSeqRows: any = await tx.execute(sql`SELECT nextval('vault_csh_seq') as seq`);
+    const vSeqVal = vSeqRows[0]?.seq || (vSeqRows as any)?.rows?.[0]?.seq;
+    if (!vSeqVal) throw new Error('فشل توليد رقم حركة الصندوق لعكس التسوية من vault_csh_seq');
+    const vaultNumber = `CSH-${vSeqVal}`;
 
     await tx.insert(cashVaultMovements).values({
       transactionNumber: vaultNumber,
@@ -790,8 +752,6 @@ export async function pgReverseDriverSettlement(
       SELECT COALESCE(SUM(collected_amount), 0) AS total_collected
       FROM orders
       WHERE driver_id = ${target.driverId}
-        AND status != 'cancelled'
-        AND collection_status != 'returned'
         AND collected_amount > 0
     `);
     const [settledRow] = await tx.execute<{ total_settled: string }>(sql`

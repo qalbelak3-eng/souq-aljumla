@@ -57,6 +57,7 @@ export const orders = pgTable('orders', {
     .references(() => drivers.id, { onDelete: 'set null' }),
   vehicleId: uuid('vehicle_id')
     .references(() => vehicles.id, { onDelete: 'set null' }),
+  paidAmount: numeric('paid_amount', { precision: 14, scale: 2 }).default('0.00').notNull(), // Total money customer actually paid (Phase Commerce-2C4D)
   collectionStatus: varchar('collection_status', { length: 30 }).default('pending').notNull(), // 'pending' | 'collected_cash' | 'debt_unpaid' | 'partial' | 'returned'
   collectedAmount: numeric('collected_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   remainingDebtAmount: numeric('remaining_debt_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
@@ -66,7 +67,7 @@ export const orders = pgTable('orders', {
     .references(() => driverSettlements.id, { onDelete: 'set null' }),
   inventoryRestored: boolean('inventory_restored').default(false).notNull(),
   refundedAmount: numeric('refunded_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
-  refundStatus: varchar('refund_status', { length: 30 }).default('none').notNull(), // 'none' | 'pending' | 'refunded'
+  refundStatus: varchar('refund_status', { length: 30 }).default('none').notNull(), // 'none' | 'pending' | 'partially_refunded' | 'refunded'
 
   // Delivery PIN Proof & Verification
   deliveryPinHash: varchar('delivery_pin_hash', { length: 255 }),
@@ -109,7 +110,7 @@ export const orders = pgTable('orders', {
   check('chk_order_settled_amount_non_negative', sql`${table.settledAmount} >= 0`),
   check('chk_order_delivery_proof_method', sql`${table.deliveryProofMethod} IS NULL OR ${table.deliveryProofMethod} IN ('customer_pin', 'admin_override')`),
   check('chk_order_delivery_pin_attempts_non_negative', sql`${table.deliveryPinAttempts} >= 0`),
-  check('chk_order_refund_status', sql`${table.refundStatus} IN ('none', 'pending', 'refunded')`),
+  check('chk_order_refund_status', sql`${table.refundStatus} IN ('none', 'pending', 'partially_refunded', 'refunded')`),
   check('chk_order_refunded_amount', sql`${table.refundedAmount} >= 0`),
   check('chk_orders_collected_amount_non_negative', sql`${table.collectedAmount} >= 0`),
   check('chk_orders_remaining_debt_amount_non_negative', sql`${table.remainingDebtAmount} >= 0`),
@@ -117,6 +118,11 @@ export const orders = pgTable('orders', {
   check('chk_orders_discount_non_negative', sql`${table.discount} >= 0`),
   check('chk_orders_collection_status', sql`${table.collectionStatus} IN ('pending', 'collected_cash', 'debt_unpaid', 'partial', 'returned')`),
   check('chk_orders_delivery_sub_state', sql`${table.deliverySubState} IS NULL OR ${table.deliverySubState} IN ('out_for_delivery', 'delivery_failed', 'return_requested', 'warehouse_received')`),
+  // Phase Commerce-2C4D Constraints
+  check('chk_orders_paid_amount_non_negative', sql`${table.paidAmount} >= 0`),
+  check('chk_orders_collected_le_paid', sql`${table.collectedAmount} <= ${table.paidAmount} + 0.01`),
+  check('chk_orders_settled_le_collected', sql`${table.settledAmount} <= ${table.collectedAmount} + 0.01`),
+  check('chk_orders_refunded_le_paid', sql`${table.refundedAmount} <= ${table.paidAmount} + 0.01`),
 ]);
 
 export const orderItems = pgTable('order_items', {

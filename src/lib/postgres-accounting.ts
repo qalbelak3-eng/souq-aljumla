@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import {
   financialAccounts,
@@ -7,6 +7,7 @@ import {
   cashVaultMovements,
   orders,
   purchaseInvoices,
+  customerRefunds,
 } from '@/db/schema';
 
 /* =========================================================
@@ -431,9 +432,12 @@ export async function pgAddPayment(data: {
 
     const staffId = await pgResolveStaffId(tx, operator);
 
-    const receiptNumber = transactionNumber(
-      voucherType === 'receipt' ? 'RCV' : 'PAY',
-    );
+    const seqName = voucherType === 'receipt' ? 'voucher_receipt_seq' : 'voucher_disb_seq';
+    const vPrefix = voucherType === 'receipt' ? 'RCV' : 'DISB';
+    const vSeqRes = await tx.execute(sql`SELECT nextval(${sql.raw(`'${seqName}'`)}) as nextval`);
+    const nextVSeq = vSeqRes[0]?.nextval || (vSeqRes as any)?.rows?.[0]?.nextval;
+    if (!nextVSeq) throw new Error(`فشل توليد رقم السند من ${seqName}`);
+    const receiptNumber = `${vPrefix}-${nextVSeq}`;
 
     const [voucher] = await tx
       .insert(vouchers)
@@ -449,8 +453,13 @@ export async function pgAddPayment(data: {
       .returning();
 
     if (method === 'cash') {
+      const cvSeqRes = await tx.execute(sql`SELECT nextval('vault_csh_seq') as nextval`);
+      const nextCvSeq = cvSeqRes[0]?.nextval || (cvSeqRes as any)?.rows?.[0]?.nextval;
+      if (!nextCvSeq) throw new Error('فشل توليد رقم حركة الصندوق من vault_csh_seq');
+      const cvNumber = `CSH-${nextCvSeq}`;
+
       await tx.insert(cashVaultMovements).values({
-        transactionNumber: transactionNumber('CV'),
+        transactionNumber: cvNumber,
         type: voucherType === 'receipt' ? 'inflow' : 'outflow',
         category:
           voucherType === 'receipt' ? 'debt_collection' : 'adjustment',
@@ -550,10 +559,15 @@ export async function pgAddCashVaultMovement(data: {
   return db.transaction(async (tx) => {
     const staffId = await pgResolveStaffId(tx, data.performedBy);
 
+    const cvSeqRes = await tx.execute(sql`SELECT nextval('vault_csh_seq') as nextval`);
+    const nextCvSeq = cvSeqRes[0]?.nextval || (cvSeqRes as any)?.rows?.[0]?.nextval;
+    if (!nextCvSeq) throw new Error('فشل توليد رقم حركة الصندوق من vault_csh_seq');
+    const cvNumber = `CSH-${nextCvSeq}`;
+
     const [movement] = await tx
       .insert(cashVaultMovements)
       .values({
-        transactionNumber: transactionNumber('CV'),
+        transactionNumber: cvNumber,
         type,
         category,
         categoryLabel:
@@ -694,10 +708,15 @@ export async function pgReversePayment(
        * Its financial direction is represented by voucher_type=reversal
        * and reversal_of_id. We preserve the original amount/method.
        */
+      const revSeqRes = await tx.execute(sql`SELECT nextval('voucher_rev_seq') as nextval`);
+      const nextRevSeq = revSeqRes[0]?.nextval || (revSeqRes as any)?.rows?.[0]?.nextval;
+      if (!nextRevSeq) throw new Error('فشل توليد رقم سند العكس من voucher_rev_seq');
+      const reversalReceiptNumber = `REV-${nextRevSeq}`;
+
       const [reversal] = await tx
         .insert(vouchers)
         .values({
-          receiptNumber: transactionNumber('REV'),
+          receiptNumber: reversalReceiptNumber,
           accountId: original.accountId,
           voucherType: 'reversal',
           amount: String(amount),
@@ -735,8 +754,13 @@ export async function pgReversePayment(
         const reversalVaultType =
           original.voucherType === 'receipt' ? 'outflow' : 'inflow';
 
+        const cvSeqRes = await tx.execute(sql`SELECT nextval('vault_csh_seq') as nextval`);
+        const nextCvSeq = cvSeqRes[0]?.nextval || (cvSeqRes as any)?.rows?.[0]?.nextval;
+        if (!nextCvSeq) throw new Error('فشل توليد رقم حركة الصندوق لعكس السند من vault_csh_seq');
+        const cvNumber = `CSH-${nextCvSeq}`;
+
         await tx.insert(cashVaultMovements).values({
-          transactionNumber: transactionNumber('CVR'),
+          transactionNumber: cvNumber,
           type: reversalVaultType,
           category: 'adjustment',
           categoryLabel: 'عكس سند مالي',
@@ -932,19 +956,21 @@ export async function pgGetAccountSummaries() {
         .where(
           and(
             eq(orders.accountId, account.id),
-            sql`${orders.status} <> 'cancelled'`,
+            inArray(orders.status, ['delivered', 'returned']),
           ),
         );
 
       for (const order of accountOrders) {
-        totalInvoiced += toNumber(order.total);
-        totalPaid += toNumber(order.collectedAmount);
+        const orderTotal = toNumber(order.total);
+        const orderPaid = Math.max(toNumber(order.paidAmount), toNumber(order.collectedAmount));
+        totalInvoiced += orderTotal;
+        totalPaid += orderPaid;
         ordersCount += 1;
 
         if (order.status === 'returned' || order.collectionStatus === 'returned') {
           // Explicit return reversal: cancels net financial impact of the order on customer debt
-          totalInvoiced -= toNumber(order.total);
-          totalPaid -= toNumber(order.collectedAmount);
+          totalInvoiced -= orderTotal;
+          totalPaid -= orderPaid;
         }
 
         if (
@@ -1122,33 +1148,35 @@ export async function pgGetCustomerStatement(
       .where(
         and(
           eq(orders.accountId, account.id),
-          sql`${orders.status} <> 'cancelled'`,
+          inArray(orders.status, ['delivered', 'returned']),
         ),
       );
 
     for (const order of accountOrders) {
+      const orderTotal = toNumber(order.total);
+      const paid = Math.max(toNumber(order.paidAmount), toNumber(order.collectedAmount));
+
       allTransactions.push({
         id: order.id,
-        date: order.createdAt,
+        date: order.deliveredAt || order.createdAt,
         type: 'invoice',
         description: `فاتورة مبيعات ${order.orderNumber}`,
         reference: order.orderNumber,
-        debit: toNumber(order.total),
-        credit: toNumber(order.collectedAmount),
+        debit: orderTotal,
+        credit: paid,
         balance: 0,
       });
 
       if (order.status === 'returned' || order.collectionStatus === 'returned') {
-        const orderTotal = toNumber(order.total);
-        const collected = toNumber(order.collectedAmount);
+        const reversalCredit = Math.max(0, orderTotal - paid);
         allTransactions.push({
           id: `${order.id}-return`,
           date: order.updatedAt || order.createdAt,
           type: 'return',
           description: `إرجاع طلبية ${order.orderNumber}`,
           reference: `RET-${order.orderNumber}`,
-          debit: collected,
-          credit: orderTotal,
+          debit: 0,
+          credit: reversalCredit,
           balance: 0,
         });
       }
@@ -1195,6 +1223,28 @@ export async function pgGetCustomerStatement(
       credit: effect < 0 ? Math.abs(effect) : 0,
       balance: 0,
     });
+  }
+
+  // Include explicit customer refund payouts that do not already have an associated voucher
+  const linkedVoucherIds = new Set(accountVouchers.map((v) => v.id));
+  const accountCustomerRefunds = await db
+    .select()
+    .from(customerRefunds)
+    .where(eq(customerRefunds.accountId, account.id));
+
+  for (const refund of accountCustomerRefunds) {
+    if (!refund.voucherId || !linkedVoucherIds.has(refund.voucherId)) {
+      allTransactions.push({
+        id: refund.id,
+        date: refund.createdAt,
+        type: 'payment',
+        description: `استرداد مالي للعميل ${refund.refundNumber}`,
+        reference: refund.refundNumber,
+        debit: toNumber(refund.amount),
+        credit: 0,
+        balance: 0,
+      });
+    }
   }
 
   allTransactions.sort(

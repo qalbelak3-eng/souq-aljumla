@@ -8,6 +8,7 @@ import {
   pgUpdateDriverDeliveryCollection,
   pgFailDriverDelivery,
   pgReturnDriverOrder,
+  pgCancelDriverReturnRequest,
 } from '@/lib/postgres-delivery';
 import { pgGetDriverById } from '@/lib/postgres-drivers';
 import { getDb } from '@/db/client';
@@ -258,6 +259,19 @@ export async function POST(req: Request) {
         success: true,
         order,
         message: 'تم تسجيل طلب إرجاع الطلبية للمستودع بنجاح. يرجى تسليم البضاعة لأمين المستودع لإتمام الاستلام 📦',
+      });
+    }
+
+    // Action E.1: Cancel Return Request (إلغاء طلب الإرجاع واستئناف محاولة التوصيل)
+    if (action === 'cancel_return_request' || action === 'resume_delivery') {
+      const order = await pgCancelDriverReturnRequest(driver.id, orderId, driverOp, {
+        reason: notes || reason || 'إلغاء طلب الإرجاع واستئناف التوصيل',
+      });
+
+      return NextResponse.json({
+        success: true,
+        order,
+        message: 'تم إلغاء طلب الإرجاع واستئناف حالة التوصيل بنجاح 🚚✓',
       });
     }
 

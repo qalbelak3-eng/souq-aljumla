@@ -93,6 +93,7 @@ async function startDatabase() {
     'drizzle/0018_commerce_phase2c4b_hardening.sql',
     'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
     'drizzle/0020_commerce_phase2c4c_delivery_custody_and_constraints.sql',
+    'drizzle/0021_commerce_phase2c4d_financial_reconciliation.sql',
   ];
 
   for (const m of migrations) {

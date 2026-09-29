@@ -348,7 +348,6 @@ export interface Order {
   paymentMethod: PaymentMethod;
   whatsappSent?: boolean;
   notes?: string;
-  paidAmount?: number;
   idempotencyKey?: string; // مفتاح منع تكرار الطلب (Commerce-2C2)
   requestFingerprint?: string; // بصمة حمولة الطلب للتحقق من تطابق محاولة الإعادة
   
@@ -362,6 +361,8 @@ export interface Order {
   vehiclePlate?: string; // رقم لوحة السيارة
   outForDeliveryAt?: string; // وقت خروج المندوب بالطريق للزبون
   driverArrivedAt?: string; // وقت ضغط السائق على تنبيه "وصلت للموقع"
+  // Financial Reconciliation & Custody (Commerce-2C4D)
+  paidAmount?: number; // إجمالي ما دفعه العميل فعلياً للطلب (إلكتروني أو نقدي)
   collectionStatus?: DeliveryCollectionStatus; // حالة التحصيل: كاش / دين آجل / جزئي
   collectedAmount?: number; // المبلغ المحصل نقداً من السائق
   settledAmount?: number; // المبلغ المسوى نقدياً للإدارة من هذا التحصيل
@@ -381,12 +382,39 @@ export interface Order {
   deliveryVerifiedAt?: string; // وقت التحقق من الرمز أو إجراء التجاوز الإداري
   deliveryOverrideReason?: string; // سبب تجاوز الإدارة للرمز
 
-  // Customer Refund Tracking (Commerce-2C4B)
+  // Customer Refund Tracking (Commerce-2C4D Lifecycle)
   refundedAmount?: number;
-  refundStatus?: 'none' | 'pending' | 'refunded';
+  refundStatus?: 'none' | 'pending' | 'partially_refunded' | 'refunded';
 
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CustomerRefundClaim {
+  id: string;
+  claimNumber: string;
+  orderId: string;
+  accountId: string;
+  claimAmount: number;
+  refundedAmount: number;
+  status: 'pending' | 'partially_refunded' | 'completed';
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerRefund {
+  id: string;
+  refundNumber: string;
+  claimId: string;
+  orderId: string;
+  accountId: string;
+  amount: number;
+  method: 'cash' | 'store_credit' | 'electronic' | 'bank_transfer' | 'other';
+  voucherId?: string;
+  processedByStaffId?: string;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface OrderRefund {
