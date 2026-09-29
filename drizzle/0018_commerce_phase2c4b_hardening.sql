@@ -32,7 +32,9 @@ SET "merchant_status" = 'approved',
       WHEN "pricing_tier" = 'wholesale' AND "merchant_tier" IS NULL THEN 'bronze'
       ELSE "merchant_tier"
     END
-WHERE "pricing_tier" IN ('market', 'wholesale', 'special');
+WHERE "pricing_tier" IN ('market', 'wholesale', 'special')
+  AND "category" = 'customer'
+  AND "is_active" = true;
 --> statement-breakpoint
 
 -- 2. Extend purchase_invoices for Immutable Audit Soft-Cancellation

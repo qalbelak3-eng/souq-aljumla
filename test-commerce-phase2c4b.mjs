@@ -547,6 +547,77 @@ async function runTests() {
   assert(merchantSummary !== undefined, 'Merchant account summary found');
   console.log(`   Merchant Total Invoiced: ${merchantSummary.totalInvoiced}, Total Paid: ${merchantSummary.totalPaid}, Remaining Balance: ${merchantSummary.remainingBalance}`);
 
+  /* =========================================================================
+     [Test 14] Static Architecture Guard: Ban MAX()+1 & Sequence Fallbacks
+     ========================================================================= */
+  console.log('\n[Test 14] Static Architecture Guard: Verifying purchases numbering uses Fail-Fast sequence');
+  const purchasesCode = fs.readFileSync(path.join(process.cwd(), 'src/lib/postgres-purchases.ts'), 'utf-8');
+  assert(!purchasesCode.includes('MAX('), 'Strict: No MAX(...) aggregation query allowed in postgres-purchases.ts');
+  assert(!purchasesCode.includes('MAX(SUBSTRING'), 'Strict: No MAX(SUBSTRING) pattern allowed in postgres-purchases.ts');
+  assert(!purchasesCode.match(/try\s*\{[\s\S]*?nextval\('purchase_seq'\)[\s\S]*?\}\s*catch/), 'Strict: No try/catch wrapping sequence generation');
+  assert(purchasesCode.includes("nextval('purchase_seq')"), 'Strict: Direct nextval(\'purchase_seq\') is present');
+  console.log('   ✅ [PASS] Static guard verified: zero MAX()+1 fallbacks, direct atomic nextval enforced');
+
+  /* =========================================================================
+     [Test 15] Concurrency Safety: Creating Simultaneous Purchase Invoices
+     ========================================================================= */
+  console.log('\n[Test 15] Concurrency Safety: Creating simultaneous purchase invoices without collision');
+  const [invA, invB] = await Promise.all([
+    pgCreatePurchaseInvoice({
+      supplierName: 'مورد متزامن أ',
+      items: [{ productId: prodA.id, quantity: 2, purchasePrice: 8500 }],
+      paidAmount: 0,
+    }),
+    pgCreatePurchaseInvoice({
+      supplierName: 'مورد متزامن ب',
+      items: [{ productId: prodA.id, quantity: 3, purchasePrice: 8500 }],
+      paidAmount: 0,
+    }),
+  ]);
+
+  assert(invA && invA.id, 'Invoice A created successfully');
+  assert(invB && invB.id, 'Invoice B created successfully');
+  assert(invA.invoiceNumber !== invB.invoiceNumber, `Concurrent invoice numbers are strictly unique: ${invA.invoiceNumber} vs ${invB.invoiceNumber}`);
+  const numA = parseInt(invA.invoiceNumber.replace('PUR-', ''), 10);
+  const numB = parseInt(invB.invoiceNumber.replace('PUR-', ''), 10);
+  assert(!isNaN(numA) && !isNaN(numB), 'Invoice numbers parse to valid sequential integers');
+  assert(Math.abs(numA - numB) === 1, `Invoice sequence incremented consecutively: ${numA} and ${numB}`);
+  console.log(`   ✅ [PASS] Concurrent purchase invoices created safely: ${invA.invoiceNumber}, ${invB.invoiceNumber}`);
+
+  /* =========================================================================
+     [Test 16] Fail-Fast on Missing Sequence (No Fallback / No 25P02)
+     ========================================================================= */
+  console.log('\n[Test 16] Fail-Fast on Missing Sequence: System aborts directly without silent fallback');
+  await sql`DROP SEQUENCE purchase_seq;`;
+
+  let failFastError = null;
+  try {
+    await pgCreatePurchaseInvoice({
+      supplierName: 'مورد اختبار الفشل السريع',
+      items: [{ productId: prodA.id, quantity: 1, purchasePrice: 8500 }],
+      paidAmount: 0,
+    });
+  } catch (err) {
+    failFastError = err;
+  }
+
+  assert(failFastError !== null, 'Operation failed fast when purchase_seq was missing');
+  const errorMsg = String(failFastError.message || failFastError);
+  const errorCode = failFastError.code || '';
+  assert(
+    errorCode === '42P01' || errorMsg.includes('purchase_seq'),
+    `Error explicitly identifies missing sequence: code=${errorCode}, message=${errorMsg}`
+  );
+  // Re-create the sequence for subsequent runs or operations
+  await sql`CREATE SEQUENCE purchase_seq START WITH 3001;`;
+  const restoredInv = await pgCreatePurchaseInvoice({
+    supplierName: 'مورد بعد استعادة السلسلة',
+    items: [{ productId: prodA.id, quantity: 1, purchasePrice: 8500 }],
+    paidAmount: 0,
+  });
+  assert(restoredInv.invoiceNumber === 'PUR-3001', `Sequence restored and functioning: ${restoredInv.invoiceNumber}`);
+  console.log('   ✅ [PASS] Fail-fast behavior verified: missing sequence rejected cleanly, no corrupted fallback');
+
   console.log('\n======================================================');
   console.log('✅ ALL COMMERCE-2C4B HIGH INTEGRITY TESTS PASSED!');
   console.log('======================================================\n');

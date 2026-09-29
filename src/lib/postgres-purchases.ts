@@ -353,19 +353,13 @@ export async function pgCreatePurchaseInvoice(
       if (cRows.length > 0) companyId = cRows[0].id;
     }
 
-    // 3. Generate Sequential Purchase Invoice Number
-    let invoiceNumber = '';
-    try {
-      const seqRows: any = await tx.execute(sql`SELECT nextval('purchase_seq') as seq`);
-      const seqVal = seqRows[0]?.seq || seqRows?.rows?.[0]?.seq;
-      invoiceNumber = `PUR-${seqVal}`;
-    } catch {
-      const maxRows: any = await tx.execute(sql`
-        SELECT COALESCE(MAX(SUBSTRING(invoice_number FROM '[0-9]+')::int), 1000) + 1 as seq FROM purchase_invoices
-      `);
-      const maxVal = maxRows[0]?.seq || maxRows?.rows?.[0]?.seq || 1001;
-      invoiceNumber = `PUR-${maxVal}`;
+    // 3. Generate Sequential Purchase Invoice Number (Fail-Fast Atomic Sequence)
+    const seqRows: any = await tx.execute(sql`SELECT nextval('purchase_seq') as seq`);
+    const seqVal = seqRows[0]?.seq || seqRows?.rows?.[0]?.seq;
+    if (!seqVal) {
+      throw new Error('فشل توليد رقم فاتورة الشراء من السلسلة purchase_seq');
     }
+    const invoiceNumber = `PUR-${seqVal}`;
 
     // 4. Deterministic Product Locking to prevent Deadlocks
     const uniqueProductIds: string[] = Array.from(new Set<string>(input.items.map((i) => i.productId))).sort((a: string, b: string) => a.localeCompare(b));
