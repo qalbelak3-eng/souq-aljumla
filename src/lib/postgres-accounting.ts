@@ -33,7 +33,7 @@ function isUuid(value?: string | null): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
-function transactionNumber(prefix: string): string {
+export function transactionNumber(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 7)
@@ -375,8 +375,9 @@ async function pgResolveStaffId(
 ========================================================= */
 
 export async function pgAddPayment(data: {
-  customerPhone: string;
-  customerName: string;
+  accountId?: string;
+  customerPhone?: string;
+  customerName?: string;
   amount: number;
   paymentMethod?: string;
   notes?: string | null;
@@ -388,10 +389,10 @@ export async function pgAddPayment(data: {
 }) {
   const db = getDb();
 
-  const phone = normalizePhone(data.customerPhone);
+  const phone = data.customerPhone ? normalizePhone(data.customerPhone) : null;
   const amount = toNumber(data.amount);
 
-  if (!phone) throw new Error('رقم هاتف الحساب مطلوب');
+  if (!phone && !data.accountId) throw new Error('رقم هاتف الحساب أو معرفه مطلوب');
   if (amount <= 0) throw new Error('مبلغ السند يجب أن يكون أكبر من الصفر');
 
   const method = ['cash', 'zaincash', 'qicard', 'bank_transfer', 'other'].includes(
@@ -410,10 +411,16 @@ export async function pgAddPayment(data: {
   };
 
   return db.transaction(async (tx) => {
+    const whereCond =
+      data.accountId && isUuid(data.accountId)
+        ? eq(financialAccounts.id, data.accountId)
+        : eq(financialAccounts.phone, phone || '');
+
     const accounts = await tx
       .select()
       .from(financialAccounts)
-      .where(eq(financialAccounts.phone, phone))
+      .where(whereCond)
+      .for('update')
       .limit(1);
 
     const account = accounts[0];
@@ -897,17 +904,18 @@ export async function pgGetAccountSummaries() {
       const purchases = await db
         .select()
         .from(purchaseInvoices)
-        .where(
-          and(
-            eq(purchaseInvoices.supplierAccountId, account.id),
-            sql`${purchaseInvoices.status} <> 'cancelled'`,
-          ),
-        );
+        .where(eq(purchaseInvoices.supplierAccountId, account.id));
 
       for (const invoice of purchases) {
         totalInvoiced += toNumber(invoice.totalAmount);
         totalPaid += toNumber(invoice.paidAmount);
         ordersCount += 1;
+
+        if (invoice.status === 'cancelled') {
+          // Explicit cancellation reversal: cancels the invoiced goods totalAmount
+          // leaving the paidAmount intact as credit in company favor (receivable from supplier)!
+          totalInvoiced -= toNumber(invoice.totalAmount);
+        }
 
         const date = invoice.invoiceDate || invoice.createdAt;
         if (
@@ -1075,17 +1083,13 @@ export async function pgGetCustomerStatement(
     const purchases = await db
       .select()
       .from(purchaseInvoices)
-      .where(
-        and(
-          eq(purchaseInvoices.supplierAccountId, account.id),
-          sql`${purchaseInvoices.status} <> 'cancelled'`,
-        ),
-      );
+      .where(eq(purchaseInvoices.supplierAccountId, account.id));
 
     for (const invoice of purchases) {
       const total = toNumber(invoice.totalAmount);
       const paid = toNumber(invoice.paidAmount);
 
+      // 1. Always show the original purchase invoice
       allTransactions.push({
         id: invoice.id,
         date: invoice.invoiceDate || invoice.createdAt,
@@ -1096,6 +1100,20 @@ export async function pgGetCustomerStatement(
         credit: paid,
         balance: 0,
       });
+
+      // 2. If cancelled, show explicit cancellation reversal transaction
+      if (invoice.status === 'cancelled') {
+        allTransactions.push({
+          id: `${invoice.id}-cancel`,
+          date: invoice.cancelledAt || invoice.createdAt,
+          type: 'return',
+          description: `إلغاء فاتورة شراء ${invoice.invoiceNumber}`,
+          reference: `REV-${invoice.invoiceNumber}`,
+          debit: 0,
+          credit: total,
+          balance: 0,
+        });
+      }
     }
   } else {
     const accountOrders = await db

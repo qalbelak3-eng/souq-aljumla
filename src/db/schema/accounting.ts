@@ -70,7 +70,7 @@ export const cashVaultMovements = pgTable('cash_vault_movements', {
   index('idx_vault_number').on(table.transactionNumber),
   check('chk_vault_type', sql`${table.type} IN ('inflow', 'outflow')`),
   check('chk_vault_amount_positive', sql`${table.amount} > 0`),
-  check('chk_vault_category', sql`${table.category} IN ('sales_cash', 'debt_collection', 'driver_settlement', 'purchase_payment', 'expense', 'owner_withdrawal', 'deposit_adjustment', 'adjustment')`),
+  check('chk_vault_category', sql`${table.category} IN ('sales_cash', 'debt_collection', 'driver_settlement', 'purchase_payment', 'expense', 'owner_withdrawal', 'deposit_adjustment', 'adjustment', 'supplier_refund')`),
 ]);
 
 export const cashbackLedger = pgTable('cashback_ledger', {

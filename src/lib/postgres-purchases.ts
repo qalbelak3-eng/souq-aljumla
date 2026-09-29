@@ -1,13 +1,15 @@
 import { getDb, getPostgresClient } from '@/db/client';
-import { purchaseInvoices, purchaseInvoiceItems } from '@/db/schema/purchases';
+import { purchaseInvoices, purchaseInvoiceItems, supplierRefundClaims, supplierRefunds } from '@/db/schema/purchases';
 import { products, companies } from '@/db/schema/catalog';
 import { inventoryMovements } from '@/db/schema/inventory';
 import { financialAccounts } from '@/db/schema/accounts';
 import { staffProfiles } from '@/db/schema/auth';
+import { vouchers, cashVaultMovements } from '@/db/schema/accounting';
 import { auditLogs } from '@/db/schema/operations';
-import { PurchaseInvoice, PurchaseInvoiceItem } from '@/types';
+import { PurchaseInvoice, PurchaseInvoiceItem, SupplierRefundClaim, SupplierRefund } from '@/types';
 import { normalizePhoneForFinancialIdentity } from '@/lib/phone-utils';
 import { validateOrderItemQuantity } from '@/lib/pricing';
+import { transactionNumber } from '@/lib/postgres-accounting';
 import { eq, and, or, sql, desc, asc, ilike, inArray, type SQL } from 'drizzle-orm';
 
 export interface PgOperator {
@@ -538,19 +540,35 @@ export async function pgCancelPurchaseInvoice(
       conditions.push(eq(purchaseInvoices.id, trimmed));
     }
 
-    // 1. Lock Purchase Invoice Row FOR UPDATE
+    // 1. Identify Invoice and lock in strict global order
+    const preRows = await tx
+      .select({ id: purchaseInvoices.id, supplierAccountId: purchaseInvoices.supplierAccountId })
+      .from(purchaseInvoices)
+      .where(or(...conditions))
+      .limit(1);
+
+    if (preRows.length === 0) {
+      throw new Error('فاتورة الشراء غير موجودة');
+    }
+    const preInv = preRows[0];
+
+    // Level 1 Lock: financialAccounts FOR UPDATE (Unifies synchronization point across all supplier financial ops)
+    await tx
+      .select({ id: financialAccounts.id })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, preInv.supplierAccountId))
+      .for('update');
+
+    // Level 2 Lock: purchaseInvoices FOR UPDATE
     const invoiceRows = await tx
       .select()
       .from(purchaseInvoices)
-      .where(or(...conditions))
+      .where(eq(purchaseInvoices.id, preInv.id))
       .for('update');
 
-    if (invoiceRows.length === 0) {
-      throw new Error('فاتورة الشراء غير موجودة');
-    }
     const invoice = invoiceRows[0];
 
-    // Idempotency: If already cancelled, return existing state cleanly
+    // Idempotency: If already cancelled, return existing state cleanly without re-reversing
     if (invoice.status === 'cancelled') {
       const items = await tx
         .select()
@@ -564,7 +582,7 @@ export async function pgCancelPurchaseInvoice(
       .from(purchaseInvoiceItems)
       .where(eq(purchaseInvoiceItems.invoiceId, invoice.id));
 
-    // 2. Deterministic Product Locking FOR UPDATE
+    // Level 4 Lock: Deterministic Product Locking FOR UPDATE (in sorted UUID order to prevent deadlocks)
     const uniqueProductIds: string[] = Array.from(new Set<string>(items.map((i: any) => String(i.productId)))).sort((a: string, b: string) => a.localeCompare(b));
     const lockedProducts = await tx
       .select()
@@ -577,7 +595,7 @@ export async function pgCancelPurchaseInvoice(
       productsMap.set(p.id, p);
     }
 
-    // 3. Verify Stock Sufficiency Before Reversing
+    // 2. Verify Stock Sufficiency Before Reversing
     for (const it of items) {
       const prod = productsMap.get(it.productId);
       const curStock = Number(prod?.currentStockPieces) || 0;
@@ -592,7 +610,7 @@ export async function pgCancelPurchaseInvoice(
 
     const staffId = await resolveStaffId(tx, options?.operator);
 
-    // 4. Reverse Product Stock and Record Purchase Reversal Inventory Outflow
+    // 3. Reverse Product Stock and Record Purchase Reversal Inventory Outflow
     for (const it of items) {
       const prod = productsMap.get(it.productId);
       const curStock = Number(prod.currentStockPieces) || 0;
@@ -619,7 +637,7 @@ export async function pgCancelPurchaseInvoice(
       });
     }
 
-    // 5. Update Invoice Row to Cancelled
+    // 4. Update Invoice Row to Cancelled
     const [updatedInvoice] = await tx
       .update(purchaseInvoices)
       .set({
@@ -631,10 +649,37 @@ export async function pgCancelPurchaseInvoice(
       .where(eq(purchaseInvoices.id, invoice.id))
       .returning();
 
+    // 5. Append-only Supplier Financial Reversal / Refund Claim (DB-Level Idempotency)
+    // If invoice had a cash payment (paidAmount > 0), the company holds a receivable claim against the supplier
+    const paidAmount = toNumber(invoice.paidAmount);
+    if (paidAmount > 0) {
+      const existingClaims = await tx
+        .select()
+        .from(supplierRefundClaims)
+        .where(eq(supplierRefundClaims.purchaseInvoiceId, invoice.id))
+        .limit(1);
+
+      if (existingClaims.length === 0) {
+        const claimSeqRows: any = await tx.execute(sql`SELECT nextval('supplier_claim_seq') as seq`);
+        const claimSeq = claimSeqRows[0]?.seq || claimSeqRows?.rows?.[0]?.seq || 1001;
+        const claimNumber = `CLAIM-${claimSeq}`;
+
+        await tx.insert(supplierRefundClaims).values({
+          claimNumber,
+          purchaseInvoiceId: invoice.id,
+          supplierAccountId: invoice.supplierAccountId,
+          claimAmount: String(paidAmount.toFixed(2)),
+          refundedAmount: '0.00',
+          status: 'pending',
+          notes: `مطالبة استرداد مالي عن إلغاء فاتورة شراء مدفوعة جزئياً أو كلياً: ${invoice.invoiceNumber}`,
+        });
+      }
+    }
+
     // 6. Audit Log
     await tx.insert(auditLogs).values({
       actionType: 'purchase_cancelled',
-      actionLabel: 'إلغاء فاتورة شراء وعكس المخزون',
+      actionLabel: 'إلغاء فاتورة شراء وعكس المخزون والمطالبة المالية',
       category: 'inventory',
       categoryLabel: 'المستودع والمشتريات',
       staffId,
@@ -644,7 +689,9 @@ export async function pgCancelPurchaseInvoice(
       targetReferenceNumber: invoice.invoiceNumber,
       financialImpact: {
         totalAmount: toNumber(invoice.totalAmount),
-        reversedAmount: toNumber(invoice.totalAmount),
+        paidAmount: toNumber(invoice.paidAmount),
+        remainingLiabilityCancelled: toNumber(invoice.remainingAmount),
+        claimAmountCreated: paidAmount > 0 ? paidAmount : 0,
       },
       details: `إلغاء فاتورة الشراء ${invoice.invoiceNumber} وعكس كميات المخزون المستلمة${reason ? ' - السبب: ' + reason : ''}`,
       severity: 'warning',
@@ -659,4 +706,237 @@ export async function pgCancelPurchaseInvoice(
     const db = getDb();
     return await db.transaction(executeCancel);
   }
+}
+
+/**
+ * تسجيل استرداد مالي فعلي من المورد (Supplier Cash / Bank Refund)
+ * يربط بسند قبض رسمي (Receipt Voucher) ويسجل دخول نقدية إلى القاصة،
+ * ويخفض رصيد مطالبة الاسترداد المسجلة عن إلغاء الفاتورة.
+ */
+export async function pgRecordSupplierRefund(
+  inputOrClaimId:
+    | string
+    | {
+        claimId?: string;
+        invoiceId?: string;
+        amount: number;
+        paymentMethod?: string;
+        notes?: string;
+      },
+  dataOrOptions?: any,
+  maybeOptions?: { operator?: PgOperator; tx?: any }
+) {
+  let input: {
+    claimId?: string;
+    invoiceId?: string;
+    amount: number;
+    paymentMethod?: string;
+    notes?: string;
+  };
+  let options: { operator?: PgOperator; tx?: any } | undefined;
+
+  if (typeof inputOrClaimId === 'string') {
+    input = {
+      claimId: inputOrClaimId,
+      ...(dataOrOptions || {}),
+    };
+    options = maybeOptions;
+  } else {
+    input = inputOrClaimId;
+    options = dataOrOptions;
+  }
+
+  const executeRefund = async (tx: any) => {
+    const refundAmount = toNumber(input.amount);
+    if (refundAmount <= 0) {
+      throw new Error('مبلغ الاسترداد يجب أن يكون أكبر من الصفر');
+    }
+
+    // 1. Resolve Claim
+    let claimRow: any = null;
+    if (input.claimId) {
+      const rows = await tx
+        .select()
+        .from(supplierRefundClaims)
+        .where(eq(supplierRefundClaims.id, input.claimId))
+        .limit(1);
+      if (rows.length > 0) claimRow = rows[0];
+    } else if (input.invoiceId) {
+      const rows = await tx
+        .select()
+        .from(supplierRefundClaims)
+        .where(eq(supplierRefundClaims.purchaseInvoiceId, input.invoiceId))
+        .limit(1);
+      if (rows.length > 0) claimRow = rows[0];
+    }
+
+    if (!claimRow) {
+      throw new Error('لم يتم العثور على مطالبة استرداد للمورد');
+    }
+
+    // 2. Strict Concurrency Lock Ordering:
+    // Level 1 Lock: financialAccounts FOR UPDATE (Unifies synchronization point across all supplier financial ops)
+    const [supplierAccount] = await tx
+      .select()
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, claimRow.supplierAccountId))
+      .for('update');
+
+    if (!supplierAccount) {
+      throw new Error('حساب المورد المالي غير موجود');
+    }
+
+    // Level 3 Lock: supplierRefundClaims FOR UPDATE
+    const [lockedClaim] = await tx
+      .select()
+      .from(supplierRefundClaims)
+      .where(eq(supplierRefundClaims.id, claimRow.id))
+      .for('update');
+
+    if (lockedClaim.status === 'cancelled') {
+      throw new Error('مطالبة الاسترداد ملغاة ولا يمكن استرداد مبالغ منها');
+    }
+
+    const claimAmount = toNumber(lockedClaim.claimAmount);
+    const currentRefunded = toNumber(lockedClaim.refundedAmount);
+    const remainingClaim = Math.max(0, claimAmount - currentRefunded);
+
+    if (remainingClaim <= 0 || lockedClaim.status === 'completed') {
+      throw new Error('تم استرداد كامل مبلغ المطالبة مسبقاً');
+    }
+
+    if (refundAmount > remainingClaim) {
+      throw new Error(`مبلغ الاسترداد (${refundAmount.toLocaleString()} د.ع) يتجاوز الرصيد المتبقي للمطالبة (${remainingClaim.toLocaleString()} د.ع)`);
+    }
+
+    const staffId = await resolveStaffId(tx, options?.operator);
+    const method = input.paymentMethod || 'cash';
+
+    // 3. Issue Official Receipt Voucher (سند قبض رسمي من المورد)
+    const receiptNumber = transactionNumber('RCV');
+    const [voucher] = await tx
+      .insert(vouchers)
+      .values({
+        receiptNumber,
+        accountId: lockedClaim.supplierAccountId,
+        voucherType: 'receipt',
+        amount: String(refundAmount.toFixed(2)),
+        paymentMethod: method,
+        receivedByStaffId: staffId,
+        notes: input.notes?.trim() || `استرداد مالي من المورد عن مطالبة رقم ${lockedClaim.claimNumber}`,
+      })
+      .returning();
+
+    // 4. Record Real Cash Vault Inflow if Cash (Actual Money Received)
+    let vaultMovementRow: any = null;
+    if (method === 'cash') {
+      const [vRow] = await tx
+        .insert(cashVaultMovements)
+        .values({
+          transactionNumber: transactionNumber('CV'),
+          type: 'inflow',
+          category: 'supplier_refund',
+          categoryLabel: 'استرداد مالي من مورد',
+          amount: String(refundAmount.toFixed(2)),
+          referenceType: 'voucher',
+          referenceId: voucher.id,
+          referenceNumber: voucher.receiptNumber,
+          partyName: supplierAccount.businessName || supplierAccount.name,
+          staffId,
+          notes: input.notes?.trim() || `استرداد نقدي فعلي من المورد عن مطالبة ${lockedClaim.claimNumber}`,
+        })
+        .returning();
+      vaultMovementRow = vRow;
+    }
+
+    // 5. Update Claim Refunded Amount & Status
+    const newRefunded = currentRefunded + refundAmount;
+    const newStatus = newRefunded >= claimAmount ? 'completed' : 'partially_refunded';
+    const [updatedClaim] = await tx
+      .update(supplierRefundClaims)
+      .set({
+        refundedAmount: String(newRefunded.toFixed(2)),
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(supplierRefundClaims.id, lockedClaim.id))
+      .returning();
+
+    // 6. Record in supplier_refunds table
+    const srefSeqRows: any = await tx.execute(sql`SELECT nextval('supplier_refund_seq') as seq`);
+    const srefSeq = srefSeqRows[0]?.seq || srefSeqRows?.rows?.[0]?.seq || 1001;
+    const refundNumber = `SREF-${srefSeq}`;
+
+    const [insertedRefund] = await tx
+      .insert(supplierRefunds)
+      .values({
+        refundNumber,
+        claimId: lockedClaim.id,
+        supplierAccountId: lockedClaim.supplierAccountId,
+        amount: String(refundAmount.toFixed(2)),
+        paymentMethod: method,
+        voucherId: voucher.id,
+        processedByStaffId: staffId,
+        notes: input.notes?.trim() || null,
+      })
+      .returning();
+
+    // 7. Audit Log
+    await tx.insert(auditLogs).values({
+      actionType: 'supplier_refund_received',
+      actionLabel: 'استلام استرداد مالي من مورد',
+      category: 'accounting',
+      categoryLabel: 'المحاسبة والمالية',
+      staffId,
+      operatorSnapshot: options?.operator || null,
+      targetType: 'supplier_refund',
+      targetId: insertedRefund.id,
+      targetReferenceNumber: refundNumber,
+      financialImpact: {
+        refundAmount,
+        remainingClaim: Math.max(0, claimAmount - newRefunded),
+      },
+      details: `استلام استرداد مالي بمبلغ ${refundAmount.toLocaleString()} د.ع من المورد ${supplierAccount.name} عن المطالبة ${lockedClaim.claimNumber}`,
+      severity: 'info',
+    });
+
+    return {
+      success: true,
+      refund: insertedRefund,
+      claim: updatedClaim,
+      voucher,
+      vaultMovement: vaultMovementRow,
+    };
+  };
+
+  if (options?.tx) {
+    return await executeRefund(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeRefund);
+  }
+}
+
+export async function pgGetSupplierRefundClaims(filter?: string | { supplierAccountId?: string; purchaseInvoiceId?: string }) {
+  const db = getDb();
+  if (typeof filter === 'string' && filter.trim()) {
+    const trimmed = filter.trim();
+    return await db
+      .select()
+      .from(supplierRefundClaims)
+      .where(or(eq(supplierRefundClaims.supplierAccountId, trimmed), eq(supplierRefundClaims.purchaseInvoiceId, trimmed)))
+      .orderBy(desc(supplierRefundClaims.createdAt));
+  } else if (filter && typeof filter === 'object') {
+    const conditions = [];
+    if (filter.supplierAccountId) conditions.push(eq(supplierRefundClaims.supplierAccountId, filter.supplierAccountId));
+    if (filter.purchaseInvoiceId) conditions.push(eq(supplierRefundClaims.purchaseInvoiceId, filter.purchaseInvoiceId));
+    if (conditions.length > 0) {
+      return await db
+        .select()
+        .from(supplierRefundClaims)
+        .where(and(...conditions))
+        .orderBy(desc(supplierRefundClaims.createdAt));
+    }
+  }
+  return await db.select().from(supplierRefundClaims).orderBy(desc(supplierRefundClaims.createdAt));
 }

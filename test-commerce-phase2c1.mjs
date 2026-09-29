@@ -91,6 +91,7 @@ async function startDatabase() {
     'drizzle/0016_order_idempotency_cashback_integrity.sql',
     'drizzle/0017_order_lifecycle_reversals.sql',
     'drizzle/0018_commerce_phase2c4b_hardening.sql',
+    'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
   ];
 
   for (const m of migrations) {

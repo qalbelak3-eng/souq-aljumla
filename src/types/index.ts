@@ -879,6 +879,32 @@ export interface PurchaseInvoice {
   createdAt: string;
 }
 
+export interface SupplierRefundClaim {
+  id: string;
+  claimNumber: string;
+  purchaseInvoiceId: string;
+  supplierAccountId: string;
+  claimAmount: number;
+  refundedAmount: number;
+  status: 'pending' | 'partially_refunded' | 'completed' | 'cancelled';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierRefund {
+  id: string;
+  refundNumber: string;
+  claimId: string;
+  supplierAccountId: string;
+  amount: number;
+  paymentMethod: string;
+  voucherId?: string;
+  processedByStaffId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface UserComplaint {
   id: string;
   userId?: string;

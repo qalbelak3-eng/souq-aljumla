@@ -17,6 +17,8 @@ import {
   pgGetPurchaseInvoiceById,
   pgCreatePurchaseInvoice,
   pgCancelPurchaseInvoice,
+  pgRecordSupplierRefund,
+  pgGetSupplierRefundClaims,
 } from './src/lib/postgres-purchases.ts';
 import {
   pgGetDriverCustody,
@@ -24,7 +26,11 @@ import {
   pgGetDriverSettlementById,
 } from './src/lib/postgres-settlements.ts';
 import { pgGetDrivers, pgGetDriverById } from './src/lib/postgres-drivers.ts';
-import { pgGetCustomerStatement, pgGetAccountSummaries } from './src/lib/postgres-accounting.ts';
+import {
+  pgGetCustomerStatement,
+  pgGetAccountSummaries,
+  pgAddPayment,
+} from './src/lib/postgres-accounting.ts';
 import { pgCreateProduct, pgCreateCategory } from './src/lib/postgres-catalog.ts';
 import { toCanonicalIraqiPhone } from './src/lib/phone-utils.ts';
 import { getDb } from './src/db/client.ts';
@@ -33,8 +39,8 @@ import { products } from './src/db/schema/catalog.ts';
 import { inventoryMovements } from './src/db/schema/inventory.ts';
 import { financialAccounts } from './src/db/schema/accounts.ts';
 import { authIdentities } from './src/db/schema/auth.ts';
-import { purchaseInvoices } from './src/db/schema/purchases.ts';
-import { orderRefunds } from './src/db/schema/accounting.ts';
+import { purchaseInvoices, supplierRefundClaims, supplierRefunds } from './src/db/schema/purchases.ts';
+import { orderRefunds, cashVaultMovements, vouchers } from './src/db/schema/accounting.ts';
 import { drivers } from './src/db/schema/vehicles_drivers.ts';
 import { eq, sql as dSql } from 'drizzle-orm';
 
@@ -262,6 +268,17 @@ async function runTests() {
 
   assert(cancelledInvoice.status === 'cancelled', 'Purchase invoice status updated to cancelled');
   assert(cancelledInvoice.cancellationReason.includes('خطأ في التسعير'), 'Cancellation reason recorded');
+  assert(cancelledInvoice.totalAmount === 425000, 'Original totalAmount is preserved (NOT zeroed)');
+  assert(cancelledInvoice.paidAmount === 200000, 'Original paidAmount is preserved (NOT zeroed)');
+  assert(cancelledInvoice.remainingAmount === 225000, 'Original remainingAmount is preserved (NOT zeroed)');
+
+  const [claim] = await db
+    .select()
+    .from(supplierRefundClaims)
+    .where(eq(supplierRefundClaims.purchaseInvoiceId, purchaseInvoice.id));
+  assert(claim !== undefined, 'Supplier refund claim created for paid amount');
+  assert(Number(claim.claimAmount) === 200000, 'Claim amount equals paid amount (200,000 IQD)');
+  assert(claim.status === 'pending', 'Claim status is initially pending');
 
   const [afterCancelProdA] = await db.select().from(products).where(eq(products.id, prodA.id));
   assert(Number(afterCancelProdA.currentStockPieces) === initialStock, `Stock reversed back to initial 100 pieces (Actual: ${afterCancelProdA.currentStockPieces})`);
@@ -278,6 +295,12 @@ async function runTests() {
   assert(doubleCancel.status === 'cancelled', 'Double cancel returns cancelled invoice without error');
   const [afterDoubleCancelProdA] = await db.select().from(products).where(eq(products.id, prodA.id));
   assert(Number(afterDoubleCancelProdA.currentStockPieces) === initialStock, 'Stock remains unchanged on double cancellation');
+
+  const allClaims = await db
+    .select()
+    .from(supplierRefundClaims)
+    .where(eq(supplierRefundClaims.purchaseInvoiceId, purchaseInvoice.id));
+  assert(allClaims.length === 1, 'Double cancel does not create duplicate claims (idempotent)');
 
   /* =========================================================================
      [Test 5, 6, 7] Authoritative Merchant Approval & Pricing Tier Enforcement
@@ -617,6 +640,377 @@ async function runTests() {
   });
   assert(restoredInv.invoiceNumber === 'PUR-3001', `Sequence restored and functioning: ${restoredInv.invoiceNumber}`);
   console.log('   ✅ [PASS] Fail-fast behavior verified: missing sequence rejected cleanly, no corrupted fallback');
+
+  /* =========================================================================
+     [Test 17] Scenario 1: Credit Purchase (1M total, 0 paid) -> Cancel -> Net Zero
+     ========================================================================= */
+  console.log('\n[Test 17] Scenario 1: Credit purchase cancellation -> Net zero liability');
+  const [sup17] = await db
+    .insert(financialAccounts)
+    .values({
+      accountCode: 'SUP-TEST-17',
+      name: 'مورد آجل تجريبي 17',
+      phone: '07701110017',
+      category: 'supplier',
+      isActive: true,
+    })
+    .returning();
+
+  const creditInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup17.id,
+    companyName: sup17.name,
+    items: [{ productId: prodA.id, quantity: 100, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 0,
+    paymentMethod: 'credit',
+  });
+  assert(creditInv.totalAmount === 1000000, 'Credit invoice total is 1,000,000 IQD');
+  assert(creditInv.paidAmount === 0, 'Paid amount is 0 IQD');
+  assert(creditInv.remainingAmount === 1000000, 'Remaining debt is 1,000,000 IQD');
+
+  // Verify statement before cancel
+  const stmtBefore17 = await pgGetCustomerStatement(sup17.id);
+  assert(stmtBefore17.transactions.length === 1, 'Statement has 1 invoice transaction');
+  assert(stmtBefore17.transactions[0].debit === 1000000, 'Debit is 1,000,000');
+  assert(stmtBefore17.transactions[0].balance === 1000000, 'Balance is 1,000,000 liability');
+
+  // Cancel credit invoice
+  const cancelledCreditInv = await pgCancelPurchaseInvoice(creditInv.id, 'إلغاء فاتورة آجلة بالكامل');
+  assert(cancelledCreditInv.status === 'cancelled', 'Status is cancelled');
+  assert(cancelledCreditInv.totalAmount === 1000000, 'Historical totalAmount preserved (NOT zeroed)');
+  assert(cancelledCreditInv.paidAmount === 0, 'Historical paidAmount preserved');
+  assert(cancelledCreditInv.remainingAmount === 1000000, 'Historical remainingAmount preserved');
+
+  // Check no claim created since paidAmount is 0
+  const claims17 = await pgGetSupplierRefundClaims(creditInv.id);
+  assert(claims17.length === 0, 'No refund claim created for unpaid invoice');
+
+  // Verify statement after cancel: PUR debit 1M, REV-PUR credit 1M -> Balance = 0!
+  const stmtAfter17 = await pgGetCustomerStatement(sup17.id);
+  assert(stmtAfter17.transactions[1].type === 'return', 'Second transaction is return (cancellation reversal)');
+  assert(stmtAfter17.transactions[1].reference === `REV-${creditInv.invoiceNumber}`, 'Reference is REV-PUR');
+  assert(stmtAfter17.transactions[1].credit === 1000000, 'Cancellation reversal credits 1,000,000');
+  assert(stmtAfter17.transactions[1].balance === 0, 'Net running balance is exactly 0 IQD (Net Zero)!');
+
+  const summaries17 = await pgGetAccountSummaries();
+  const summary17 = summaries17.find((s) => s.phone === sup17.phone);
+  assert(summary17.totalInvoiced === 0, 'Account summary invoiced is net 0');
+  assert(summary17.totalPaid === 0, 'Account summary paid is 0');
+  assert(summary17.remainingBalance === 0, 'Account summary balance is 0');
+
+  /* =========================================================================
+     [Test 18] Scenario 2: Cash Purchase (1M total, 1M paid) -> Cancel -> Supplier owes 1M
+     ========================================================================= */
+  console.log('\n[Test 18] Scenario 2: Cash purchase cancellation -> Supplier owes company 1,000,000 IQD');
+  const [sup18] = await db
+    .insert(financialAccounts)
+    .values({
+      accountCode: 'SUP-TEST-18',
+      name: 'مورد نقدي تجريبي 18',
+      phone: '07701110018',
+      category: 'supplier',
+      isActive: true,
+    })
+    .returning();
+
+  const cashInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup18.id,
+    companyName: sup18.name,
+    items: [{ productId: prodA.id, quantity: 100, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 1000000,
+    paymentMethod: 'cash',
+  });
+  assert(cashInv.totalAmount === 1000000, 'Cash invoice total 1,000,000 IQD');
+  assert(cashInv.paidAmount === 1000000, 'Paid amount 1,000,000 IQD');
+  assert(cashInv.remainingAmount === 0, 'Remaining debt 0 IQD');
+
+  const cancelledCashInv = await pgCancelPurchaseInvoice(cashInv.id, 'إلغاء فاتورة نقدية بالكامل');
+  assert(cancelledCashInv.status === 'cancelled', 'Status is cancelled');
+  assert(cancelledCashInv.paidAmount === 1000000, 'Historical paid preserved');
+
+  // Supplier refund claim created for 1,000,000
+  const claims18 = await pgGetSupplierRefundClaims(cashInv.id);
+  assert(claims18.length === 1, 'Supplier refund claim created');
+  assert(Number(claims18[0].claimAmount) === 1000000, 'Claim amount is 1,000,000 IQD');
+  assert(claims18[0].status === 'pending', 'Claim status is pending');
+  assert(Number(claims18[0].refundedAmount) === 0, 'Refunded amount is initially 0');
+
+  // Check statement: PUR (debit 1M, credit 1M -> 0), REV-PUR (debit 0, credit 1M -> -1M)
+  const stmtAfter18 = await pgGetCustomerStatement(sup18.id);
+  assert(stmtAfter18.transactions.length === 2, 'Statement has PUR + REV-PUR');
+  assert(stmtAfter18.transactions[1].balance === -1000000, 'Supplier statement balance is -1,000,000 IQD (Supplier owes company)');
+
+  const summaries18 = await pgGetAccountSummaries();
+  const summary18 = summaries18.find((s) => s.phone === sup18.phone);
+  assert(summary18.remainingBalance === -1000000, 'Account summary reflects -1,000,000 IQD owed by supplier');
+
+  /* =========================================================================
+     [Test 19] Scenario 3: Partial Purchase (1M total, 400k paid, 600k remaining) -> Cancel
+     ========================================================================= */
+  console.log('\n[Test 19] Scenario 3: Partial purchase cancellation -> 600k debt cleared, 400k claim created');
+  const [sup19] = await db
+    .insert(financialAccounts)
+    .values({
+      accountCode: 'SUP-TEST-19',
+      name: 'مورد دفع جزئي تجريبي 19',
+      phone: '07701110019',
+      category: 'supplier',
+      isActive: true,
+    })
+    .returning();
+
+  const partialInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup19.id,
+    companyName: sup19.name,
+    items: [{ productId: prodA.id, quantity: 100, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 400000,
+    paymentMethod: 'cash',
+  });
+  assert(partialInv.totalAmount === 1000000, 'Total 1,000,000');
+  assert(partialInv.paidAmount === 400000, 'Paid 400,000');
+  assert(partialInv.remainingAmount === 600000, 'Remaining 600,000');
+
+  const cancelledPartialInv = await pgCancelPurchaseInvoice(partialInv.id, 'إلغاء فاتورة ذات دفعة جزئية');
+  assert(cancelledPartialInv.status === 'cancelled', 'Status is cancelled');
+  assert(cancelledPartialInv.totalAmount === 1000000, 'Total preserved');
+  assert(cancelledPartialInv.paidAmount === 400000, 'Paid preserved');
+  assert(cancelledPartialInv.remainingAmount === 600000, 'Remaining preserved');
+
+  const claims19 = await pgGetSupplierRefundClaims(partialInv.id);
+  assert(claims19.length === 1, 'Supplier refund claim created for 400k');
+  const claim19 = claims19[0];
+  assert(Number(claim19.claimAmount) === 400000, 'Claim amount is exactly 400,000 IQD');
+  assert(claim19.status === 'pending', 'Claim status is pending');
+
+  const stmtAfter19 = await pgGetCustomerStatement(sup19.id);
+  assert(stmtAfter19.transactions[1].balance === -400000, 'Running balance after cancellation is -400,000 IQD');
+
+  /* =========================================================================
+     [Test 20] Scenario 4: Partial Supplier Refund (150k out of 400k)
+     ========================================================================= */
+  console.log('\n[Test 20] Scenario 4: Partial supplier refund (150,000 IQD)');
+  const refund1 = await pgRecordSupplierRefund(claim19.id, {
+    amount: 150000,
+    paymentMethod: 'cash',
+    notes: 'استرداد نقدي جزئي من المورد إلى صندوق الشركة',
+  });
+
+  assert(refund1.claim.status === 'partially_refunded', 'Claim status updated to partially_refunded');
+  assert(Number(refund1.claim.refundedAmount) === 150000, 'Claim refundedAmount is 150,000 IQD');
+  assert(Number(refund1.refund.amount) === 150000, 'Supplier refund record amount is 150,000 IQD');
+  assert(refund1.voucher.voucherType === 'receipt', 'Voucher created is receipt voucher');
+  assert(refund1.vaultMovement.category === 'supplier_refund', 'Cash vault movement category is supplier_refund');
+  assert(refund1.vaultMovement.type === 'inflow', 'Cash vault movement is inflow');
+  assert(Number(refund1.vaultMovement.amount) === 150000, 'Cash vault movement amount is +150,000');
+
+  // Verify statement: -400k + 150k = -250,000 IQD
+  const stmtRefund1 = await pgGetCustomerStatement(sup19.id);
+  const lastTx1 = stmtRefund1.transactions[stmtRefund1.transactions.length - 1];
+  assert(lastTx1.balance === -250000, `Running balance updated accurately to -250,000 IQD (Actual: ${lastTx1.balance})`);
+
+  /* =========================================================================
+     [Test 21] Scenario 5: Full Remaining Refund (250k out of 250k) -> Net Zero
+     ========================================================================= */
+  console.log('\n[Test 21] Scenario 5: Full remaining refund (250,000 IQD) -> Net Zero');
+  const refund2 = await pgRecordSupplierRefund(claim19.id, {
+    amount: 250000,
+    paymentMethod: 'cash',
+    notes: 'استرداد باقي المبلغ وإغلاق المطالبة بالكامل',
+  });
+
+  assert(refund2.claim.status === 'completed', 'Claim status updated to completed');
+  assert(Number(refund2.claim.refundedAmount) === 400000, 'Claim refundedAmount is now 400,000 IQD');
+
+  // Verify statement: -250k + 250k = 0 IQD (Net Zero!)
+  const stmtRefund2 = await pgGetCustomerStatement(sup19.id);
+  const lastTx2 = stmtRefund2.transactions[stmtRefund2.transactions.length - 1];
+  assert(lastTx2.balance === 0, `Running balance fully reconciled to 0 IQD (Actual: ${lastTx2.balance})`);
+
+  // Verify attempting another refund fails
+  let completedClaimError = null;
+  try {
+    await pgRecordSupplierRefund(claim19.id, { amount: 50000 });
+  } catch (err) {
+    completedClaimError = err;
+  }
+  assert(completedClaimError !== null, 'Attempting further refund on completed claim rejected');
+
+  /* =========================================================================
+     [Test 22] Over-refund Attempt Rejection
+     ========================================================================= */
+  console.log('\n[Test 22] Over-refund Attempt Rejection: Exceeding remaining claim rejected');
+  const overInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup19.id,
+    companyName: sup19.name,
+    items: [{ productId: prodA.id, quantity: 10, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 100000,
+    paymentMethod: 'cash',
+  });
+  await pgCancelPurchaseInvoice(overInv.id, 'إلغاء لاختبار تجاوز الاسترداد');
+  const [overClaim] = await pgGetSupplierRefundClaims(overInv.id);
+
+  let overRefundError = null;
+  try {
+    await pgRecordSupplierRefund(overClaim.id, { amount: 150000 });
+  } catch (err) {
+    overRefundError = err;
+  }
+  assert(overRefundError !== null, 'Over-refund strictly rejected');
+  assert(overRefundError.message.includes('يتجاوز الرصيد المتبقي'), `Error message: ${overRefundError.message}`);
+
+  /* =========================================================================
+     [Test 23] Concurrent Double Cancellation (Promise.all)
+     ========================================================================= */
+  console.log('\n[Test 23] Concurrency: Concurrent double cancellation via Promise.all');
+  const concInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup19.id,
+    companyName: sup19.name,
+    items: [{ productId: prodA.id, quantity: 20, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 200000,
+    paymentMethod: 'cash',
+  });
+
+  const [resCancel1, resCancel2] = await Promise.all([
+    pgCancelPurchaseInvoice(concInv.id, 'إلغاء متزامن 1'),
+    pgCancelPurchaseInvoice(concInv.id, 'إلغاء متزامن 2'),
+  ]);
+
+  assert(resCancel1.status === 'cancelled', 'First cancel call returned cancelled');
+  assert(resCancel2.status === 'cancelled', 'Second cancel call returned cancelled');
+
+  const claimsConc = await pgGetSupplierRefundClaims(concInv.id);
+  assert(claimsConc.length === 1, `Exactly ONE refund claim exists under unique constraint (Actual: ${claimsConc.length})`);
+
+  /* =========================================================================
+     [Test 24] Concurrent Cancellation vs Payment (Promise.all)
+     ========================================================================= */
+  console.log('\n[Test 24] Concurrency: Concurrent cancellation vs supplier payment');
+  const [sup24] = await db
+    .insert(financialAccounts)
+    .values({
+      accountCode: 'SUP-TEST-24',
+      name: 'مورد تضارب متزامن 24',
+      phone: '07701110024',
+      category: 'supplier',
+      isActive: true,
+    })
+    .returning();
+
+  const concPayInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup24.id,
+    companyName: sup24.name,
+    items: [{ productId: prodA.id, quantity: 50, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 100000,
+    paymentMethod: 'cash',
+  });
+
+  // Concurrently run cancellation and payment
+  const concResults = await Promise.allSettled([
+    pgCancelPurchaseInvoice(concPayInv.id, 'إلغاء أثناء محاولة تسديد'),
+    pgAddPayment({
+      accountId: sup24.id,
+      customerPhone: sup24.phone,
+      amount: 100000,
+      paymentMethod: 'cash',
+      voucherType: 'disbursement',
+      notes: 'تسديد متزامن مع الإلغاء',
+    }),
+  ]);
+
+  // Both complete serialized by Level 1 financialAccounts lock
+  const allSucceeded = concResults.every((r) => r.status === 'fulfilled');
+  if (!allSucceeded) {
+    console.error('Test 24 failure details:', concResults.map((r) => (r.status === 'rejected' ? r.reason : 'OK')));
+  }
+  assert(allSucceeded, 'Both operations completed serialized without deadlocks');
+
+  // Verify database consistency
+  const [refreshedInv24] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, concPayInv.id));
+  assert(refreshedInv24.status === 'cancelled', 'Invoice status is definitively cancelled');
+
+  /* =========================================================================
+     [Test 25] Concurrent Refunds Exceeding Claim (Promise.all)
+     ========================================================================= */
+  console.log('\n[Test 25] Concurrency: Concurrent refunds exceeding claim amount');
+  const concClaimInv = await pgCreatePurchaseInvoice({
+    supplierAccountId: sup24.id,
+    companyName: sup24.name,
+    items: [{ productId: prodA.id, quantity: 30, costPrice: 10000, boxesPerCarton: 1, itemsPerBox: 1 }],
+    paidAmount: 300000,
+    paymentMethod: 'cash',
+  });
+  await pgCancelPurchaseInvoice(concClaimInv.id, 'إلغاء لاختبار تنازع الاسترداد');
+  const [concClaim] = await pgGetSupplierRefundClaims(concClaimInv.id);
+
+  // Attempt two simultaneous refunds of 200,000 each (total 400,000 > claim 300,000)
+  const refundRaceResults = await Promise.allSettled([
+    pgRecordSupplierRefund(concClaim.id, { amount: 200000, notes: 'استرداد سباق 1' }),
+    pgRecordSupplierRefund(concClaim.id, { amount: 200000, notes: 'استرداد سباق 2' }),
+  ]);
+
+  const refundSuccesses = refundRaceResults.filter((r) => r.status === 'fulfilled');
+  const refundFailures = refundRaceResults.filter((r) => r.status === 'rejected');
+
+  assert(refundSuccesses.length === 1, `Exactly ONE refund succeeded in race (Actual: ${refundSuccesses.length})`);
+  assert(refundFailures.length === 1, `The second refund was rejected because it exceeds claim balance (Actual: ${refundFailures.length})`);
+
+  const [finalClaim25] = await db.select().from(supplierRefundClaims).where(eq(supplierRefundClaims.id, concClaim.id));
+  assert(Number(finalClaim25.refundedAmount) === 200000, `Claim recorded exactly 200,000 IQD refunded`);
+  assert(finalClaim25.status === 'partially_refunded', 'Claim is partially_refunded');
+
+  /* =========================================================================
+     [Test 26] DB Check Constraints on purchase_invoices (Direct SQL Fail-Fast)
+     ========================================================================= */
+  console.log('\n[Test 26] Database Check Constraints: Rejection of corrupted purchase rows');
+
+  // 1. Negative paid_amount
+  let chkPaidErr = null;
+  try {
+    await sql`
+      INSERT INTO purchase_invoices (invoice_number, supplier_account_id, supplier_name_snap, total_amount, paid_amount, remaining_amount, payment_method)
+      VALUES ('PUR-TEST-CHK-1', ${sup24.id}, 'مورد فحص', 10000, -500, 10500, 'cash');
+    `;
+  } catch (err) {
+    chkPaidErr = err;
+  }
+  assert(chkPaidErr !== null && chkPaidErr.message.includes('chk_purchase_paid_non_negative'), 'DB rejected negative paid_amount');
+
+  // 2. Negative remaining_amount
+  let chkRemErr = null;
+  try {
+    await sql`
+      INSERT INTO purchase_invoices (invoice_number, supplier_account_id, supplier_name_snap, total_amount, paid_amount, remaining_amount, payment_method)
+      VALUES ('PUR-TEST-CHK-2', ${sup24.id}, 'مورد فحص', 10000, 11000, -1000, 'cash');
+    `;
+  } catch (err) {
+    chkRemErr = err;
+  }
+  assert(chkRemErr !== null && (chkRemErr.message.includes('chk_purchase_remaining_non_negative') || chkRemErr.message.includes('chk_purchase_paid_le_total')), 'DB rejected negative remaining_amount / paid > total');
+
+  // 3. Paid > Total
+  let chkPaidLeTotalErr = null;
+  try {
+    await sql`
+      INSERT INTO purchase_invoices (invoice_number, supplier_account_id, supplier_name_snap, total_amount, paid_amount, remaining_amount, payment_method)
+      VALUES ('PUR-TEST-CHK-3', ${sup24.id}, 'مورد فحص', 10000, 15000, 0, 'cash');
+    `;
+  } catch (err) {
+    chkPaidLeTotalErr = err;
+  }
+  assert(chkPaidLeTotalErr !== null && (chkPaidLeTotalErr.message.includes('chk_purchase_paid_le_total') || chkPaidLeTotalErr.message.includes('chk_purchase_amounts_balance')), 'DB rejected paid_amount > total_amount');
+
+  // 4. Paid + Remaining != Total
+  let chkBalanceErr = null;
+  try {
+    await sql`
+      INSERT INTO purchase_invoices (invoice_number, supplier_account_id, supplier_name_snap, total_amount, paid_amount, remaining_amount, payment_method)
+      VALUES ('PUR-TEST-CHK-4', ${sup24.id}, 'مورد فحص', 10000, 3000, 4000, 'cash');
+    `;
+  } catch (err) {
+    chkBalanceErr = err;
+  }
+  assert(chkBalanceErr !== null && chkBalanceErr.message.includes('chk_purchase_amounts_balance'), 'DB rejected unbalanced amounts (paid + remaining != total)');
+
+  console.log('   ✅ [PASS] All database check constraints strictly enforced by PostgreSQL engine');
 
   console.log('\n======================================================');
   console.log('✅ ALL COMMERCE-2C4B HIGH INTEGRITY TESTS PASSED!');
