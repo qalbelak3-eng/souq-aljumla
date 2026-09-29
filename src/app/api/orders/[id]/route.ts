@@ -135,6 +135,25 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       }
     }
 
+    // Warehouse Return Physical Check-in (Commerce-2C4C)
+    if (action === 'confirm_warehouse_return' || action === 'warehouse_check_in') {
+      const { pgConfirmWarehouseReturnReceipt } = await import('@/lib/postgres-delivery');
+      try {
+        const receivedOrder = await pgConfirmWarehouseReturnReceipt(
+          params.id,
+          operator,
+          { notes: notes || reason }
+        );
+        return NextResponse.json({
+          success: true,
+          order: receivedOrder,
+          message: 'تم تأكيد فحص واستلام البضاعة في المستودع واسترجاع المخزون بنجاح 📦✓',
+        });
+      } catch (err: any) {
+        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+      }
+    }
+
     const prevOrder = await pgGetOrderById(params.id);
     if (!prevOrder) {
       return NextResponse.json({ success: false, error: 'الطلب غير موجود' }, { status: 404 });

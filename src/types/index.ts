@@ -205,6 +205,8 @@ export interface OrderItem {
 
 export type DeliveryCollectionStatus = 'pending' | 'collected_cash' | 'debt_unpaid' | 'partial' | 'returned';
 
+export type DeliverySubState = 'out_for_delivery' | 'delivery_failed' | 'return_requested' | 'warehouse_received';
+
 export interface Vehicle {
   id: string;
   name: string; // مثال: "كيا حمل أبيض 2022" أو "ستوتة توصيل سريع"
@@ -371,6 +373,7 @@ export interface Order {
   paymentReceiptNumber?: string; // رقم سند القبض الذي تم إنشاؤه في حساب العميل
   settlementId?: string; // معرف حركة التصفية الرسمية في سجل تصفيات السائقين
   inventoryRestored?: boolean; // حماية ضد مضاعفة إعادة المخزون للطلبات الراجعة
+  deliverySubState?: DeliverySubState; // الحالة الفرعية لمسار التوصيل والعهدة الفيزيائية (Commerce-2C4C)
   
   // Delivery PIN Proof & Verification (إثبات التسليم ورمز الأمان)
   deliveryPin?: string; // رمز الاستلام للزبون (يعرض للزبون صاحب الطلب أو الإدارة فقط)

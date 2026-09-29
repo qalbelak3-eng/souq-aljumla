@@ -92,6 +92,7 @@ async function startDatabase() {
     'drizzle/0017_order_lifecycle_reversals.sql',
     'drizzle/0018_commerce_phase2c4b_hardening.sql',
     'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
+    'drizzle/0020_commerce_phase2c4c_delivery_custody_and_constraints.sql',
   ];
 
   for (const m of migrations) {
@@ -100,7 +101,7 @@ async function startDatabase() {
       await runSqlScript(sql, fullPath);
     }
   }
-  console.log('   All 15 migrations applied successfully.');
+  console.log('   All migrations applied successfully.');
 }
 
 async function runCommercePhase2c1Tests() {

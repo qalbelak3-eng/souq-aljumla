@@ -79,6 +79,9 @@ export const orders = pgTable('orders', {
   deliveryOverrideBy: uuid('delivery_override_by')
     .references(() => authIdentities.id, { onDelete: 'set null' }),
   deliveryOverrideByName: varchar('delivery_override_by_name', { length: 150 }),
+
+  // Structured Delivery Sub-State (Phase Commerce-2C4C)
+  deliverySubState: varchar('delivery_sub_state', { length: 30 }), // 'out_for_delivery' | 'delivery_failed' | 'return_requested' | 'warehouse_received'
   
   // Timestamps and Notes
   notes: text('notes'),
@@ -108,6 +111,12 @@ export const orders = pgTable('orders', {
   check('chk_order_delivery_pin_attempts_non_negative', sql`${table.deliveryPinAttempts} >= 0`),
   check('chk_order_refund_status', sql`${table.refundStatus} IN ('none', 'pending', 'refunded')`),
   check('chk_order_refunded_amount', sql`${table.refundedAmount} >= 0`),
+  check('chk_orders_collected_amount_non_negative', sql`${table.collectedAmount} >= 0`),
+  check('chk_orders_remaining_debt_amount_non_negative', sql`${table.remainingDebtAmount} >= 0`),
+  check('chk_orders_delivery_fee_non_negative', sql`${table.deliveryFee} >= 0`),
+  check('chk_orders_discount_non_negative', sql`${table.discount} >= 0`),
+  check('chk_orders_collection_status', sql`${table.collectionStatus} IN ('pending', 'collected_cash', 'debt_unpaid', 'partial', 'returned')`),
+  check('chk_orders_delivery_sub_state', sql`${table.deliverySubState} IS NULL OR ${table.deliverySubState} IN ('out_for_delivery', 'delivery_failed', 'return_requested', 'warehouse_received')`),
 ]);
 
 export const orderItems = pgTable('order_items', {

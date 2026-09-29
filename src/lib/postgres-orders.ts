@@ -15,7 +15,7 @@ import {
   coupons,
   orderRefunds,
 } from '@/db/schema';
-import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, MerchantTier } from '@/types';
+import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, DeliverySubState, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgConsumeCoupon, pgRecordCouponRedemption, pgReleaseOrderCouponRedemption } from '@/lib/postgres-coupons';
 import {
@@ -324,6 +324,7 @@ export function formatOrderRecord(
     driverCashSettled: Boolean(orderRow.driverCashSettled),
     settlementId: orderRow.settlementId ? String(orderRow.settlementId) : undefined,
     inventoryRestored: Boolean(orderRow.inventoryRestored),
+    deliverySubState: orderRow.deliverySubState ? (orderRow.deliverySubState as DeliverySubState) : undefined,
     refundedAmount: toNumber(orderRow.refundedAmount),
     refundStatus: (orderRow.refundStatus || 'none') as 'none' | 'pending' | 'refunded',
     deliveryProofMethod: orderRow.deliveryProofMethod || undefined,
@@ -1240,9 +1241,15 @@ export async function pgCancelOrder(
     }
 
     const staffId = await resolveStaffId(tx, options?.operator);
+    const isShippedWithDriver = order.status === 'shipped' && !!order.driverId;
 
     // 1. Inventory Restoration: Exactly once using historical baseQuantityDeducted
-    if (!order.inventoryRestored) {
+    // CRITICAL (Commerce-2C4C): If the order is currently shipped and in driver custody,
+    // the physical goods are outside the warehouse. We perform Commercial Cancellation,
+    // but MUST NOT restore warehouse inventory until Warehouse Physical Check-in!
+    const willRestoreInventory = !order.inventoryRestored && !isShippedWithDriver;
+
+    if (willRestoreInventory) {
       const items = await tx
         .select()
         .from(orderItems)
@@ -1268,7 +1275,7 @@ export async function pgCancelOrder(
 
           await tx.insert(inventoryMovements).values({
             productId: prod.id,
-            movementType: options?.isReturn ? 'customer_return' : 'order_cancellation',
+            movementType: 'order_cancellation',
             quantityPieces: restoredPieces, // positive for inflow
             unitCostPieces: String(item.unitCostSnap),
             totalCost: String((restoredPieces * toNumber(item.unitCostSnap)).toFixed(2)),
@@ -1294,9 +1301,10 @@ export async function pgCancelOrder(
       .update(orders)
       .set({
         status: 'cancelled',
-        collectionStatus: options?.isReturn ? 'returned' : order.collectionStatus,
+        deliverySubState: isShippedWithDriver ? 'return_requested' : order.deliverySubState,
+        collectionStatus: order.collectionStatus,
         remainingDebtAmount: '0.00',
-        inventoryRestored: true,
+        inventoryRestored: willRestoreInventory ? true : order.inventoryRestored,
         deliveryPinEncrypted: null,
         driverNotes: options?.reason || order.driverNotes,
         updatedAt: new Date(),
@@ -1307,7 +1315,9 @@ export async function pgCancelOrder(
     // 5. Audit Log (single log event per cancellation)
     await tx.insert(auditLogs).values({
       actionType: 'order_cancelled',
-      actionLabel: options?.isReturn ? 'إرجاع بضاعة غير مسلّمة واسترجاع المخزون' : 'إلغاء طلبية واسترجاع المخزون',
+      actionLabel: isShippedWithDriver
+        ? 'إلغاء تجاري للطلبية وبقاء البضاعة بعهدة السائق لحين تسليمها للمستودع'
+        : 'إلغاء طلبية واسترجاع المخزون',
       category: 'commerce',
       categoryLabel: 'الطلبات والمبيعات',
       staffId,
@@ -1318,7 +1328,9 @@ export async function pgCancelOrder(
       financialImpact: {
         cancelledTotal: toNumber(order.total),
       },
-      details: `إلغاء الطلبية ${order.orderNumber}: ${options?.reason || 'تم الإلغاء'}`,
+      details: isShippedWithDriver
+        ? `إلغاء تجاري للطلبية ${order.orderNumber} أثناء خروجها مع السائق. المخزون لم يسترجع وبانتظار تسليم البضاعة للمستودع. ملاحظات: ${options?.reason || 'تم الإلغاء'}`
+        : `إلغاء الطلبية ${order.orderNumber}: ${options?.reason || 'تم الإلغاء'}`,
       severity: 'warning',
     });
 
@@ -1771,9 +1783,15 @@ export async function pgUpdateOrderStatus(
       updatePayload.deliveredAt = new Date();
       if (options?.collectedAmount !== undefined) {
         const amt = Math.max(0, toNumber(options.collectedAmount));
-        updatePayload.collectedAmount = String(amt.toFixed(2));
-        updatePayload.collectionStatus = amt > 0 ? 'collected' : 'uncollected';
         const total = toNumber(current.total);
+        updatePayload.collectedAmount = String(amt.toFixed(2));
+        if (amt >= total) {
+          updatePayload.collectionStatus = 'collected_cash';
+        } else if (amt > 0) {
+          updatePayload.collectionStatus = 'partial';
+        } else {
+          updatePayload.collectionStatus = 'debt_unpaid';
+        }
         updatePayload.remainingDebtAmount = String(Math.max(0, total - amt).toFixed(2));
       }
     }

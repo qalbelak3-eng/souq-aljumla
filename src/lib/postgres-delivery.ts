@@ -3,18 +3,23 @@ import { getDb } from '@/db/client';
 import {
   orders,
   orderItems,
+  products,
+  inventoryMovements,
+  staffProfiles,
   drivers,
   vehicles,
   authIdentities,
   financialAccounts,
   auditLogs,
 } from '@/db/schema';
-import { Order, OrderStatus, DeliveryCollectionStatus } from '@/types';
+import { Order, OrderStatus, DeliveryCollectionStatus, DeliverySubState } from '@/types';
 import {
   formatOrderRecord,
   pgCancelOrder,
   toNumber,
   isUuid,
+  PgOperator,
+  resolveStaffId,
 } from '@/lib/postgres-orders';
 import { verifyPin, generateOrderPinData } from '@/lib/delivery-pin';
 import { pgCreditOrderDeliveredCashback } from '@/lib/postgres-cashback';
@@ -94,6 +99,7 @@ export interface DriverOrderView {
   remainingDebtAmount: number;
   driverNotes?: string;
   notes?: string;
+  deliverySubState?: DeliverySubState;
   driverAssignedAt?: string;
   outForDeliveryAt?: string;
   driverArrivedAt?: string;
@@ -152,7 +158,7 @@ export async function pgAssignOrderDriver(input: AssignDriverInput): Promise<Ord
           driverId: null,
           vehicleId: null,
           driverAssignedAt: null,
-          status: order.status === 'processing' ? 'pending' : order.status,
+          status: order.status,
           updatedAt: new Date(),
         })
         .where(eq(orders.id, order.id))
@@ -344,6 +350,7 @@ export async function pgGetDriverOrders(driverId: string): Promise<{
       remainingDebtAmount: toNumber(o.remainingDebtAmount),
       driverNotes: o.driverNotes || undefined,
       notes: o.notes || undefined,
+      deliverySubState: o.deliverySubState ? (o.deliverySubState as DeliverySubState) : undefined,
       driverAssignedAt: o.driverAssignedAt ? o.driverAssignedAt.toISOString() : undefined,
       outForDeliveryAt: o.outForDeliveryAt ? o.outForDeliveryAt.toISOString() : undefined,
       driverArrivedAt: o.driverArrivedAt ? o.driverArrivedAt.toISOString() : undefined,
@@ -480,9 +487,9 @@ export async function pgStartDriverDelivery(
       return formatOrderRecord(order, items, drv, undefined, acc);
     }
 
-    // State Machine Transition check
-    if (order.status !== 'processing' && order.status !== 'pending') {
-      throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح ببدء التوصيل`);
+    // State Machine Transition check (Commerce-2C4C F2): ONLY processing is allowed to transition to shipped
+    if (order.status !== 'processing') {
+      throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح ببدء التوصيل. يجب أن تكون الطلبية في مرحلة التجهيز (processing) أولاً`);
     }
 
     // Update to shipped / out for delivery
@@ -490,6 +497,7 @@ export async function pgStartDriverDelivery(
       .update(orders)
       .set({
         status: 'shipped',
+        deliverySubState: 'out_for_delivery',
         outForDeliveryAt: order.outForDeliveryAt || new Date(),
         updatedAt: new Date(),
       })
@@ -1112,12 +1120,13 @@ export async function pgFailDriverDelivery(
 
     const reasonNote = `[تعذر التسليم: ${input.reason}] ${input.notes || ''}`.trim();
 
-    // Transition back to processing (pending supervisor / warehouse decision or reschedule)
-    // Note: Inventory is NOT restored here; items are still with the driver until returned!
+    // Commerce-2C4C F1: Failed delivery does NOT revert to processing!
+    // The order remains shipped, custody remains with the driver, inventory is NOT restored.
     const [updatedOrder] = await tx
       .update(orders)
       .set({
-        status: 'processing',
+        status: 'shipped',
+        deliverySubState: 'delivery_failed',
         driverNotes: order.driverNotes ? `${order.driverNotes} | ${reasonNote}` : reasonNote,
         updatedAt: new Date(),
       })
@@ -1146,7 +1155,7 @@ export async function pgFailDriverDelivery(
 }
 
 /* =========================================================
-   9. pgReturnDriverOrder (Return to Warehouse & Inventory Restore)
+   9. pgReturnDriverOrder (Driver Request Return to Warehouse)
    ========================================================= */
 
 export async function pgReturnDriverOrder(
@@ -1159,17 +1168,85 @@ export async function pgReturnDriverOrder(
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
 
   const executeReturn = async (tx: any) => {
-    return await pgCancelOrder(trimmed, {
-      isReturn: true,
-      reason: options?.reason || 'إرجاع البضاعة إلى المستودع من قبل السائق',
-      driverId,
-      operator: {
-        role: 'driver',
-        name: driverOperator.name,
-        username: driverOperator.phone,
-      },
-      tx,
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const order = orderRows[0];
+
+    // Object-Level Authorization: verify this order is assigned to this driver
+    if (!order.driverId || order.driverId !== driverId) {
+      throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إرجاعه');
+    }
+
+    // Terminal / State checks
+    if (order.status === 'delivered') {
+      throw new Error('الطلب تم تسليمه بالفعل ولا يمكن إرجاعه عبر هذا المسار');
+    }
+    if (order.status === 'cancelled' && order.deliverySubState === 'warehouse_received') {
+      throw new Error('تم استلام البضاعة في المستودع وإلغاء الطلب مسبقاً');
+    }
+    if (order.status !== 'shipped' && order.status !== 'cancelled') {
+      throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح بطلب الإرجاع`);
+    }
+
+    // Protection: verify no money was collected without reversal
+    const paid = toNumber(order.collectedAmount);
+    if (paid > 0) {
+      throw new Error(
+        'لا يمكن إرجاع الطلبية لاحتوائها على حركة مالية مسجلة. تتطلب العملية تسوية واسترداد مالي.'
+      );
+    }
+
+    // Idempotency: if already return_requested, return existing record
+    if (order.deliverySubState === 'return_requested') {
+      const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+      const [drv] = await tx.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
+      return formatOrderRecord(order, items, drv, undefined, acc);
+    }
+
+    const reasonNote = `[طلب إرجاع للمستودع: ${options?.reason || 'إرجاع البضاعة للمستودع'}]`;
+
+    // Update deliverySubState to 'return_requested'.
+    // NOTE (Commerce-2C4C): Inventory is NOT restored here! Physical custody remains on driver!
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        deliverySubState: 'return_requested',
+        driverNotes: order.driverNotes ? `${order.driverNotes} | ${reasonNote}` : reasonNote,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    // Audit Log
+    await tx.insert(auditLogs).values({
+      actionType: 'driver_return_requested',
+      actionLabel: 'تسجيل طلب إرجاع البضاعة للمستودع من قبل السائق',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والتوصيل',
+      operatorSnapshot: { role: 'driver', ...driverOperator },
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      details: `سجل السائق ${driverOperator.name} رغبته بإرجاع البضاعة للمستودع للطلبية ${order.orderNumber}. العهدة باقية مع السائق لحين فحص واستلام المستودع. السبب: ${options?.reason || 'إرجاع البضاعة'}`,
+      severity: 'info',
     });
+
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+    const [drv] = await tx.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
+    return formatOrderRecord(updatedOrder, items, drv, undefined, acc);
   };
 
   if (options?.tx) {
@@ -1177,5 +1254,157 @@ export async function pgReturnDriverOrder(
   } else {
     const db = getDb();
     return await db.transaction(executeReturn);
+  }
+}
+
+/* =========================================================
+   10. pgConfirmWarehouseReturnReceipt (Physical Warehouse Check-in)
+   ========================================================= */
+
+export async function pgConfirmWarehouseReturnReceipt(
+  orderIdOrNumber: string,
+  operator?: PgOperator,
+  options?: { notes?: string; tx?: any }
+): Promise<Order> {
+  const trimmed = String(orderIdOrNumber || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب مطلوب لتأكيد الاستلام بالمستودع');
+
+  const executeCheckIn = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) conditions.push(eq(orders.id, trimmed));
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error('الطلب غير موجود');
+    }
+
+    const order = orderRows[0];
+
+    // Idempotency check: If already received and inventory restored, return immediately without duplicate restock
+    if (order.inventoryRestored && order.deliverySubState === 'warehouse_received') {
+      const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+      const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+      const drv = order.driverId ? (await tx.select().from(drivers).where(eq(drivers.id, order.driverId)).limit(1))[0] : undefined;
+      return formatOrderRecord(order, items, drv, undefined, acc);
+    }
+
+    // Verify order state: must be shipped or cancelled
+    if (order.status !== 'shipped' && order.status !== 'cancelled') {
+      throw new Error(`حالة الطلب الحالية (${order.status}) لا تسمح باستلام الإرجاع في المستودع`);
+    }
+
+    // Verify sub-state or cancellation: must be return_requested, delivery_failed, or cancelled while with driver
+    if (order.deliverySubState !== 'return_requested' && order.deliverySubState !== 'delivery_failed' && order.status !== 'cancelled') {
+      throw new Error('الطلبية لم يتم تقديم طلب إرجاع لها من السائق أو إلغاؤها');
+    }
+
+    // Check paid amount: Cannot check-in returned order if customer paid money without refund workflow
+    const paid = toNumber(order.collectedAmount);
+    if (paid > 0) {
+      throw new Error('لا يمكن استلام إرجاع الطلبية لوجود مبالغ محصلة نقدية تتطلب مسار استرداد مالي أولاً');
+    }
+
+    // Resolve staff ID
+    const staffId = await resolveStaffId(tx, operator);
+
+    // 1. Restore Inventory Exactly Once under deterministic product locks
+    if (!order.inventoryRestored) {
+      const items = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+
+      const sortedItems = [...items].sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
+      for (const item of sortedItems) {
+        const prodRows = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, item.productId))
+          .for('update');
+
+        if (prodRows.length > 0) {
+          const prod = prodRows[0];
+          const restoredPieces = Number(item.baseQuantityDeducted);
+          const newStockPieces = (Number(prod.currentStockPieces) || 0) + restoredPieces;
+
+          await tx
+            .update(products)
+            .set({ currentStockPieces: newStockPieces })
+            .where(eq(products.id, prod.id));
+
+          await tx.insert(inventoryMovements).values({
+            productId: prod.id,
+            movementType: 'order_cancellation',
+            quantityPieces: restoredPieces, // positive for inflow
+            unitCostPieces: String(item.unitCostSnap),
+            totalCost: String((restoredPieces * toNumber(item.unitCostSnap)).toFixed(2)),
+            balanceAfterPieces: newStockPieces,
+            referenceType: 'order',
+            referenceId: order.id,
+            referenceNumber: order.orderNumber,
+            performedByStaffId: staffId,
+            notes: `استلام بضاعة مرجعة في المستودع للطلبية ${order.orderNumber} (${item.soldQuantity} ${item.unitLabelSnap})`,
+          });
+        }
+      }
+    }
+
+    // 2. Reverse cashback and release coupon if not already done
+    const { pgReverseOrderRedeemedCashback } = await import('@/lib/postgres-cashback');
+    const { pgReleaseOrderCouponRedemption } = await import('@/lib/postgres-coupons');
+    await pgReverseOrderRedeemedCashback(tx, order.id, options?.notes || 'استلام البضاعة في المستودع بعد تعذر التوصيل');
+    await pgReleaseOrderCouponRedemption(tx, order.id, operator);
+
+    // 3. Update Order to Terminal State and Disassociate Driver Custody
+    const previousDriverId = order.driverId;
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        status: 'cancelled',
+        deliverySubState: 'warehouse_received',
+        inventoryRestored: true,
+        driverId: null,
+        vehicleId: null,
+        remainingDebtAmount: '0.00',
+        deliveryPinEncrypted: null,
+        driverNotes: options?.notes ? (order.driverNotes ? `${order.driverNotes} | [المستودع: ${options.notes}]` : `[المستودع: ${options.notes}]`) : order.driverNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    // 4. Audit Log
+    await tx.insert(auditLogs).values({
+      actionType: 'warehouse_return_received',
+      actionLabel: 'استلام البضاعة المرجعة في المستودع واسترجاع المخزون',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والمبيعات',
+      staffId,
+      operatorSnapshot: operator || null,
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      financialImpact: {
+        cancelledTotal: toNumber(order.total),
+      },
+      details: `تم فحص واستلام البضاعة المرجعة للطلبية ${order.orderNumber} في المستودع وفك عهدة السائق (${previousDriverId || 'غير محدد'}) واسترجاع المخزون رسمياً. ملاحظات: ${options?.notes || 'لا يوجد'}`,
+      severity: 'info',
+    });
+
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    const [acc] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, order.accountId)).limit(1);
+    return formatOrderRecord(updatedOrder, items, undefined, undefined, acc);
+  };
+
+  if (options?.tx) {
+    return await executeCheckIn(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeCheckIn);
   }
 }

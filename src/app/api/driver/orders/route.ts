@@ -257,7 +257,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         order,
-        message: 'تم تسجيل إرجاع الطلبية للمستودع واسترجاع المخزون بنجاح 📦',
+        message: 'تم تسجيل طلب إرجاع الطلبية للمستودع بنجاح. يرجى تسليم البضاعة لأمين المستودع لإتمام الاستلام 📦',
       });
     }
 
