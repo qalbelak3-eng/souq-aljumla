@@ -157,7 +157,6 @@ export async function pgGetDriverCustody(driverId: string): Promise<DriverCustod
       and(
         eq(orders.driverId, driverId),
         ne(orders.status, 'cancelled'),
-        ne(orders.collectionStatus, 'returned'),
         gt(orders.collectedAmount, '0.00')
       )
     )
@@ -282,7 +281,6 @@ export async function pgGetAllDriversCustodySummary(): Promise<DriverCustodySumm
     .where(
       and(
         ne(orders.status, 'cancelled'),
-        ne(orders.collectionStatus, 'returned'),
         gt(orders.collectedAmount, '0.00')
       )
     );
@@ -392,7 +390,6 @@ export async function pgCreateDriverSettlement(
         and(
           eq(orders.driverId, driverId),
           ne(orders.status, 'cancelled'),
-          ne(orders.collectionStatus, 'returned'),
           gt(orders.collectedAmount, orders.settledAmount)
         )
       )
@@ -407,7 +404,6 @@ export async function pgCreateDriverSettlement(
         and(
           eq(orders.driverId, driverId),
           ne(orders.status, 'cancelled'),
-          ne(orders.collectionStatus, 'returned'),
           gt(orders.collectedAmount, '0.00')
         )
       );

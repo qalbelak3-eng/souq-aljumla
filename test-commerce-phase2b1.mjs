@@ -73,6 +73,7 @@ async function startDatabase() {
     'drizzle/0015_coupon_redemption_idempotency.sql',
     'drizzle/0016_order_idempotency_cashback_integrity.sql',
     'drizzle/0017_order_lifecycle_reversals.sql',
+    'drizzle/0018_commerce_phase2c4b_hardening.sql',
   ];
 
   for (const m of migrations) {
@@ -768,9 +769,9 @@ async function runCommercePhase2b1Tests() {
 
   const [goldAccount] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier, city, address
+      account_code, name, phone, category, pricing_tier, merchant_status, merchant_tier, city, address
     ) VALUES (
-      'ACC-GOLD-MERCHANT', 'تاجر ذهبي معتمد', '07704444444', 'customer', 'wholesale', 'كربلاء', 'سوق الجملة'
+      'ACC-GOLD-MERCHANT', 'تاجر ذهبي معتمد', '07704444444', 'customer', 'wholesale', 'approved', 'gold', 'كربلاء', 'سوق الجملة'
     ) RETURNING *;
   `;
 

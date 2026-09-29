@@ -24,7 +24,7 @@ export const inventoryMovements = pgTable('inventory_movements', {
   index('idx_inventory_product_id').on(table.productId),
   index('idx_inventory_reference').on(table.referenceType, table.referenceId),
   index('idx_inventory_created_at').on(table.createdAt),
-  check('chk_inventory_movement_type', sql`${table.movementType} IN ('purchase', 'sale', 'customer_return', 'order_cancellation', 'damage_spoilage', 'manual_adjustment')`),
+  check('chk_inventory_movement_type', sql`${table.movementType} IN ('purchase', 'purchase_reversal', 'sale', 'customer_return', 'order_cancellation', 'damage_spoilage', 'manual_adjustment')`),
   check('chk_inventory_reference_type', sql`${table.referenceType} IN ('order', 'purchase_invoice', 'manual')`),
   check('chk_inventory_reference_consistency', sql`(${table.referenceType} IN ('order', 'purchase_invoice') AND ${table.referenceId} IS NOT NULL) OR (${table.referenceType} = 'manual')`),
 ]);

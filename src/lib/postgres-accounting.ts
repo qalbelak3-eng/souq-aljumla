@@ -897,7 +897,12 @@ export async function pgGetAccountSummaries() {
       const purchases = await db
         .select()
         .from(purchaseInvoices)
-        .where(eq(purchaseInvoices.supplierAccountId, account.id));
+        .where(
+          and(
+            eq(purchaseInvoices.supplierAccountId, account.id),
+            sql`${purchaseInvoices.status} <> 'cancelled'`,
+          ),
+        );
 
       for (const invoice of purchases) {
         totalInvoiced += toNumber(invoice.totalAmount);
@@ -927,6 +932,12 @@ export async function pgGetAccountSummaries() {
         totalInvoiced += toNumber(order.total);
         totalPaid += toNumber(order.collectedAmount);
         ordersCount += 1;
+
+        if (order.status === 'returned' || order.collectionStatus === 'returned') {
+          // Explicit return reversal: cancels net financial impact of the order on customer debt
+          totalInvoiced -= toNumber(order.total);
+          totalPaid -= toNumber(order.collectedAmount);
+        }
 
         if (
           new Date(order.createdAt).getTime() >
@@ -1033,7 +1044,7 @@ export async function pgGetCustomerStatement(
   const allTransactions: Array<{
     id: string;
     date: Date | string;
-    type: 'opening' | 'invoice' | 'payment';
+    type: 'opening' | 'invoice' | 'payment' | 'return';
     description: string;
     reference?: string;
     debit: number;
@@ -1064,7 +1075,12 @@ export async function pgGetCustomerStatement(
     const purchases = await db
       .select()
       .from(purchaseInvoices)
-      .where(eq(purchaseInvoices.supplierAccountId, account.id));
+      .where(
+        and(
+          eq(purchaseInvoices.supplierAccountId, account.id),
+          sql`${purchaseInvoices.status} <> 'cancelled'`,
+        ),
+      );
 
     for (const invoice of purchases) {
       const total = toNumber(invoice.totalAmount);
@@ -1103,6 +1119,21 @@ export async function pgGetCustomerStatement(
         credit: toNumber(order.collectedAmount),
         balance: 0,
       });
+
+      if (order.status === 'returned' || order.collectionStatus === 'returned') {
+        const orderTotal = toNumber(order.total);
+        const collected = toNumber(order.collectedAmount);
+        allTransactions.push({
+          id: `${order.id}-return`,
+          date: order.updatedAt || order.createdAt,
+          type: 'return',
+          description: `إرجاع طلبية ${order.orderNumber}`,
+          reference: `RET-${order.orderNumber}`,
+          debit: collected,
+          credit: orderTotal,
+          balance: 0,
+        });
+      }
     }
   }
 

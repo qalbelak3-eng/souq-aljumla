@@ -65,6 +65,8 @@ export const orders = pgTable('orders', {
   settlementId: uuid('settlement_id')
     .references(() => driverSettlements.id, { onDelete: 'set null' }),
   inventoryRestored: boolean('inventory_restored').default(false).notNull(),
+  refundedAmount: numeric('refunded_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  refundStatus: varchar('refund_status', { length: 30 }).default('none').notNull(), // 'none' | 'pending' | 'refunded'
 
   // Delivery PIN Proof & Verification
   deliveryPinHash: varchar('delivery_pin_hash', { length: 255 }),
@@ -104,6 +106,8 @@ export const orders = pgTable('orders', {
   check('chk_order_settled_amount_non_negative', sql`${table.settledAmount} >= 0`),
   check('chk_order_delivery_proof_method', sql`${table.deliveryProofMethod} IS NULL OR ${table.deliveryProofMethod} IN ('customer_pin', 'admin_override')`),
   check('chk_order_delivery_pin_attempts_non_negative', sql`${table.deliveryPinAttempts} >= 0`),
+  check('chk_order_refund_status', sql`${table.refundStatus} IN ('none', 'pending', 'refunded')`),
+  check('chk_order_refunded_amount', sql`${table.refundedAmount} >= 0`),
 ]);
 
 export const orderItems = pgTable('order_items', {

@@ -2,6 +2,7 @@ import { pgTable, uuid, varchar, numeric, integer, date, timestamp, text, index,
 import { sql } from 'drizzle-orm';
 import { financialAccounts } from './accounts';
 import { companies, products } from './catalog';
+import { staffProfiles } from './auth';
 
 export const purchaseInvoices = pgTable('purchase_invoices', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -17,14 +18,21 @@ export const purchaseInvoices = pgTable('purchase_invoices', {
   paymentMethod: varchar('payment_method', { length: 20 }).notNull(), // 'cash' | 'credit' | 'partial'
   paidAmount: numeric('paid_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   remainingAmount: numeric('remaining_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(), // 'active' | 'cancelled'
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelledByStaffId: uuid('cancelled_by_staff_id')
+    .references(() => staffProfiles.id, { onDelete: 'set null' }),
+  cancellationReason: text('cancellation_reason'),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_purchase_supplier_id').on(table.supplierAccountId),
   index('idx_purchase_invoice_number').on(table.invoiceNumber),
   index('idx_purchase_date').on(table.invoiceDate),
+  index('idx_purchase_invoices_status').on(table.status),
   check('chk_purchase_total_non_negative', sql`${table.totalAmount} >= 0`),
   check('chk_purchase_payment_method', sql`${table.paymentMethod} IN ('cash', 'credit', 'partial')`),
+  check('chk_purchase_invoice_status', sql`${table.status} IN ('active', 'cancelled')`),
 ]);
 
 export const purchaseInvoiceItems = pgTable('purchase_invoice_items', {

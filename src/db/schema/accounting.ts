@@ -104,3 +104,33 @@ export const cashbackLedger = pgTable('cashback_ledger', {
   check('chk_cashback_type', sql`${table.type} IN ('earned', 'redeemed', 'reversed', 'expired', 'adjustment', 'clawback')`),
   check('chk_cashback_amount_positive', sql`${table.amount} > 0`),
 ]);
+
+export const orderRefunds = pgTable('order_refunds', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  refundNumber: varchar('refund_number', { length: 50 }).notNull().unique(),
+  orderId: uuid('order_id')
+    .notNull()
+    .references(() => orders.id, { onDelete: 'restrict' }),
+  accountId: uuid('account_id')
+    .notNull()
+    .references(() => financialAccounts.id, { onDelete: 'restrict' }),
+  amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+  method: varchar('method', { length: 30 }).default('cash').notNull(), // 'cash' | 'store_credit' | 'electronic' | 'bank_transfer' | 'other'
+  status: varchar('status', { length: 20 }).default('completed').notNull(), // 'pending' | 'completed' | 'cancelled'
+  reason: text('reason'),
+  processedByStaffId: uuid('processed_by_staff_id')
+    .references(() => staffProfiles.id, { onDelete: 'set null' }),
+  voucherId: uuid('voucher_id')
+    .references(() => vouchers.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_order_refunds_account_id').on(table.accountId),
+  index('idx_order_refunds_order_id').on(table.orderId),
+  uniqueIndex('uq_order_refunds_order_id')
+    .on(table.orderId)
+    .where(sql`${table.status} != 'cancelled'`),
+  check('chk_refund_amount_positive', sql`${table.amount} > 0`),
+  check('chk_refund_status', sql`${table.status} IN ('pending', 'completed', 'cancelled')`),
+  check('chk_refund_method', sql`${table.method} IN ('cash', 'store_credit', 'electronic', 'bank_transfer', 'other')`),
+]);

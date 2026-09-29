@@ -13,6 +13,7 @@ import {
   drivers,
   vehicles,
   coupons,
+  orderRefunds,
 } from '@/db/schema';
 import { Order, OrderItem, CustomerInfo, OrderStatus, PaymentMethod, DeliveryCollectionStatus, MerchantTier } from '@/types';
 import { decryptPin, generateOrderPinData } from '@/lib/delivery-pin';
@@ -196,10 +197,17 @@ export async function pgResolveCustomerIdentity(
 
   if (!account) return null;
 
+  const isApproved = account.merchantStatus === 'approved' && account.isActive && !account.archivedAt;
+  // If customer is pending/rejected or not approved merchant, do NOT grant wholesale/market discount tier
+  const effectivePricingTier = isApproved
+    ? account.pricingTier
+    : (account.pricingTier === 'market' || account.pricingTier === 'wholesale' ? 'retail' : account.pricingTier);
+  const effectiveMerchantTier = isApproved ? (account.merchantTier || undefined) : undefined;
+
   const pricingIdentity = normalizePricingIdentity({
-    pricingTier: account.pricingTier,
+    pricingTier: effectivePricingTier,
     accountType: account.category === 'customer' ? undefined : account.category,
-    merchantTier,
+    merchantTier: effectiveMerchantTier,
   });
 
   return {
@@ -208,11 +216,11 @@ export async function pgResolveCustomerIdentity(
     name: account.name,
     businessName: account.businessName || undefined,
     phone: account.phone || '',
-    role: 'customer',
+    role: pricingIdentity.accountType === 'wholesale' ? 'merchant' : 'customer',
     accountType: pricingIdentity.accountType,
-    pricingTier: account.pricingTier,
+    pricingTier: effectivePricingTier,
     merchantTier: pricingIdentity.merchantTier,
-    merchantStatus: account.isActive && !account.archivedAt ? 'approved' : 'pending',
+    merchantStatus: (account.merchantStatus as string) || (account.isActive && !account.archivedAt ? 'approved' : 'none'),
     fixedDiscountPercent: Number(account.fixedDiscountPercent || 0),
     city: account.city || undefined,
     address: account.address || undefined,
@@ -316,6 +324,8 @@ export function formatOrderRecord(
     driverCashSettled: Boolean(orderRow.driverCashSettled),
     settlementId: orderRow.settlementId ? String(orderRow.settlementId) : undefined,
     inventoryRestored: Boolean(orderRow.inventoryRestored),
+    refundedAmount: toNumber(orderRow.refundedAmount),
+    refundStatus: (orderRow.refundStatus || 'none') as 'none' | 'pending' | 'refunded',
     deliveryProofMethod: orderRow.deliveryProofMethod || undefined,
     deliveryVerifiedAt: orderRow.deliveryVerifiedAt ? new Date(orderRow.deliveryVerifiedAt).toISOString() : undefined,
     deliveryOverrideReason: orderRow.deliveryOverrideReason || undefined,
@@ -1444,17 +1454,23 @@ export async function pgReturnOrder(
     const clawbackResult = await pgClawbackOrderDeliveredCashback(tx, order.id, options?.reason);
 
     // 3. Update Order State to 'returned'
+    const returnUpdates: any = {
+      status: 'returned',
+      collectionStatus: 'returned',
+      inventoryRestored: true,
+      driverNotes: options?.reason
+        ? (order.driverNotes ? `${order.driverNotes} | [مرتجع]: ${options.reason}` : `[مرتجع]: ${options.reason}`)
+        : order.driverNotes,
+      updatedAt: new Date(),
+    };
+
+    if (toNumber(order.collectedAmount) > 0 && (!order.refundStatus || order.refundStatus === 'none')) {
+      returnUpdates.refundStatus = 'pending';
+    }
+
     const [updatedOrder] = await tx
       .update(orders)
-      .set({
-        status: 'returned',
-        collectionStatus: 'returned',
-        inventoryRestored: true,
-        driverNotes: options?.reason
-          ? (order.driverNotes ? `${order.driverNotes} | [مرتجع]: ${options.reason}` : `[مرتجع]: ${options.reason}`)
-          : order.driverNotes,
-        updatedAt: new Date(),
-      })
+      .set(returnUpdates)
       .where(eq(orders.id, order.id))
       .returning();
 
@@ -1503,13 +1519,169 @@ export async function pgReturnOrder(
 }
 
 /* =========================================================
+   7. pgRefundOrder (Commerce-2C4B Customer Refund Hardening)
+   ========================================================= */
+export async function pgRefundOrder(
+  idOrOrderNumber: string,
+  data?: {
+    amount?: number;
+    method?: 'cash' | 'store_credit' | 'electronic' | 'bank_transfer' | 'other';
+    reason?: string;
+    notes?: string;
+  },
+  options?: {
+    operator?: PgOperator;
+    tx?: any;
+  }
+): Promise<{ order: Order; refund: any }> {
+  const trimmed = String(idOrOrderNumber || '').trim();
+  if (!trimmed) throw new Error('معرف الطلب أو رقمه مطلوب للاسترداد');
+
+  const executeRefund = async (tx: any) => {
+    const conditions = [eq(orders.orderNumber, trimmed)];
+    if (isUuid(trimmed)) {
+      conditions.push(eq(orders.id, trimmed));
+    }
+
+    const orderRows = await tx
+      .select()
+      .from(orders)
+      .where(or(...conditions))
+      .for('update');
+
+    if (orderRows.length === 0) {
+      throw new Error(`لم يتم العثور على الطلب: ${trimmed}`);
+    }
+
+    const order = orderRows[0];
+
+    // Validate that order is returned
+    if (order.status !== 'returned' && order.collectionStatus !== 'returned') {
+      throw new Error(`لا يمكن استرداد أموال طلبية إلا إذا كانت مرتجعة (returned). الحالة الحالية: ${order.status}`);
+    }
+
+    // Check if already refunded
+    if (order.refundStatus === 'refunded') {
+      throw new Error(`تم استرداد مبالغ هذه الطلبية مسبقاً (refunded). الطلبية: ${order.orderNumber}`);
+    }
+
+    const collected = toNumber(order.collectedAmount);
+    if (collected <= 0) {
+      throw new Error(`لا توجد مبالغ محصلة في هذه الطلبية للاسترداد. المبلغ المحصل: ${collected}`);
+    }
+
+    const refundAmount = data?.amount !== undefined ? Math.max(0, toNumber(data.amount)) : collected;
+    if (refundAmount <= 0) {
+      throw new Error('مبلغ الاسترداد يجب أن يكون أكبر من الصفر');
+    }
+    if (refundAmount > collected) {
+      throw new Error(`مبلغ الاسترداد (${refundAmount.toLocaleString()}) لا يمكن أن يتجاوز المبلغ المحصل (${collected.toLocaleString()})`);
+    }
+
+    // Generate refund number from refund_seq
+    const seqResult = await tx.execute(sql`SELECT nextval('refund_seq') AS nextval`);
+    const nextSeq = seqResult[0]?.nextval || Math.floor(1000 + Math.random() * 9000);
+    const refundNumber = `REF-${nextSeq}`;
+
+    const staffId = await resolveStaffId(tx, options?.operator);
+    const method = data?.method || 'cash';
+
+    const [refundRecord] = await tx
+      .insert(orderRefunds)
+      .values({
+        refundNumber,
+        orderId: order.id,
+        accountId: order.accountId,
+        amount: String(refundAmount.toFixed(2)),
+        method,
+        status: 'completed',
+        reason: data?.reason || 'استرداد قيمة طلبية مرتجعة',
+        processedByStaffId: staffId,
+        notes: data?.notes || null,
+      })
+      .returning();
+
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        refundedAmount: String(refundAmount.toFixed(2)),
+        refundStatus: 'refunded',
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id))
+      .returning();
+
+    await tx.insert(auditLogs).values({
+      actionType: 'order_refunded',
+      actionLabel: 'استرداد مالي للعميل عن طلبية مرتجعة',
+      category: 'commerce',
+      categoryLabel: 'الطلبات والمبيعات',
+      staffId,
+      operatorSnapshot: options?.operator || null,
+      targetType: 'order',
+      targetId: order.id,
+      targetReferenceNumber: order.orderNumber,
+      financialImpact: {
+        refundAmount,
+        refundNumber,
+        method,
+      },
+      details: `تم صرف استرداد مالي بقيمة ${refundAmount.toLocaleString()} د.ع للطلبية ${order.orderNumber} عبر ${method} برقم مستند ${refundNumber}`,
+      severity: 'info',
+    });
+
+    const items = await tx
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id));
+
+    const [account] = await tx
+      .select()
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, order.accountId))
+      .limit(1);
+
+    return {
+      order: formatOrderRecord(updatedOrder, items, undefined, undefined, account),
+      refund: {
+        id: String(refundRecord.id),
+        refundNumber: String(refundRecord.refundNumber),
+        orderId: String(refundRecord.orderId),
+        accountId: String(refundRecord.accountId),
+        amount: toNumber(refundRecord.amount),
+        method: refundRecord.method,
+        status: refundRecord.status,
+        reason: refundRecord.reason || undefined,
+        notes: refundRecord.notes || undefined,
+        createdAt: new Date(refundRecord.createdAt).toISOString(),
+      },
+    };
+  };
+
+  if (options?.tx) {
+    return await executeRefund(options.tx);
+  } else {
+    const db = getDb();
+    return await db.transaction(executeRefund);
+  }
+}
+
+/* =========================================================
    5. pgUpdateOrderStatus (Strict Server-Side State Machine)
    ========================================================= */
 
 export async function pgUpdateOrderStatus(
   idOrOrderNumber: string,
   newStatus: OrderStatus,
-  options?: { driverNotes?: string; cancellationReason?: string; operator?: PgOperator; tx?: any }
+  options?: {
+    driverNotes?: string;
+    cancellationReason?: string;
+    operator?: PgOperator;
+    tx?: any;
+    driverId?: string;
+    collectedAmount?: number;
+    skipPinVerification?: boolean;
+  }
 ): Promise<Order> {
   const trimmed = String(idOrOrderNumber || '').trim();
   if (!trimmed) throw new Error('معرف الطلب مطلوب');
@@ -1576,13 +1748,39 @@ export async function pgUpdateOrderStatus(
 
     const staffId = await resolveStaffId(tx, options?.operator);
 
+    const updatePayload: any = {
+      status: newStatus,
+      driverNotes: options?.driverNotes || undefined,
+      updatedAt: new Date(),
+    };
+
+    if (options?.driverId) {
+      updatePayload.driverId = options.driverId;
+      if (!current.driverAssignedAt) {
+        updatePayload.driverAssignedAt = new Date();
+      }
+    }
+
+    if (newStatus === 'shipped') {
+      if (!current.outForDeliveryAt) {
+        updatePayload.outForDeliveryAt = new Date();
+      }
+    }
+
+    if (newStatus === 'delivered') {
+      updatePayload.deliveredAt = new Date();
+      if (options?.collectedAmount !== undefined) {
+        const amt = Math.max(0, toNumber(options.collectedAmount));
+        updatePayload.collectedAmount = String(amt.toFixed(2));
+        updatePayload.collectionStatus = amt > 0 ? 'collected' : 'uncollected';
+        const total = toNumber(current.total);
+        updatePayload.remainingDebtAmount = String(Math.max(0, total - amt).toFixed(2));
+      }
+    }
+
     const [updatedOrder] = await tx
       .update(orders)
-      .set({
-        status: newStatus,
-        driverNotes: options?.driverNotes || undefined,
-        updatedAt: new Date(),
-      })
+      .set(updatePayload)
       .where(eq(orders.id, current.id))
       .returning();
 

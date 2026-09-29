@@ -500,7 +500,6 @@ export async function pgGetDrivers(filters?: { isActive?: boolean }): Promise<Dr
 
     if (
       o.status !== 'cancelled' &&
-      o.collectionStatus !== 'returned' &&
       Number(o.collectedAmount) > 0
     ) {
       curr.collectedCash += Number(o.collectedAmount) || 0;
@@ -605,7 +604,6 @@ export async function pgGetDriverById(id: string): Promise<DriverWithStats | nul
 
     if (
       o.status !== 'cancelled' &&
-      o.collectionStatus !== 'returned' &&
       Number(o.collectedAmount) > 0
     ) {
       totalCollected += Number(o.collectedAmount) || 0;

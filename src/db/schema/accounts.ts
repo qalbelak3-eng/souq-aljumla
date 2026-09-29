@@ -16,6 +16,10 @@ export const financialAccounts = pgTable('financial_accounts', {
   authIdentityId: uuid('auth_identity_id')
     .unique()
     .references(() => authIdentities.id, { onDelete: 'set null' }),
+  merchantStatus: varchar('merchant_status', { length: 20 }).default('none').notNull(), // 'none' | 'pending' | 'approved' | 'rejected'
+  merchantTier: varchar('merchant_tier', { length: 20 }), // 'bronze' | 'silver' | 'gold'
+  businessType: varchar('business_type', { length: 150 }),
+  storefrontImage: text('storefront_image'),
   isActive: boolean('is_active').default(true).notNull(),
   archivedAt: timestamp('archived_at', { withTimezone: true }), // For safe account deactivation without deleting history (DB-2A Item 7)
   notes: text('notes'),
@@ -24,10 +28,14 @@ export const financialAccounts = pgTable('financial_accounts', {
   index('idx_accounts_code').on(table.accountCode),
   index('idx_accounts_category').on(table.category),
   index('idx_accounts_phone').on(table.phone),
+  index('idx_accounts_merchant_status').on(table.merchantStatus),
+  index('idx_accounts_merchant_tier').on(table.merchantTier),
   // Partial unique index: phone must be unique only when not null (DB-2A Item 4)
   uniqueIndex('uq_accounts_phone_non_null').on(table.phone).where(sql`${table.phone} IS NOT NULL`),
   check('chk_account_category', sql`${table.category} IN ('customer', 'supplier', 'driver', 'employee')`),
   check('chk_account_pricing_tier', sql`${table.pricingTier} IN ('retail', 'market', 'wholesale', 'special', 'general')`),
+  check('chk_account_merchant_status', sql`${table.merchantStatus} IN ('none', 'pending', 'approved', 'rejected')`),
+  check('chk_account_merchant_tier', sql`${table.merchantTier} IS NULL OR ${table.merchantTier} IN ('bronze', 'silver', 'gold')`),
   check('chk_account_discount', sql`${table.fixedDiscountPercent} >= 0 AND ${table.fixedDiscountPercent} <= 100`),
 ]);
 

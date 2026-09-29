@@ -378,8 +378,27 @@ export interface Order {
   deliveryVerifiedAt?: string; // وقت التحقق من الرمز أو إجراء التجاوز الإداري
   deliveryOverrideReason?: string; // سبب تجاوز الإدارة للرمز
 
+  // Customer Refund Tracking (Commerce-2C4B)
+  refundedAmount?: number;
+  refundStatus?: 'none' | 'pending' | 'refunded';
+
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderRefund {
+  id: string;
+  refundNumber: string;
+  orderId: string;
+  accountId: string;
+  amount: number;
+  method: 'cash' | 'store_credit' | 'electronic' | 'bank_transfer' | 'other';
+  status: 'pending' | 'completed' | 'cancelled';
+  reason?: string;
+  processedByStaffId?: string;
+  voucherId?: string;
+  notes?: string;
+  createdAt: string;
 }
 
 export type UserRole = 'customer' | 'merchant' | 'admin' | 'driver';
@@ -851,6 +870,11 @@ export interface PurchaseInvoice {
   paymentMethod: 'cash' | 'credit' | 'partial'; // نقداً (واصل) أو آجل (دين) أو دفع جزئي
   paidAmount?: number; // المبلغ المدفوع / الواصل نقد
   remainingAmount?: number; // المبلغ المتبقي كدين
+  status?: 'active' | 'cancelled';
+  cancelledAt?: string;
+  cancelledByStaffId?: string;
+  cancellationReason?: string;
+  supplierAccountId?: string;
   notes?: string;
   createdAt: string;
 }
