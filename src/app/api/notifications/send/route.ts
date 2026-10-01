@@ -2,9 +2,27 @@ import { NextResponse } from 'next/server';
 import { sendWebPushNotification } from '@/lib/pushService';
 import { getPushNotificationLogs, deletePushNotificationLog, clearAllPushNotificationLogs } from '@/lib/db';
 import { getAuthenticatedAdmin } from '@/lib/auth';
+import type { NotificationTargetAudience } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const VALID_TARGET_AUDIENCES: readonly NotificationTargetAudience[] = [
+  'all',
+  'wholesale',
+  'market',
+  'retail',
+  'registered_no_orders',
+  'inactive_30d',
+  'few_orders',
+  'active_vip',
+];
+
+function parseTargetAudience(value: unknown): NotificationTargetAudience {
+  return typeof value === 'string' && VALID_TARGET_AUDIENCES.includes(value as NotificationTargetAudience)
+    ? (value as NotificationTargetAudience)
+    : 'all';
+}
 
 function requireMasterAdmin(request: Request) {
   const admin = getAuthenticatedAdmin(request);
@@ -49,7 +67,7 @@ export async function POST(request: Request) {
       body: finalBody,
       image: typeof image === 'string' && image.trim() ? image.trim() : undefined,
       url: typeof url === 'string' && url.trim() ? url.trim() : '/',
-      targetAudience: typeof targetAudience === 'string' ? targetAudience : 'all',
+      targetAudience: parseTargetAudience(targetAudience),
       sentBy: auth.admin!.name,
       expiryHours: typeof expiryHours === 'number' && Number.isFinite(expiryHours)
         ? Math.min(Math.max(expiryHours, 0), 168)
