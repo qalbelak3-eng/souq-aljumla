@@ -1,13 +1,13 @@
-import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { authIdentities, staffProfiles } from './auth';
 import { financialAccounts } from './accounts';
 
 export const vehicles = pgTable('vehicles', {
   id: uuid('id').defaultRandom().primaryKey(),
-  name: varchar('name', { length: 100 }).notNull(), // e.g. "كيا حمل أبيض 2022"
+  name: varchar('name', { length: 100 }).notNull(),
   plateNumber: varchar('plate_number', { length: 50 }).notNull().unique(),
-  type: varchar('type', { length: 50 }).notNull(), // "كيا حمل" | "بيك آب" | "ستوتة" | "دراجة" | "أخرى"
+  type: varchar('type', { length: 50 }).notNull(),
   modelYear: varchar('model_year', { length: 10 }),
   isActive: boolean('is_active').default(true).notNull(),
   notes: text('notes'),
@@ -16,16 +16,9 @@ export const vehicles = pgTable('vehicles', {
 
 export const drivers = pgTable('drivers', {
   id: uuid('id').defaultRandom().primaryKey(),
-  authIdentityId: uuid('auth_identity_id')
-    .notNull()
-    .unique()
-    .references(() => authIdentities.id, { onDelete: 'restrict' }),
-  financialAccountId: uuid('financial_account_id')
-    .notNull()
-    .unique()
-    .references(() => financialAccounts.id, { onDelete: 'restrict' }),
-  defaultVehicleId: uuid('default_vehicle_id')
-    .references(() => vehicles.id, { onDelete: 'set null' }),
+  authIdentityId: uuid('auth_identity_id').notNull().unique().references(() => authIdentities.id, { onDelete: 'restrict' }),
+  financialAccountId: uuid('financial_account_id').notNull().unique().references(() => financialAccounts.id, { onDelete: 'restrict' }),
+  defaultVehicleId: uuid('default_vehicle_id').references(() => vehicles.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 150 }).notNull(),
   phone: varchar('phone', { length: 20 }).notNull().unique(),
   operationalStatus: varchar('operational_status', { length: 20 }).default('available').notNull(),
@@ -37,36 +30,44 @@ export const drivers = pgTable('drivers', {
   check('chk_driver_operational_status', sql`operational_status IN ('available', 'busy', 'break', 'off_duty')`),
 ]);
 
+export const driverRatings = pgTable('driver_ratings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'restrict' }),
+  orderId: uuid('order_id').notNull(),
+  orderNumber: varchar('order_number', { length: 50 }).notNull(),
+  customerAuthIdentityId: uuid('customer_auth_identity_id').notNull().references(() => authIdentities.id, { onDelete: 'restrict' }),
+  customerName: varchar('customer_name', { length: 150 }).notNull(),
+  customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
+  rating: numeric('rating', { precision: 2, scale: 1 }).notNull(),
+  tag: varchar('tag', { length: 100 }),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('uq_driver_ratings_order_customer').on(table.orderId, table.customerAuthIdentityId),
+  index('idx_driver_ratings_driver_id').on(table.driverId),
+  index('idx_driver_ratings_order_id').on(table.orderId),
+  check('chk_driver_rating_range', sql`${table.rating} >= 1 AND ${table.rating} <= 5`),
+]);
+
 export const driverSettlements = pgTable('driver_settlements', {
   id: uuid('id').defaultRandom().primaryKey(),
   settlementNumber: varchar('settlement_number', { length: 50 }).notNull().unique(),
-  driverId: uuid('driver_id')
-    .notNull()
-    .references(() => drivers.id, { onDelete: 'restrict' }),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'restrict' }),
   expectedAmount: numeric('expected_amount', { precision: 14, scale: 2 }).notNull(),
   actualAmount: numeric('actual_amount', { precision: 14, scale: 2 }).notNull(),
-  variance: numeric('variance', { precision: 14, scale: 2 }).notNull(), // actualAmount - expectedAmount
+  variance: numeric('variance', { precision: 14, scale: 2 }).notNull(),
   shortageAmount: numeric('shortage_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
   overageAmount: numeric('overage_amount', { precision: 14, scale: 2 }).default('0.00').notNull(),
-  type: varchar('type', { length: 30 }).notNull(), // 'normal' | 'shortage' | 'overage' | 'shortage_repayment' | 'reversal'
-  status: varchar('status', { length: 20 }).default('settled').notNull(), // 'settled' | 'partial' | 'pending' | 'reversed'
-  staffId: uuid('staff_id')
-    .notNull()
-    .references(() => staffProfiles.id, { onDelete: 'restrict' }),
-  repaymentOfId: uuid('repayment_of_id')
-    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
-  
-  // Reversal tracking fields
+  type: varchar('type', { length: 30 }).notNull(),
+  status: varchar('status', { length: 20 }).default('settled').notNull(),
+  staffId: uuid('staff_id').notNull().references(() => staffProfiles.id, { onDelete: 'restrict' }),
+  repaymentOfId: uuid('repayment_of_id').references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
   isReversed: boolean('is_reversed').default(false).notNull(),
-  reversalSettlementId: uuid('reversal_settlement_id')
-    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
-  reversalOfId: uuid('reversal_of_id')
-    .references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
+  reversalSettlementId: uuid('reversal_settlement_id').references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
+  reversalOfId: uuid('reversal_of_id').references((): AnyPgColumn => driverSettlements.id, { onDelete: 'restrict' }),
   reversalReason: text('reversal_reason'),
   reversedAt: timestamp('reversed_at', { withTimezone: true }),
-  reversedByStaffId: uuid('reversed_by_staff_id')
-    .references(() => staffProfiles.id, { onDelete: 'set null' }),
-
+  reversedByStaffId: uuid('reversed_by_staff_id').references(() => staffProfiles.id, { onDelete: 'set null' }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
