@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedAdmin } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
+import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
 import {
   getPostgresClient,
   isDatabaseConfigured,
@@ -9,9 +10,7 @@ import {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// The required total number of migrations in drizzle/meta/_journal.json (0000 -> 0005)
 const REQUIRED_MIGRATION_COUNT = 6;
-// The timestamp 'when' of migration 0005_audit_hardening_triggers
 const EXPECTED_LATEST_MIGRATION_TIMESTAMP = '1789999000000';
 const EXPECTED_LATEST_MIGRATION_TAG = '0005_audit_hardening_triggers';
 
@@ -22,40 +21,31 @@ interface CheckItem {
   error?: string;
 }
 
-/**
- * Sanitizes any raw database error message to prevent leaking hostnames,
- * IPs, database names, usernames, or passwords.
- */
-function sanitizeErrorMessage(rawMessage?: string): string {
-  if (!rawMessage) return 'Unknown database error occurred';
-  return rawMessage
-    .replace(/(password|passwd|pwd)=[^&;\s]+/gi, 'password=******')
-    .replace(/postgresql:\/\/[^@]+@/gi, 'postgresql://******@')
-    .replace(/password: '[^']+'/gi, "password: '******'")
-    .replace(/host: '[^']+'/gi, "host: '******'");
+async function requireMasterAdmin(req: NextRequest) {
+  const session = getSessionFromRequest(req);
+  if (!session) return null;
+
+  const staff = await pgGetActiveStaffForSession({
+    userId: session.userId,
+    username: session.username,
+  });
+  if (!staff) return null;
+
+  const isAuthorized = session.role === 'admin' || (staff.permissions || []).includes('*');
+  return { session, staff, forbidden: !isAuthorized };
 }
 
 export async function GET(req: NextRequest) {
-  // 1. Strict Server-Side Authentication Guard (NO secret-key or header bypass)
-  const admin = getAuthenticatedAdmin(req);
-  if (!admin) {
+  const access = await requireMasterAdmin(req);
+  if (!access) {
     return NextResponse.json(
-      {
-        success: false,
-        error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)',
-      },
+      { success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' },
       { status: 401 }
     );
   }
-
-  // Only Master Admin or accounts with full administrative permission '*' can access database diagnostics
-  const isAuthorizedAdmin = admin.role === 'admin' || (admin.permissions && admin.permissions.includes('*'));
-  if (!isAuthorizedAdmin) {
+  if (access.forbidden) {
     return NextResponse.json(
-      {
-        success: false,
-        error: 'هذه العملية محصورة بصلاحيات المدير العام فقط (Master Admin)',
-      },
+      { success: false, error: 'هذه العملية محصورة بصلاحيات المدير العام فقط (Master Admin)' },
       { status: 403 }
     );
   }
@@ -64,7 +54,6 @@ export async function GET(req: NextRequest) {
   const checks: Record<string, CheckItem> = {};
   const timestamp = new Date().toISOString();
 
-  // 2. Configuration verification
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       {
@@ -81,8 +70,8 @@ export async function GET(req: NextRequest) {
   let sqlClient;
   try {
     sqlClient = getPostgresClient();
-  } catch (err: any) {
-    console.error('[DB-HEALTH] Database connection initialization error:', err?.message);
+  } catch (err) {
+    console.error('[DB-HEALTH] Database connection initialization error:', err);
     return NextResponse.json(
       {
         success: false,
@@ -96,7 +85,6 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 3. Connectivity & Ping Check (SELECT 1)
     const pingStart = Date.now();
     const pingResult = await sqlClient`SELECT 1 as ping, version(), current_database() as database;`;
     const pingLatencyMs = Date.now() - pingStart;
@@ -111,7 +99,6 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    // 4. Core Tables Existence Check
     const requiredTables = [
       'vouchers',
       'orders',
@@ -136,14 +123,9 @@ export async function GET(req: NextRequest) {
     checks.coreTables = {
       name: 'Core Database Tables',
       passed: missingTables.length === 0,
-      details: {
-        totalFound: existingTableSet.size,
-        missingRequired: missingTables,
-      },
+      details: { totalFound: existingTableSet.size, missingRequired: missingTables },
     };
 
-    // 5. Official Drizzle Migration Schema Tracking Check
-    // Checks the actual Drizzle Migration table: "drizzle"."__drizzle_migrations"
     const trackingTableCheck = await sqlClient`
       SELECT table_name
       FROM information_schema.tables
@@ -163,12 +145,9 @@ export async function GET(req: NextRequest) {
     const appliedCount = appliedMigrations.length;
     const latestMigration = appliedCount > 0 ? appliedMigrations[appliedCount - 1] : null;
     const latestCreatedAt = latestMigration ? String(latestMigration.created_at) : null;
-
-    // Verify each migration in "drizzle"."__drizzle_migrations" has a valid 64-char SHA-256 hash
     const allHashesValid =
       appliedMigrations.length === REQUIRED_MIGRATION_COUNT &&
       appliedMigrations.every(m => typeof m.hash === 'string' && m.hash.length === 64);
-
     const allRequiredMigrationsApplied =
       trackingTableExists &&
       appliedCount === REQUIRED_MIGRATION_COUNT &&
@@ -190,7 +169,6 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    // 6. DB-2 Hardening Functions & Constraints Verification
     const requiredFunctions = [
       'enforce_voucher_immutability',
       'enforce_order_archive_only',
@@ -222,13 +200,9 @@ export async function GET(req: NextRequest) {
     checks.hardening = {
       name: 'DB-2 Critical Hardening Triggers & Constraints',
       passed: missingFunctions.length === 0 && missingConstraints.length === 0,
-      details: {
-        missingFunctions,
-        missingConstraints,
-      },
+      details: { missingFunctions, missingConstraints },
     };
 
-    // 7. Pool Concurrency & Lifecycle Verification
     const poolTestStart = Date.now();
     const concurrentQueries = Array.from({ length: 3 }, (_, i) =>
       sqlClient`SELECT ${i}::int as query_id;`
@@ -239,10 +213,7 @@ export async function GET(req: NextRequest) {
     checks.poolLifecycle = {
       name: 'Connection Pool Acquire & Release Lifecycle',
       passed: poolResults.every((res, i) => Number(res[0]?.query_id) === i),
-      details: {
-        concurrentQueriesRun: 3,
-        lifecycleDurationMs: poolLatencyMs,
-      },
+      details: { concurrentQueriesRun: 3, lifecycleDurationMs: poolLatencyMs },
     };
 
     const allPassed = Object.values(checks).every(c => c.passed);
@@ -253,16 +224,16 @@ export async function GET(req: NextRequest) {
         status: allPassed ? 'HEALTHY' : 'UNHEALTHY',
         timestamp,
         operator: {
-          username: admin.username,
-          role: admin.role,
+          username: access.staff.username,
+          role: access.session.role,
         },
         checks,
         domains: domainRouting,
       },
       { status: allPassed ? 200 : 503 }
     );
-  } catch (err: any) {
-    console.error('[DB-HEALTH] Database query execution failure:', err?.message);
+  } catch (err) {
+    console.error('[DB-HEALTH] Database query execution failure:', err);
     return NextResponse.json(
       {
         success: false,
