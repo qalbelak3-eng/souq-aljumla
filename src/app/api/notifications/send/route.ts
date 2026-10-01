@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server';
 import { sendWebPushNotification } from '@/lib/pushService';
 import { getPushNotificationLogs, deletePushNotificationLog, clearAllPushNotificationLogs } from '@/lib/db';
+import { getAuthenticatedAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function requireMasterAdmin(request: Request) {
+  const admin = getAuthenticatedAdmin(request);
+  if (!admin) {
+    return { admin: null, response: NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 }) };
+  }
+  if (admin.role !== 'admin') {
+    return { admin: null, response: NextResponse.json({ success: false, error: 'إدارة الإشعارات العامة محصورة بالمدير العام فقط' }, { status: 403 }) };
+  }
+  return { admin, response: null };
+}
+
 export async function GET(request: Request) {
   try {
+    const auth = requireMasterAdmin(request);
+    if (auth.response) return auth.response;
+
     const logs = getPushNotificationLogs();
     return NextResponse.json({ success: true, logs });
   } catch (error: any) {
@@ -16,11 +31,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { title, message, body: bodyText, image, url, targetAudience, sentBy, expiryHours } = body;
+    const auth = requireMasterAdmin(request);
+    if (auth.response) return auth.response;
 
-    const finalTitle = (title || '').trim();
-    const finalBody = (bodyText || message || '').trim();
+    const body = await request.json();
+    const { title, message, body: bodyText, image, url, targetAudience, expiryHours } = body;
+
+    const finalTitle = typeof title === 'string' ? title.trim() : '';
+    const finalBody = typeof (bodyText || message) === 'string' ? (bodyText || message).trim() : '';
 
     if (!finalTitle || !finalBody) {
       return NextResponse.json({ success: false, error: 'يرجى كتابة عنوان ونص الإشعار' }, { status: 400 });
@@ -29,11 +47,13 @@ export async function POST(request: Request) {
     const result = await sendWebPushNotification({
       title: finalTitle,
       body: finalBody,
-      image: image ? image.trim() : undefined,
-      url: url ? url.trim() : '/',
-      targetAudience: targetAudience || 'all',
-      sentBy: sentBy || 'مدير النظام',
-      expiryHours: typeof expiryHours === 'number' ? expiryHours : 0,
+      image: typeof image === 'string' && image.trim() ? image.trim() : undefined,
+      url: typeof url === 'string' && url.trim() ? url.trim() : '/',
+      targetAudience: typeof targetAudience === 'string' ? targetAudience : 'all',
+      sentBy: auth.admin!.name,
+      expiryHours: typeof expiryHours === 'number' && Number.isFinite(expiryHours)
+        ? Math.min(Math.max(expiryHours, 0), 168)
+        : 0,
     });
 
     return NextResponse.json({
@@ -49,6 +69,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const auth = requireMasterAdmin(request);
+    if (auth.response) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const clearAll = searchParams.get('clearAll');
