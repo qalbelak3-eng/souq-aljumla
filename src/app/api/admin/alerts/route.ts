@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { ensureDbExists, getAllCustomerAccounts } from '@/lib/db';
 import { getSessionFromRequest } from '@/lib/auth';
 import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
-import { Order, User, Product, Driver, ProductOffer, CustomerComplaint } from '@/types';
+import { pgGetOrders } from '@/lib/postgres-orders';
+import { pgGetProducts } from '@/lib/postgres-catalog';
+import { pgGetDrivers } from '@/lib/postgres-drivers';
+import { getPostgresClient } from '@/db/client';
+import { Order } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,33 +25,84 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'الجلسة غير صالحة أو الحساب غير فعال' }, { status: 401 });
     }
 
-    const db = ensureDbExists();
+    const sql = getPostgresClient();
+    const [orders, products, drivers, pendingMerchantRows, debtRows, offerRows, complaintRows] = await Promise.all([
+      pgGetOrders(),
+      pgGetProducts({ includeInactive: true }),
+      pgGetDrivers(),
+      sql`
+        SELECT id, name, business_name as "businessName", city
+        FROM financial_accounts
+        WHERE category = 'customer'
+          AND merchant_status = 'pending'
+          AND archived_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 10;
+      `,
+      sql`
+        SELECT COUNT(*)::int as count
+        FROM financial_accounts fa
+        WHERE fa.category = 'customer'
+          AND fa.archived_at IS NULL
+          AND (
+            COALESCE((
+              SELECT SUM(CASE WHEN ob.type = 'debit' THEN ob.amount ELSE -ob.amount END)
+              FROM account_opening_balances ob
+              WHERE ob.account_id = fa.id
+            ), 0)
+            + COALESCE((
+              SELECT SUM(o.remaining_debt_amount)
+              FROM orders o
+              WHERE o.account_id = fa.id
+                AND o.status <> 'cancelled'
+            ), 0)
+            - COALESCE((
+              SELECT SUM(CASE
+                WHEN v.voucher_type = 'receipt' THEN v.amount
+                WHEN v.voucher_type = 'payment' THEN -v.amount
+                ELSE 0
+              END)
+              FROM vouchers v
+              WHERE v.account_id = fa.id
+                AND v.is_reversed = false
+            ), 0)
+          ) > 0;
+      `,
+      sql`
+        SELECT COUNT(*)::int as count
+        FROM product_offers
+        WHERE is_active = true
+          AND (is_archived IS NULL OR is_archived = false)
+          AND (start_date IS NULL OR start_date <= NOW())
+          AND end_date > NOW();
+      `,
+      sql`
+        SELECT COUNT(*)::int as count
+        FROM customer_complaints
+        WHERE status IN ('pending', 'in_progress');
+      `,
+    ]);
 
-    const rawOrders: Order[] = Array.isArray(db.orders) ? db.orders : [];
-    const orders: Order[] = rawOrders.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    const users: User[] = Array.isArray(db.users) ? db.users : [];
-    const products: Product[] = Array.isArray(db.products) ? db.products : [];
-    const drivers: Driver[] = Array.isArray(db.drivers) ? db.drivers : [];
-    const offers: ProductOffer[] = Array.isArray(db.offers) ? db.offers : [];
-    const complaints: CustomerComplaint[] = Array.isArray(db.complaints) ? db.complaints : [];
+    const sortedOrders: Order[] = orders
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    const pendingOrders = orders.filter((o: Order) => o.status === 'pending');
-    const pendingOrdersCount = pendingOrders.length;
+    const pendingOrdersCount = sortedOrders.filter((o) => o.status === 'pending').length;
 
-    const unsettledCashOrders = orders.filter(
-      (o: Order) =>
+    const unsettledCashOrders = sortedOrders.filter(
+      (o) =>
         o.driverId &&
         o.status === 'delivered' &&
         !o.driverCashSettled &&
         (o.collectionStatus === 'collected_cash' || o.collectionStatus === 'partial' || !o.collectionStatus)
     );
-    const driverIdsWithCustody = new Set(unsettledCashOrders.map((o: Order) => o.driverId));
+    const driverIdsWithCustody = new Set(unsettledCashOrders.map((o) => o.driverId));
     const custodySum = unsettledCashOrders.reduce(
-      (sum: number, o: Order) => sum + Number(o.collectedAmount || o.total || 0),
+      (sum, o) => sum + Number(o.collectedAmount || o.total || 0),
       0
     );
 
-    const recentOrders = orders.slice(0, 50).map((o: Order) => ({
+    const recentOrders = sortedOrders.slice(0, 50).map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
       status: o.status,
@@ -59,23 +113,28 @@ export async function GET(request: Request) {
       driverArrivedAt: o.driverArrivedAt || null,
     }));
 
-    const pendingMerchants = users.filter((u: User) => u.merchantStatus === 'pending');
-    const pendingMerchantsCount = pendingMerchants.length;
-    const recentPendingMerchants = pendingMerchants.slice(0, 10).map((m: User) => ({
-      id: m.id,
-      name: m.name,
-      businessName: m.businessName || m.name,
+    const pendingMerchantsCountRows = await sql`
+      SELECT COUNT(*)::int as count
+      FROM financial_accounts
+      WHERE category = 'customer'
+        AND merchant_status = 'pending'
+        AND archived_at IS NULL;
+    `;
+    const pendingMerchantsCount = Number(pendingMerchantsCountRows[0]?.count || 0);
+    const recentPendingMerchants = pendingMerchantRows.map((m: any) => ({
+      id: String(m.id),
+      name: String(m.name || ''),
+      businessName: m.businessName || m.name || '',
       city: m.city || 'كربلاء',
     }));
 
-    const lowStockCount = products.filter((p: Product) => Number(p.stock || 0) <= 5).length;
+    const lowStockCount = products.filter((p) => Number(p.stock || 0) <= Number(p.minStockAlert ?? 5)).length;
     const nowTime = Date.now();
-    const expiredProductsCount = products.filter((p: Product) => {
+    const expiredProductsCount = products.filter((p) => {
       if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
       return new Date(p.expiryDate).getTime() <= nowTime;
     }).length;
-
-    const warningExpiryProductsCount = products.filter((p: Product) => {
+    const warningExpiryProductsCount = products.filter((p) => {
       if (!p.expiryDate || Number(p.stock || 0) <= 0) return false;
       const expTime = new Date(p.expiryDate).getTime();
       if (expTime <= nowTime) return false;
@@ -83,38 +142,24 @@ export async function GET(request: Request) {
       const daysLeft = (expTime - nowTime) / (1000 * 60 * 60 * 24);
       return daysLeft <= alertDays;
     }).length;
-
     const totalExpiryAlertsCount = expiredProductsCount + warningExpiryProductsCount;
 
-    const driversWithCustody = drivers.filter(
-      (d: Driver) => (Number(d.currentCashInHand) || 0) > 0
-    );
+    const driversWithCustody = drivers.filter((d) => Number(d.currentCashInHand || 0) > 0);
     const driversCustodyCount = Math.max(driverIdsWithCustody.size, driversWithCustody.length);
     const driverTotalCash = driversWithCustody.reduce(
-      (sum: number, d: Driver) => sum + (Number(d.currentCashInHand) || 0),
+      (sum, d) => sum + Number(d.currentCashInHand || 0),
       0
     );
     const totalCustodyAmount = Math.max(custodySum, driverTotalCash);
-
-    const driverCashList = drivers.map((d: Driver) => ({
+    const driverCashList = drivers.map((d) => ({
       id: d.id,
       name: d.name,
       cashInHand: Number(d.currentCashInHand || 0),
     }));
 
-    const accounts = getAllCustomerAccounts();
-    const unsettledDebtsCount = accounts.filter((acc) => Number(acc.remainingBalance || 0) > 0).length;
-
-    const nowIso = new Date().toISOString();
-    const activeOffersCount = offers.filter((o: ProductOffer) => {
-      if (o.isActive === false) return false;
-      if (o.endDate && o.endDate < nowIso) return false;
-      return true;
-    }).length;
-
-    const pendingComplaintsCount = complaints.filter(
-      (c: CustomerComplaint) => c.status === 'pending' || c.status === 'in_progress'
-    ).length;
+    const unsettledDebtsCount = Number(debtRows[0]?.count || 0);
+    const activeOffersCount = Number(offerRows[0]?.count || 0);
+    const pendingComplaintsCount = Number(complaintRows[0]?.count || 0);
 
     return NextResponse.json({
       success: true,
