@@ -1,66 +1,97 @@
 import { NextResponse } from 'next/server';
-import { verifyAdminCredentials, updateAdminCredentials, authenticateAdminOrStaff } from '@/lib/db';
 import {
   signAdminSession,
-  getAuthenticatedAdmin,
+  getSessionFromRequest,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_SECONDS,
 } from '@/lib/auth';
+import {
+  pgAuthenticateAdminOrStaff,
+  pgGetActiveStaffForSession,
+  pgUpdateStaffPassword,
+} from '@/lib/postgres-session-auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function sessionRole(staffRole: string, permissions: string[]): 'admin' | 'staff' {
+  return staffRole === 'admin' || staffRole === 'master' || permissions.includes('*') ? 'admin' : 'staff';
+}
+
+async function getCurrentAdmin(request: Request) {
+  const session = getSessionFromRequest(request);
+  if (!session) return null;
+
+  const staff = await pgGetActiveStaffForSession({
+    userId: session.userId,
+    username: session.username,
+  });
+  if (!staff) return null;
+
+  return {
+    id: staff.id,
+    name: staff.name,
+    username: staff.username,
+    role: sessionRole(staff.role, staff.permissions),
+    jobTitle: staff.jobTitle,
+    permissions: staff.permissions,
+    isActive: true,
+  };
+}
+
 export async function GET(request: Request) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getCurrentAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مسجل الدخول' }, { status: 401 });
     }
     return NextResponse.json({ success: true, admin });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('GET /api/admin/auth failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر التحقق من جلسة الإدارة' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, username, password, newPassword } = body;
+    const action = typeof body?.action === 'string' ? body.action.trim() : '';
+    const username = typeof body?.username === 'string' ? body.username.trim() : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+    const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
 
-    // 1. تسجيل الدخول وإنشاء الـ Signed HttpOnly Cookie
     if (action === 'login') {
       if (!username || !password) {
         return NextResponse.json({ success: false, error: 'يرجى إدخال اسم المستخدم وكلمة المرور' }, { status: 400 });
       }
 
-      const authResult = authenticateAdminOrStaff(username, password);
-      if (!authResult.success || !authResult.admin) {
-        return NextResponse.json({ success: false, error: authResult.error || 'اسم المستخدم أو كلمة المرور غير صحيحة' }, { status: 401 });
+      const staff = await pgAuthenticateAdminOrStaff(username, password);
+      if (!staff) {
+        return NextResponse.json({ success: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة' }, { status: 401 });
       }
 
+      const role = sessionRole(staff.role, staff.permissions);
       const exp = Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS;
       const signedToken = signAdminSession({
-        userId: authResult.admin.id,
-        username: authResult.admin.username,
-        role: authResult.admin.role,
+        userId: staff.id,
+        username: staff.username,
+        role,
         exp,
       });
 
-      // إرجاع بيانات المستخدم دون Session Token في JSON
       const response = NextResponse.json({
         success: true,
         message: 'تم تسجيل الدخول بنجاح',
         admin: {
-          id: authResult.admin.id,
-          name: authResult.admin.name,
-          username: authResult.admin.username,
-          role: authResult.admin.role,
-          jobTitle: authResult.admin.jobTitle,
-          permissions: authResult.admin.permissions,
+          id: staff.id,
+          name: staff.name,
+          username: staff.username,
+          role,
+          jobTitle: staff.jobTitle,
+          permissions: role === 'admin' ? ['*'] : staff.permissions,
         },
       });
 
-      // تعيين الـ Cookie بخصائص أمنية مشددة
       response.cookies.set({
         name: SESSION_COOKIE_NAME,
         value: signedToken,
@@ -74,16 +105,14 @@ export async function POST(request: Request) {
       return response;
     }
 
-    // 2. التحقق من صلاحية الجلسة الحالية
     if (action === 'check' || action === 'me') {
-      const admin = getAuthenticatedAdmin(request);
+      const admin = await getCurrentAdmin(request);
       if (!admin) {
         return NextResponse.json({ success: false, error: 'غير مسجل الدخول' }, { status: 401 });
       }
       return NextResponse.json({ success: true, admin });
     }
 
-    // 3. تسجيل الخروج وإتلاف الـ Cookie
     if (action === 'logout') {
       const response = NextResponse.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
       response.cookies.set({
@@ -98,28 +127,43 @@ export async function POST(request: Request) {
       return response;
     }
 
-    // 4. تغيير كلمة المرور (يتطلب جلسة موثقة أولاً)
     if (action === 'update_password') {
-      const currentAdmin = getAuthenticatedAdmin(request);
-      if (!currentAdmin) {
+      const session = getSessionFromRequest(request);
+      if (!session) {
         return NextResponse.json({ success: false, error: 'غير مصرح لك بتغيير كلمة المرور (جلسة غير مسجلة)' }, { status: 401 });
       }
 
-      if (!username || !password || !newPassword) {
-        return NextResponse.json({ success: false, error: 'يرجى ملء جميع الحقول' }, { status: 400 });
+      const currentStaff = await pgGetActiveStaffForSession({
+        userId: session.userId,
+        username: session.username,
+      });
+      if (!currentStaff) {
+        return NextResponse.json({ success: false, error: 'الجلسة غير صالحة أو الحساب غير فعال' }, { status: 401 });
       }
 
-      const isValid = verifyAdminCredentials(username, password);
-      if (!isValid) {
+      if (!password || !newPassword) {
+        return NextResponse.json({ success: false, error: 'يرجى ملء جميع الحقول' }, { status: 400 });
+      }
+      if (newPassword.trim().length < 8) {
+        return NextResponse.json({ success: false, error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف' }, { status: 400 });
+      }
+
+      const updated = await pgUpdateStaffPassword({
+        staffId: currentStaff.id,
+        username: currentStaff.username,
+        currentPassword: password,
+        newPassword: newPassword.trim(),
+      });
+      if (!updated) {
         return NextResponse.json({ success: false, error: 'كلمة المرور الحالية غير صحيحة' }, { status: 401 });
       }
 
-      updateAdminCredentials(username, newPassword);
       return NextResponse.json({ success: true, message: 'تم تحديث كلمة مرور الإدارة بنجاح' });
     }
 
     return NextResponse.json({ success: false, error: 'إجراء غير معروف' }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('POST /api/admin/auth failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر تنفيذ عملية المصادقة' }, { status: 500 });
   }
 }
