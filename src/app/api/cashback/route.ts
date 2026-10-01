@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
-import { pgGetCustomerCashbackSummary, pgResolveCustomerAccount } from '@/lib/postgres-cashback';
+import { pgGetCustomerCashbackSummary } from '@/lib/postgres-cashback';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
