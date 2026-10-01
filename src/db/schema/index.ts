@@ -8,3 +8,4 @@ export * from './orders';
 export * from './purchases';
 export * from './accounting';
 export * from './operations';
+export * from './lucky-wheel';
