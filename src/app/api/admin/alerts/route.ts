@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server';
 import { ensureDbExists, getAllCustomerAccounts } from '@/lib/db';
+import { getSessionFromRequest } from '@/lib/auth';
+import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
 import { Order, User, Product, Driver, ProductOffer, CustomerComplaint } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 });
+    }
+
+    const staff = await pgGetActiveStaffForSession({
+      userId: session.userId,
+      username: session.username,
+    });
+    if (!staff) {
+      return NextResponse.json({ success: false, error: 'الجلسة غير صالحة أو الحساب غير فعال' }, { status: 401 });
+    }
+
     const db = ensureDbExists();
 
     const rawOrders: Order[] = Array.isArray(db.orders) ? db.orders : [];
@@ -17,11 +32,9 @@ export async function GET() {
     const offers: ProductOffer[] = Array.isArray(db.offers) ? db.offers : [];
     const complaints: CustomerComplaint[] = Array.isArray(db.complaints) ? db.complaints : [];
 
-    // 1. Orders stats
     const pendingOrders = orders.filter((o: Order) => o.status === 'pending');
     const pendingOrdersCount = pendingOrders.length;
 
-    // Delivered cash orders custody
     const unsettledCashOrders = orders.filter(
       (o: Order) =>
         o.driverId &&
@@ -35,7 +48,6 @@ export async function GET() {
       0
     );
 
-    // Recent orders for notification detection (newest 50 orders)
     const recentOrders = orders.slice(0, 50).map((o: Order) => ({
       id: o.id,
       orderNumber: o.orderNumber,
@@ -47,7 +59,6 @@ export async function GET() {
       driverArrivedAt: o.driverArrivedAt || null,
     }));
 
-    // 2. Merchants stats
     const pendingMerchants = users.filter((u: User) => u.merchantStatus === 'pending');
     const pendingMerchantsCount = pendingMerchants.length;
     const recentPendingMerchants = pendingMerchants.slice(0, 10).map((m: User) => ({
@@ -57,7 +68,6 @@ export async function GET() {
       city: m.city || 'كربلاء',
     }));
 
-    // 3. Products low stock & Expiry warnings
     const lowStockCount = products.filter((p: Product) => Number(p.stock || 0) <= 5).length;
     const nowTime = Date.now();
     const expiredProductsCount = products.filter((p: Product) => {
@@ -76,7 +86,6 @@ export async function GET() {
 
     const totalExpiryAlertsCount = expiredProductsCount + warningExpiryProductsCount;
 
-    // 4. Drivers cash stats
     const driversWithCustody = drivers.filter(
       (d: Driver) => (Number(d.currentCashInHand) || 0) > 0
     );
@@ -93,11 +102,9 @@ export async function GET() {
       cashInHand: Number(d.currentCashInHand || 0),
     }));
 
-    // 5. Unsettled debts
     const accounts = getAllCustomerAccounts();
     const unsettledDebtsCount = accounts.filter((acc) => Number(acc.remainingBalance || 0) > 0).length;
 
-    // 6. Active offers
     const nowIso = new Date().toISOString();
     const activeOffersCount = offers.filter((o: ProductOffer) => {
       if (o.isActive === false) return false;
@@ -105,7 +112,6 @@ export async function GET() {
       return true;
     }).length;
 
-    // 7. Complaints
     const pendingComplaintsCount = complaints.filter(
       (c: CustomerComplaint) => c.status === 'pending' || c.status === 'in_progress'
     ).length;
@@ -127,7 +133,8 @@ export async function GET() {
       recentPendingMerchants,
       driverCashList,
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('GET /api/admin/alerts failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر تحميل تنبيهات الإدارة' }, { status: 500 });
   }
 }
