@@ -1,7 +1,7 @@
 import { eq, or } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import { authIdentities, financialAccounts, staffProfiles } from '@/db/schema';
-import type { MerchantTier } from '@/types';
+import type { MerchantStatus, MerchantTier, PricingTier } from '@/types';
 
 export interface PgSessionStaff {
   id: string;
@@ -17,17 +17,13 @@ export interface PgSessionCustomer {
   id: string;
   phone: string;
   name: string;
-  accountType: string;
-  merchantStatus?: string;
-  pricingTier?: string;
+  accountType: 'individual' | 'market' | 'wholesale';
+  merchantStatus?: MerchantStatus;
+  pricingTier?: PricingTier;
   merchantTier?: MerchantTier;
   isActive: boolean;
 }
 
-/**
- * Trusted server-side lookup for a staff session.
- * A valid signed cookie is not enough: the identity must still be active in PostgreSQL.
- */
 export async function pgGetActiveStaffForSession(params: { userId?: string; username?: string }): Promise<PgSessionStaff | null> {
   const db = getDb();
   const username = (params.username || '').trim();
@@ -60,10 +56,6 @@ export async function pgGetActiveStaffForSession(params: { userId?: string; user
   return { ...row, permissions: row.permissions || [] };
 }
 
-/**
- * Trusted server-side lookup for a customer session.
- * Reads the current account state instead of trusting stale cookie profile fields.
- */
 export async function pgGetActiveCustomerForSession(userId: string): Promise<PgSessionCustomer | null> {
   const cleanId = (userId || '').trim();
   if (!cleanId) return null;
@@ -73,7 +65,6 @@ export async function pgGetActiveCustomerForSession(userId: string): Promise<PgS
       id: financialAccounts.id,
       phone: financialAccounts.phone,
       name: financialAccounts.name,
-      category: financialAccounts.category,
       pricingTier: financialAccounts.pricingTier,
       merchantStatus: financialAccounts.merchantStatus,
       merchantTier: financialAccounts.merchantTier,
@@ -87,14 +78,14 @@ export async function pgGetActiveCustomerForSession(userId: string): Promise<PgS
 
   const row = rows[0];
   if (!row || !row.accountActive || !row.identityActive || !row.phone) return null;
-  const accountType = row.pricingTier === 'wholesale' ? 'wholesale' : row.pricingTier === 'market' ? 'market' : 'individual';
+  const accountType: PgSessionCustomer['accountType'] = row.pricingTier === 'wholesale' ? 'wholesale' : row.pricingTier === 'market' ? 'market' : 'individual';
   return {
     id: row.id,
     phone: row.phone,
     name: row.name,
     accountType,
-    merchantStatus: row.merchantStatus || undefined,
-    pricingTier: row.pricingTier || undefined,
+    merchantStatus: (row.merchantStatus || undefined) as MerchantStatus | undefined,
+    pricingTier: (row.pricingTier || undefined) as PricingTier | undefined,
     merchantTier: (row.merchantTier || undefined) as MerchantTier | undefined,
     isActive: true,
   };
