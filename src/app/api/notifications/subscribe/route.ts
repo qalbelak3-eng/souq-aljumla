@@ -15,10 +15,21 @@ const VALID_ACCOUNT_TYPES: readonly AccountType[] = [
   'supplier',
 ];
 
+type PushDeviceType = 'mobile' | 'desktop' | 'tablet';
+const VALID_DEVICE_TYPES: readonly PushDeviceType[] = ['mobile', 'desktop', 'tablet'];
+
 function parseAccountType(value: unknown): AccountType | 'visitor' {
   return typeof value === 'string' && VALID_ACCOUNT_TYPES.includes(value as AccountType)
     ? (value as AccountType)
     : 'visitor';
+}
+
+function parseDeviceType(value: unknown): PushDeviceType {
+  if (typeof value !== 'string') return 'mobile';
+  const normalized = value.trim().toLowerCase();
+  return VALID_DEVICE_TYPES.includes(normalized as PushDeviceType)
+    ? (normalized as PushDeviceType)
+    : 'mobile';
 }
 
 export async function GET() {
@@ -67,7 +78,7 @@ export async function POST(request: Request) {
       userPhone: customer?.phone,
       userName: customer?.name,
       accountType: parseAccountType(customer?.accountType),
-      deviceType: typeof deviceType === 'string' && deviceType.trim() ? deviceType.trim() : 'mobile',
+      deviceType: parseDeviceType(deviceType),
       userAgent: request.headers.get('user-agent') || undefined,
     });
 
