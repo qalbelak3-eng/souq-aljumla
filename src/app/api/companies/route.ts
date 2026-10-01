@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getCompanies, createCompany } from '@/lib/db';
+import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
@@ -14,6 +18,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' }, { status: 401 });
+    }
+    if (!hasPermission(admin, 'companies') && !hasPermission(admin, 'products') && admin.role !== 'admin') {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بإدارة الشركات' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { name, category, categories, logo, icon } = body;
 
