@@ -2,9 +2,24 @@ import { NextResponse } from 'next/server';
 import { savePushSubscription, getPushAudienceStats } from '@/lib/db';
 import { VAPID_PUBLIC_KEY } from '@/lib/pushService';
 import { getAuthenticatedCustomer } from '@/lib/auth';
+import type { AccountType } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const VALID_ACCOUNT_TYPES: readonly AccountType[] = [
+  'individual',
+  'market',
+  'wholesale',
+  'merchant',
+  'supplier',
+];
+
+function parseAccountType(value: unknown): AccountType | 'visitor' {
+  return typeof value === 'string' && VALID_ACCOUNT_TYPES.includes(value as AccountType)
+    ? (value as AccountType)
+    : 'visitor';
+}
 
 export async function GET() {
   try {
@@ -51,7 +66,7 @@ export async function POST(request: Request) {
       userId: customer?.id,
       userPhone: customer?.phone,
       userName: customer?.name,
-      accountType: customer?.accountType || 'visitor',
+      accountType: parseAccountType(customer?.accountType),
       deviceType: typeof deviceType === 'string' && deviceType.trim() ? deviceType.trim() : 'mobile',
       userAgent: request.headers.get('user-agent') || undefined,
     });
