@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getBanners, createBanner, updateBanner, deleteBanner } from '@/lib/db';
+import { pgGetBanners, pgCreateBanner, pgUpdateBanner, pgDeleteBanner } from '@/lib/postgres-banners';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -24,13 +24,12 @@ export async function GET(request: Request) {
     const position = searchParams.get('position') || undefined;
     const category = searchParams.get('category') || undefined;
 
-    // Inactive banners are administrative data; only authorized staff may request them.
     if (wantsAll) {
       const authError = requireBannerAdmin(request);
       if (authError) return authError;
     }
 
-    const banners = getBanners(!wantsAll, position, category);
+    const banners = await pgGetBanners(!wantsAll, position, category);
     return NextResponse.json({ success: true, banners });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
     if (authError) return authError;
 
     const body = await request.json();
-    const newBanner = createBanner(body);
+    const newBanner = await pgCreateBanner(body);
     try { revalidatePath('/'); } catch (e) {}
     return NextResponse.json({ success: true, banner: newBanner }, { status: 201 });
   } catch (error: any) {
@@ -61,7 +60,7 @@ export async function PATCH(request: Request) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
     }
-    const updated = updateBanner(id, updates);
+    const updated = await pgUpdateBanner(id, updates);
     try { revalidatePath('/'); } catch (e) {}
     return NextResponse.json({ success: true, banner: updated });
   } catch (error: any) {
@@ -79,7 +78,7 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
     }
-    const deleted = deleteBanner(id);
+    const deleted = await pgDeleteBanner(id);
     try { revalidatePath('/'); } catch (e) {}
     return NextResponse.json({ success: true, deleted });
   } catch (error: any) {
