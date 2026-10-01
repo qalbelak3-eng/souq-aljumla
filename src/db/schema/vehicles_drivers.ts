@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, boolean, timestamp, text, index, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { authIdentities, staffProfiles } from './auth';
 import { financialAccounts } from './accounts';
@@ -28,25 +28,6 @@ export const drivers = pgTable('drivers', {
 }, (table) => [
   index('idx_drivers_phone').on(table.phone),
   check('chk_driver_operational_status', sql`operational_status IN ('available', 'busy', 'break', 'off_duty')`),
-]);
-
-export const driverRatings = pgTable('driver_ratings', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'restrict' }),
-  orderId: uuid('order_id').notNull(),
-  orderNumber: varchar('order_number', { length: 50 }).notNull(),
-  customerAuthIdentityId: uuid('customer_auth_identity_id').notNull().references(() => authIdentities.id, { onDelete: 'restrict' }),
-  customerName: varchar('customer_name', { length: 150 }).notNull(),
-  customerPhone: varchar('customer_phone', { length: 20 }).notNull(),
-  rating: numeric('rating', { precision: 2, scale: 1 }).notNull(),
-  tag: varchar('tag', { length: 100 }),
-  comment: text('comment'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex('uq_driver_ratings_order_customer').on(table.orderId, table.customerAuthIdentityId),
-  index('idx_driver_ratings_driver_id').on(table.driverId),
-  index('idx_driver_ratings_order_id').on(table.orderId),
-  check('chk_driver_rating_range', sql`${table.rating} >= 1 AND ${table.rating} <= 5`),
 ]);
 
 export const driverSettlements = pgTable('driver_settlements', {
