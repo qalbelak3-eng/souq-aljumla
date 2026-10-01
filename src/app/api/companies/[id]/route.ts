@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateCompany, deleteCompany } from '@/lib/db';
+import { pgUpdateCompany, pgDeleteCompany } from '@/lib/postgres-catalog';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -16,16 +16,21 @@ function requireCompanyAdmin(request: Request) {
   return null;
 }
 
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const authError = requireCompanyAdmin(request);
     if (authError) return authError;
 
     const body = await request.json();
-    const updated = updateCompany(params.id, body);
+    const normalizedBody = {
+      ...body,
+      categories: body.categories !== undefined
+        ? body.categories
+        : body.category !== undefined
+          ? (body.category ? [body.category] : [])
+          : undefined,
+    };
+    const updated = await pgUpdateCompany(params.id, normalizedBody);
     if (!updated) {
       return NextResponse.json({ success: false, error: 'الشركة غير موجودة' }, { status: 404 });
     }
@@ -35,15 +40,12 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
     const authError = requireCompanyAdmin(request);
     if (authError) return authError;
 
-    const deleted = deleteCompany(params.id);
+    const deleted = await pgDeleteCompany(params.id);
     if (!deleted) {
       return NextResponse.json({ success: false, error: 'تعذر حذف الشركة' }, { status: 404 });
     }
