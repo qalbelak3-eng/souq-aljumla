@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCompanies, createCompany } from '@/lib/db';
+import { pgGetCompanies, pgCreateCompany } from '@/lib/postgres-catalog';
 import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category') || undefined;
-    const companies = getCompanies(category);
+    const companies = await pgGetCompanies(category);
     return NextResponse.json({ success: true, companies });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -27,18 +27,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, category, categories, logo, icon } = body;
-
+    const { name, category, categories, logo, icon, color } = body;
     const hasCats = (Array.isArray(categories) && categories.length > 0) || (typeof category === 'string' && category.trim().length > 0);
 
     if (!name || !hasCats) {
-      return NextResponse.json(
-        { success: false, error: 'يرجى إدخال اسم الشركة واختيار قسم واحد على الأقل' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'يرجى إدخال اسم الشركة واختيار قسم واحد على الأقل' }, { status: 400 });
     }
 
-    const newCompany = createCompany({ name, category, categories, logo, icon });
+    const newCompany = await pgCreateCompany({ name, category, categories, logo, icon, color });
     return NextResponse.json({ success: true, company: newCompany }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
