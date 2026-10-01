@@ -1,30 +1,47 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
+import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
 import { pgGetVehicles, pgCreateVehicle } from '@/lib/postgres-drivers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+async function requireDriverPermission(req: Request) {
+  const session = getSessionFromRequest(req);
+  if (!session) return null;
+
+  const staff = await pgGetActiveStaffForSession({
+    userId: session.userId,
+    username: session.username,
+  });
+  if (!staff) return null;
+
+  const permissions = staff.permissions || [];
+  const allowed =
+    session.role === 'admin' ||
+    permissions.includes('*') ||
+    permissions.includes('drivers') ||
+    permissions.includes('accounting');
+
+  return { forbidden: !allowed };
+}
+
 export async function GET(req: Request) {
   try {
-    const admin = getAuthenticatedAdmin(req);
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    const access = await requireDriverPermission(req);
+    if (!access) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 });
     }
-    if (!hasPermission(admin, 'drivers')) {
+    if (access.forbidden) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة الأسطول والمركبات' }, { status: 403 });
     }
 
     const vehicles = await pgGetVehicles();
-
-    return NextResponse.json({
-      success: true,
-      vehicles,
-    });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, vehicles });
+  } catch (error) {
     console.error('Error fetching vehicles:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'حدث خطأ أثناء جلب قائمة السيارات' },
+      { success: false, error: 'حدث خطأ أثناء جلب قائمة السيارات' },
       { status: 500 }
     );
   }
@@ -32,16 +49,20 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const admin = getAuthenticatedAdmin(req);
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    const access = await requireDriverPermission(req);
+    if (!access) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 });
     }
-    if (!hasPermission(admin, 'drivers')) {
+    if (access.forbidden) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إضافة مركبات' }, { status: 403 });
     }
 
     const body = await req.json();
-    const { name, plateNumber, type, modelYear, notes, isActive } = body;
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const plateNumber = typeof body?.plateNumber === 'string' ? body.plateNumber.trim() : '';
+    const type = typeof body?.type === 'string' && body.type.trim() ? body.type.trim() : 'كيا حمل';
+    const modelYear = typeof body?.modelYear === 'string' ? body.modelYear.trim() : '';
+    const notes = typeof body?.notes === 'string' ? body.notes.trim() : '';
 
     if (!name || !plateNumber) {
       return NextResponse.json({ success: false, error: 'يرجى إدخال اسم المركبة ورقم اللوحة' }, { status: 400 });
@@ -50,10 +71,10 @@ export async function POST(req: Request) {
     const newVehicle = await pgCreateVehicle({
       name,
       plateNumber,
-      type: type || 'كيا حمل',
-      modelYear: modelYear || '',
-      notes: notes || '',
-      isActive: isActive !== false,
+      type,
+      modelYear,
+      notes,
+      isActive: body?.isActive !== false,
     });
 
     return NextResponse.json({
@@ -61,10 +82,13 @@ export async function POST(req: Request) {
       vehicle: newVehicle,
       message: 'تمت إضافة المركبة بنجاح! 🚗',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating vehicle:', error);
-    const message = error.message || 'حدث خطأ أثناء إضافة المركبة';
-    const status = message.includes('مسجل مسبقاً') ? 400 : 500;
-    return NextResponse.json({ success: false, error: message }, { status });
+    const message = error instanceof Error ? error.message : '';
+    const duplicate = message.includes('مسجل مسبقاً');
+    return NextResponse.json(
+      { success: false, error: duplicate ? message : 'حدث خطأ أثناء إضافة المركبة' },
+      { status: duplicate ? 400 : 500 }
+    );
   }
 }
