@@ -1,30 +1,49 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
+import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
 import { pgGetDrivers, pgCreateDriver } from '@/lib/postgres-drivers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+async function requireDriverPermission(req: Request) {
+  const session = getSessionFromRequest(req);
+  if (!session) return null;
+
+  const staff = await pgGetActiveStaffForSession({
+    userId: session.userId,
+    username: session.username,
+  });
+  if (!staff) return null;
+
+  const isAdmin = session.role === 'admin';
+  const permissions = staff.permissions || [];
+  const allowed =
+    isAdmin ||
+    permissions.includes('*') ||
+    permissions.includes('drivers') ||
+    permissions.includes('accounting');
+
+  if (!allowed) return { staff, forbidden: true as const };
+  return { staff, forbidden: false as const };
+}
+
 export async function GET(req: Request) {
   try {
-    const admin = getAuthenticatedAdmin(req);
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    const access = await requireDriverPermission(req);
+    if (!access) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 });
     }
-    if (!hasPermission(admin, 'drivers')) {
+    if (access.forbidden) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إدارة السائقين' }, { status: 403 });
     }
 
     const drivers = await pgGetDrivers();
-
-    return NextResponse.json({
-      success: true,
-      drivers,
-    });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, drivers });
+  } catch (error) {
     console.error('Error fetching drivers:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'حدث خطأ أثناء جلب قائمة السائقين' },
+      { success: false, error: 'حدث خطأ أثناء جلب قائمة السائقين' },
       { status: 500 }
     );
   }
@@ -32,22 +51,29 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const admin = getAuthenticatedAdmin(req);
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
+    const access = await requireDriverPermission(req);
+    if (!access) {
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول' }, { status: 401 });
     }
-    if (!hasPermission(admin, 'drivers')) {
+    if (access.forbidden) {
       return NextResponse.json({ success: false, error: 'ليس لديك صلاحية إضافة سائقين' }, { status: 403 });
     }
 
     const body = await req.json();
-    const { name, phone, password, vehicleInfo, defaultVehicleId, notes, isActive } = body;
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const phone = typeof body?.phone === 'string' ? body.phone.trim() : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+    const vehicleInfo = typeof body?.vehicleInfo === 'string' ? body.vehicleInfo.trim() : '';
+    const defaultVehicleId = typeof body?.defaultVehicleId === 'string' && body.defaultVehicleId.trim()
+      ? body.defaultVehicleId.trim()
+      : undefined;
+    const notes = typeof body?.notes === 'string' ? body.notes.trim() : '';
 
     if (!name || !phone) {
       return NextResponse.json({ success: false, error: 'يرجى إدخال اسم السائق ورقم الهاتف' }, { status: 400 });
     }
 
-    if (!password || typeof password !== 'string' || password.trim().length < 6) {
+    if (password.trim().length < 6) {
       return NextResponse.json(
         { success: false, error: 'كلمة مرور السائق مطلوبة ويجب ألا تقل عن 6 أحرف' },
         { status: 400 }
@@ -58,10 +84,10 @@ export async function POST(req: Request) {
       name,
       phone,
       password: password.trim(),
-      vehicleInfo: vehicleInfo || '',
+      vehicleInfo,
       defaultVehicleId,
-      notes: notes || '',
-      isActive: isActive !== false,
+      notes,
+      isActive: body?.isActive !== false,
     });
 
     return NextResponse.json({
@@ -69,10 +95,21 @@ export async function POST(req: Request) {
       driver: newDriver,
       message: 'تم إضافة السائق بنجاح',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating driver:', error);
-    const message = error.message || 'حدث خطأ أثناء إضافة السائق';
-    const status = (message.includes('مسجل مسبقاً') || message.includes('المركبة المحددة') || message.includes('كلمة المرور') || message.includes('كلمة مرور')) ? 400 : 500;
-    return NextResponse.json({ success: false, error: message }, { status });
+    const message = error instanceof Error ? error.message : '';
+    const isSafeValidationError =
+      message.includes('مسجل مسبقاً') ||
+      message.includes('المركبة المحددة') ||
+      message.includes('كلمة المرور') ||
+      message.includes('كلمة مرور');
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: isSafeValidationError ? message : 'حدث خطأ أثناء إضافة السائق',
+      },
+      { status: isSafeValidationError ? 400 : 500 }
+    );
   }
 }
