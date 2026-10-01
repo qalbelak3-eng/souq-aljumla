@@ -1,59 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDriverRatings, addDriverRating, addComplaint, getDriverById } from '@/lib/db';
-import { sendWebPushNotification } from '@/lib/pushService';
+import { getAuthenticatedAdmin, getAuthenticatedCustomer } from '@/lib/auth';
+import { pgAddDriverRating, pgGetDriverRatings } from '@/lib/postgres-driver-ratings';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
+    // Ratings contain customer snapshots; only authenticated back-office users may enumerate them.
+    const admin = getAuthenticatedAdmin(request);
+    if (!admin) {
+      return NextResponse.json({ success: false, error: 'غير مصرح' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const driverId = searchParams.get('driverId') || undefined;
-    const ratings = getDriverRatings(driverId);
+    const ratings = await pgGetDriverRatings(driverId);
     return NextResponse.json({ success: true, ratings });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('GET /api/driver-ratings failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر تحميل التقييمات' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const customer = getAuthenticatedCustomer(request);
+    if (!customer) {
+      return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول لتقييم المندوب' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { driverId, orderId, orderNumber, customerName, customerPhone, rating, tag, comment } = body;
-
-    if (!driverId || !orderId || !rating) {
-      return NextResponse.json(
-        { success: false, error: 'بيانات التقييم غير مكتملة' },
-        { status: 400 }
-      );
+    const orderId = String(body?.orderId || '').trim();
+    const rating = Number(body?.rating);
+    if (!orderId || !Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return NextResponse.json({ success: false, error: 'بيانات التقييم غير مكتملة أو غير صحيحة' }, { status: 400 });
     }
 
-    const newRating = addDriverRating({
-      driverId,
+    // driverId/orderNumber/customerName/customerPhone are deliberately ignored: all trusted values
+    // are derived server-side from the authenticated customer's delivered PostgreSQL order.
+    const newRating = await pgAddDriverRating({
+      customerAuthIdentityId: customer.id,
       orderId,
-      orderNumber: orderNumber || '',
-      customerName: customerName || 'زبون المتجر',
-      customerPhone: customerPhone || '',
-      rating: Number(rating),
-      tag,
-      comment,
+      rating,
+      tag: typeof body?.tag === 'string' ? body.tag : null,
+      comment: typeof body?.comment === 'string' ? body.comment : null,
     });
-
-    const driver = getDriverById(driverId);
-    const driverName = driver?.name || 'مندوب التوصيل';
-
-    // إذا كان هناك تعليق مكتوب أو تقييم منخفض (3 نجوم أو أقل): سجل في الشكاوى لتظهر في لوحة الإدارة
-    if ((comment && comment.trim().length > 0) || Number(rating) <= 3) {
-      try {
-        addComplaint({
-          customerName: customerName || 'زبون المتجر',
-          customerPhone: customerPhone || '',
-          text: `[تقييم السائق: ${driverName} • ${rating}/5 ⭐ ${tag ? `• ${tag}` : ''} • فاتورة #${orderNumber}]\n${comment ? `رأي وملاحظة الزبون: ${comment}` : 'تقييم منخفض بدون تعليق نصي'}`,
-        });
-      } catch (err) {
-        console.error('Error auto-creating complaint from rating:', err);
-      }
-    }
 
     return NextResponse.json({
       success: true,
@@ -61,6 +52,18 @@ export async function POST(request: NextRequest) {
       rating: newRating,
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const code = String(error?.message || '');
+    if (code === 'RATING_ALREADY_EXISTS') return NextResponse.json({ success: false, error: 'تم تقييم مندوب هذه الطلبية مسبقاً' }, { status: 409 });
+    if (code === 'ORDER_NOT_FOUND') return NextResponse.json({ success: false, error: 'الطلبية غير موجودة' }, { status: 404 });
+    if (code === 'ORDER_NOT_OWNED') return NextResponse.json({ success: false, error: 'غير مصرح بتقييم هذه الطلبية' }, { status: 403 });
+    if (code === 'ORDER_NOT_DELIVERED') return NextResponse.json({ success: false, error: 'يمكن تقييم المندوب بعد تسليم الطلبية فقط' }, { status: 409 });
+    if (code === 'ORDER_HAS_NO_DRIVER') return NextResponse.json({ success: false, error: 'لا يوجد مندوب مرتبط بهذه الطلبية' }, { status: 409 });
+    if (code === 'CUSTOMER_ACCOUNT_NOT_FOUND') return NextResponse.json({ success: false, error: 'حساب الزبون غير مرتبط بقاعدة البيانات' }, { status: 403 });
+    if (code === 'INVALID_RATING') return NextResponse.json({ success: false, error: 'التقييم يجب أن يكون بين 1 و5' }, { status: 400 });
+    // PostgreSQL unique constraint remains the final concurrency-safe guard.
+    if (error?.code === '23505') return NextResponse.json({ success: false, error: 'تم تقييم مندوب هذه الطلبية مسبقاً' }, { status: 409 });
+
+    console.error('POST /api/driver-ratings failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر تسجيل التقييم' }, { status: 500 });
   }
 }
