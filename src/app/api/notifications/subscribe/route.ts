@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { savePushSubscription, getPushAudienceStats } from '@/lib/db';
 import { VAPID_PUBLIC_KEY } from '@/lib/pushService';
+import { getAuthenticatedCustomer } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const stats = getPushAudienceStats();
     return NextResponse.json({
@@ -21,23 +22,37 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { subscription, userId, userPhone, userName, accountType, deviceType } = body;
+    const { subscription, deviceType } = body;
 
-    if (!subscription || !subscription.endpoint || !subscription.keys) {
+    if (
+      !subscription ||
+      typeof subscription.endpoint !== 'string' ||
+      !subscription.endpoint.trim() ||
+      !subscription.keys ||
+      typeof subscription.keys.p256dh !== 'string' ||
+      !subscription.keys.p256dh.trim() ||
+      typeof subscription.keys.auth !== 'string' ||
+      !subscription.keys.auth.trim()
+    ) {
       return NextResponse.json({ success: false, error: 'بيانات الاشتراك غير مكتملة' }, { status: 400 });
     }
 
+    // Never trust identity fields supplied by the browser. If a valid customer
+    // session exists, bind the push subscription to the fresh server-side user.
+    // Otherwise keep it as an anonymous visitor subscription.
+    const customer = getAuthenticatedCustomer(request);
+
     const saved = savePushSubscription({
-      endpoint: subscription.endpoint,
+      endpoint: subscription.endpoint.trim(),
       keys: {
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
+        p256dh: subscription.keys.p256dh.trim(),
+        auth: subscription.keys.auth.trim(),
       },
-      userId,
-      userPhone,
-      userName,
-      accountType: accountType || 'visitor',
-      deviceType: deviceType || 'mobile',
+      userId: customer?.id,
+      userPhone: customer?.phone,
+      userName: customer?.name,
+      accountType: customer?.accountType || 'visitor',
+      deviceType: typeof deviceType === 'string' && deviceType.trim() ? deviceType.trim() : 'mobile',
       userAgent: request.headers.get('user-agent') || undefined,
     });
 
