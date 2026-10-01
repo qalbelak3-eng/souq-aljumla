@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getComplaints, addComplaint, updateComplaint, deleteComplaint } from '@/lib/db';
+import {
+  pgGetComplaints,
+  pgAddComplaint,
+  pgUpdateComplaint,
+  pgDeleteComplaint,
+} from '@/lib/postgres-complaints';
 import { getAuthenticatedAdmin, getAuthenticatedCustomer, hasPermission } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function canManageComplaints(request: NextRequest) {
   const admin = getAuthenticatedAdmin(request);
@@ -17,7 +25,7 @@ export async function GET(request: NextRequest) {
       const phone = searchParams.get('phone') || undefined;
       const userId = searchParams.get('userId') || undefined;
       const status = searchParams.get('status') || undefined;
-      const complaints = getComplaints({ phone, userId, status });
+      const complaints = await pgGetComplaints({ phone, userId, status });
       return NextResponse.json({ success: true, complaints });
     }
 
@@ -26,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (!customer) {
       return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
-    const complaints = getComplaints({ userId: customer.id });
+    const complaints = await pgGetComplaints({ userId: customer.id });
     return NextResponse.json({ success: true, complaints });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -47,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Identity is always derived from the trusted authenticated session.
-    const complaint = addComplaint({
+    const complaint = await pgAddComplaint({
       userId: customer.id,
       customerName: customer.name || 'عميل المتجر',
       customerPhone: customer.phone,
@@ -76,7 +84,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const operator = { id: admin.id, name: admin.name, username: admin.username, role: admin.role };
-    const updated = updateComplaint(id, { status, adminReply, operator });
+    const updated = await pgUpdateComplaint(id, { status, adminReply, operator });
     if (!updated) {
       return NextResponse.json({ success: false, error: 'الشكوى غير موجودة' }, { status: 404 });
     }
@@ -99,7 +107,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'معرف الشكوى مطلوب' }, { status: 400 });
     }
 
-    const deleted = deleteComplaint(id);
+    const deleted = await pgDeleteComplaint(id);
     if (!deleted) {
       return NextResponse.json({ success: false, error: 'الشكوى غير موجودة' }, { status: 404 });
     }
