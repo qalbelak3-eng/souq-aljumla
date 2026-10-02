@@ -8,7 +8,7 @@ export const revalidate = 0;
 export async function GET(request: NextRequest) {
   try {
     // Ratings contain customer snapshots; only authenticated back-office users may enumerate them.
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح' }, { status: 401 });
     }
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) {
       return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول لتقييم المندوب' }, { status: 401 });
     }
