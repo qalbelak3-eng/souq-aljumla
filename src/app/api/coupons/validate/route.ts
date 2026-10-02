@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedCustomer, getAuthenticatedAdmin } from '@/lib/auth';
 import { pgValidateCoupon } from '@/lib/postgres-coupons';
 import { pgGetProducts } from '@/lib/postgres-catalog';
-import { getProductPriceForUser, resolveAuthoritativeProductPrice, validateOrderItemQuantity } from '@/lib/pricing';
+import { resolveAuthoritativeProductPrice, validateOrderItemQuantity } from '@/lib/pricing';
 import { toCanonicalIraqiPhone } from '@/lib/phone-utils';
 
 export const dynamic = 'force-dynamic';
@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     }
 
     // Server-side session authentication: determine trusted account type
-    const customer = getAuthenticatedCustomer(request);
-    const admin = getAuthenticatedAdmin(request);
+    const customer = await getAuthenticatedCustomer(request);
+    const admin = await getAuthenticatedAdmin(request);
 
     const trustedAccountType = admin
       ? (body.userAccountType || 'individual')
