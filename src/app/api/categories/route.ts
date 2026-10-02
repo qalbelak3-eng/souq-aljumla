@@ -16,19 +16,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    // 1. RBAC Authentication & Authorization check
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' }, { status: 401 });
     }
     if (!hasPermission(admin, 'categories') && admin.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'غير مصرح لك بإضافة الأقسام' },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: 'غير مصرح لك بإضافة الأقسام' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -37,16 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'يرجى كتابة اسم القسم' }, { status: 400 });
     }
 
-    const newCategory = await pgCreateCategory({
-      name,
-      image,
-      icon,
-      color,
-      description,
-      orderIndex: orderIndex !== undefined ? Number(orderIndex) : undefined,
-      hideFromHome: hideFromHome !== undefined ? Boolean(hideFromHome) : undefined,
-    });
-
+    const newCategory = await pgCreateCategory({ name, image, icon, color, description, orderIndex: orderIndex !== undefined ? Number(orderIndex) : undefined, hideFromHome: hideFromHome !== undefined ? Boolean(hideFromHome) : undefined });
     return NextResponse.json({ success: true, category: newCategory }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
