@@ -26,7 +26,7 @@ const ORDER_TABLES = ['customer_refunds', 'customer_refund_claims', 'order_refun
 async function existingTables(tx: any, names: string[]) {
   if (!names.length) return [];
   const rows = await tx.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY(${names})`);
-  const found = new Set((rows.rows || rows).map((r: any) => r.tablename));
+  const found = new Set(Array.from(rows as Iterable<any>, (r: any) => r.tablename));
   return names.filter((n) => found.has(n));
 }
 
@@ -44,8 +44,8 @@ export async function pgGetDatabaseStats() {
     SELECT tablename, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', schemaname, tablename), false, true, '')))[1]::text::bigint AS count
     FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
   `);
-  const tables = Object.fromEntries((rows.rows || rows).map((r: any) => [r.tablename, Number(r.count || 0)]));
-  return { engine: 'postgresql', tables, totalRows: Object.values(tables).reduce((a: number, b: any) => a + Number(b || 0), 0) };
+  const tables = Object.fromEntries(Array.from(rows as Iterable<any>, (r: any) => [r.tablename, Number(r.count || 0)] as const));
+  return { engine: 'postgresql', tables, totalRows: Object.values(tables).reduce((a: number, b) => a + Number(b || 0), 0) };
 }
 
 export async function pgResetDatabaseSection(target: string, currentStaffId: string) {
@@ -60,8 +60,6 @@ export async function pgResetDatabaseSection(target: string, currentStaffId: str
     else if (normalized === 'accounting') tables = await truncateTables(tx, ACCOUNTING_TABLES);
     else if (normalized === 'all') tables = await truncateTables(tx, ALL_TABLES);
     else if (normalized === 'staff') {
-      // Preserve the currently authenticated master account. Remove other staff profiles first;
-      // auth identities are cleaned only when they are no longer referenced by a profile.
       await tx.execute(sql`DELETE FROM staff_profiles WHERE id <> ${currentStaffId}::uuid`);
       await tx.execute(sql`DELETE FROM auth_identities ai WHERE ai.role = 'staff' AND NOT EXISTS (SELECT 1 FROM staff_profiles sp WHERE sp.auth_identity_id = ai.id)`);
       tables = ['staff_profiles', 'auth_identities'];
