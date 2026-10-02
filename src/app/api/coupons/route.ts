@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedAdmin, hasPermission } from '@/lib/auth';
+import { getAuthenticatedAdmin, hasPermission, type AuthenticatedAdmin } from '@/lib/auth';
 import {
   pgGetCoupons,
   pgCreateCoupon,
@@ -11,11 +11,11 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type AuthResult =
-  | { authorized: true; admin: NonNullable<ReturnType<typeof getAuthenticatedAdmin>> }
+  | { authorized: true; admin: AuthenticatedAdmin }
   | { authorized: false; response: NextResponse };
 
-function checkAdminAuth(request: Request): AuthResult {
-  const admin = getAuthenticatedAdmin(request);
+async function checkAdminAuth(request: Request): Promise<AuthResult> {
+  const admin = await getAuthenticatedAdmin(request);
   if (!admin) {
     return {
       authorized: false,
@@ -41,7 +41,7 @@ function checkAdminAuth(request: Request): AuthResult {
 
 export async function GET(request: Request) {
   try {
-    const authCheck = checkAdminAuth(request);
+    const authCheck = await checkAdminAuth(request);
     if (!authCheck.authorized) return authCheck.response;
 
     const coupons = await pgGetCoupons();
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const authCheck = checkAdminAuth(request);
+    const authCheck = await checkAdminAuth(request);
     if (!authCheck.authorized) return authCheck.response;
 
     const body = await request.json();
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const authCheck = checkAdminAuth(request);
+    const authCheck = await checkAdminAuth(request);
     if (!authCheck.authorized) return authCheck.response;
 
     const body = await request.json();
@@ -108,7 +108,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authCheck = checkAdminAuth(request);
+    const authCheck = await checkAdminAuth(request);
     if (!authCheck.authorized) return authCheck.response;
 
     const { searchParams } = new URL(request.url);
