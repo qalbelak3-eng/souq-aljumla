@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     // 1. RBAC Authentication & Authorization check
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
@@ -62,7 +62,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
     // 1. RBAC Authentication & Authorization check
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
@@ -96,4 +96,3 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
-
