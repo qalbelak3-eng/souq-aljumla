@@ -1,11 +1,12 @@
 import { eq, or } from 'drizzle-orm';
 import { getDb } from '@/db/client';
-import { authIdentities, financialAccounts, staffProfiles } from '@/db/schema';
+import { authIdentities, drivers, financialAccounts, staffProfiles } from '@/db/schema';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import type { MerchantStatus, MerchantTier, PricingTier } from '@/types';
 
 export interface PgSessionStaff { id: string; authIdentityId: string; name: string; username: string; jobTitle: string; role: string; permissions: string[]; isActive: boolean; }
 export interface PgSessionCustomer { id: string; phone: string; name: string; accountType: 'individual' | 'market' | 'wholesale'; merchantStatus?: MerchantStatus; pricingTier?: PricingTier; merchantTier?: MerchantTier; isActive: boolean; }
+export interface PgSessionDriver { id: string; authIdentityId: string; financialAccountId: string; name: string; phone: string; isActive: boolean; }
 function normalizeUsername(value?: string): string { return (value || '').trim().toLowerCase(); }
 
 export async function pgGetActiveStaffForSession(params: { userId?: string; username?: string }): Promise<PgSessionStaff | null> {
@@ -35,4 +36,11 @@ export async function pgGetActiveCustomerForSession(userId: string): Promise<PgS
   const row = rows[0]; if (!row || !row.accountActive || !row.identityActive || !row.phone) return null;
   const accountType: PgSessionCustomer['accountType'] = row.pricingTier === 'wholesale' ? 'wholesale' : row.pricingTier === 'market' ? 'market' : 'individual';
   return { id: row.id, phone: row.phone, name: row.name, accountType, merchantStatus: (row.merchantStatus || undefined) as MerchantStatus | undefined, pricingTier: (row.pricingTier || undefined) as PricingTier | undefined, merchantTier: (row.merchantTier || undefined) as MerchantTier | undefined, isActive: true };
+}
+
+export async function pgGetActiveDriverForSession(params: { driverId?: string; authIdentityId?: string }): Promise<PgSessionDriver | null> {
+  const driverId = (params.driverId || '').trim(); const authIdentityId = (params.authIdentityId || '').trim(); if (!driverId && !authIdentityId) return null; const db = getDb();
+  const rows = await db.select({ id: drivers.id, authIdentityId: drivers.authIdentityId, financialAccountId: drivers.financialAccountId, name: drivers.name, phone: drivers.phone, driverActive: drivers.isActive, identityActive: authIdentities.isActive, accountActive: financialAccounts.isActive }).from(drivers).innerJoin(authIdentities, eq(drivers.authIdentityId, authIdentities.id)).innerJoin(financialAccounts, eq(drivers.financialAccountId, financialAccounts.id)).where(driverId && authIdentityId ? or(eq(drivers.id, driverId), eq(drivers.authIdentityId, authIdentityId)) : driverId ? eq(drivers.id, driverId) : eq(drivers.authIdentityId, authIdentityId)).limit(1);
+  const row = rows[0]; if (!row || !row.driverActive || !row.identityActive || !row.accountActive) return null;
+  return { id: row.id, authIdentityId: row.authIdentityId, financialAccountId: row.financialAccountId, name: row.name, phone: row.phone, isActive: true };
 }
