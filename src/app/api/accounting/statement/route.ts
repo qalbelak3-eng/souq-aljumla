@@ -7,7 +7,7 @@ export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
     }
@@ -21,32 +21,15 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate') || undefined;
 
     if (!identifier || !identifier.trim()) {
-      return NextResponse.json(
-        { success: false, error: 'يرجى إدخال رقم الهاتف أو البريد الإلكتروني للبحث عن كشف الحساب' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'يرجى إدخال رقم الهاتف أو البريد الإلكتروني للبحث عن كشف الحساب' }, { status: 400 });
     }
 
     const statement = await pgGetCustomerStatement(identifier.trim(), startDate, endDate);
-
     if (!statement) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'لم يتم العثور على أي حركات أو فواتير مسجلة لهذا الرقم',
-        },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'لم يتم العثور على أي حركات أو فواتير مسجلة لهذا الرقم' }, { status: 404 });
     }
-
-    return NextResponse.json({
-      success: true,
-      statement,
-    });
+    return NextResponse.json({ success: true, statement });
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message || 'حدث خطأ في جلب كشف الحساب' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message || 'حدث خطأ في جلب كشف الحساب' }, { status: 500 });
   }
 }
