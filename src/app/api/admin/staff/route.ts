@@ -1,82 +1,49 @@
 import { NextResponse } from 'next/server';
-import { getStaffMembers, createStaffMember } from '@/lib/db';
-import { getAuthenticatedAdmin } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth';
+import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
+import { pgGetStaffMembers, pgCreateStaffMember } from '@/lib/postgres-staff';
 
-function requireMasterAdmin(request: Request) {
-  const admin = getAuthenticatedAdmin(request);
-  if (!admin) {
-    return NextResponse.json(
-      { success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' },
-      { status: 401 }
-    );
-  }
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-  if (admin.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'إدارة حسابات الموظفين محصورة بالمدير العام فقط' },
-      { status: 403 }
-    );
-  }
-
-  return null;
+async function requireMasterAdmin(request: Request) {
+  const session = getSessionFromRequest(request);
+  if (!session) return { status: 401, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' };
+  const staff = await pgGetActiveStaffForSession({ userId: session.userId, username: session.username });
+  if (!staff) return { status: 401, error: 'الجلسة غير صالحة أو الحساب غير فعال' };
+  const master = session.role === 'admin' || staff.role === 'admin' || staff.role === 'master' || (staff.permissions || []).includes('*');
+  return master ? null : { status: 403, error: 'إدارة حسابات الموظفين محصورة بالمدير العام فقط' };
 }
 
 export async function GET(request: Request) {
   try {
-    const denied = requireMasterAdmin(request);
-    if (denied) return denied;
-
-    const staff = getStaffMembers();
-    return NextResponse.json({ success: true, staff });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const denied = await requireMasterAdmin(request);
+    if (denied) return NextResponse.json({ success: false, error: denied.error }, { status: denied.status });
+    return NextResponse.json({ success: true, staff: await pgGetStaffMembers() });
+  } catch (error) {
+    console.error('GET /api/admin/staff failed:', error);
+    return NextResponse.json({ success: false, error: 'تعذر تحميل حسابات الموظفين' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const denied = requireMasterAdmin(request);
-    if (denied) return denied;
-
+    const denied = await requireMasterAdmin(request);
+    if (denied) return NextResponse.json({ success: false, error: denied.error }, { status: denied.status });
     const body = await request.json();
-    const { name, username, password, phone, jobTitle, role, permissions, isActive, notes } = body;
-
-    if (!name || !name.trim()) {
-      return NextResponse.json({ success: false, error: 'يرجى إدخال اسم الموظف' }, { status: 400 });
-    }
-    if (!username || !username.trim()) {
-      return NextResponse.json({ success: false, error: 'يرجى إدخال اسم مستخدم فريد للدخول' }, { status: 400 });
-    }
-    if (!password || !password.trim()) {
-      return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة مرور للموظف' }, { status: 400 });
-    }
-
-    const requestedPermissions = Array.isArray(permissions)
-      ? permissions.filter((permission): permission is string => typeof permission === 'string' && permission !== '*')
-      : [];
-
-    const result = createStaffMember({
-      name,
-      username,
-      password,
-      phone: phone || '',
-      jobTitle: jobTitle || 'موظف',
-      role: role || 'custom',
-      permissions: requestedPermissions,
-      isActive: isActive !== false,
-      notes: notes || '',
-    });
-
-    if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'تم إضافة الموظف بنجاح وتفعيل حسابه 🎉',
-      staff: result.staff,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const username = typeof body?.username === 'string' ? body.username.trim() : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!name) return NextResponse.json({ success: false, error: 'يرجى إدخال اسم الموظف' }, { status: 400 });
+    if (!username) return NextResponse.json({ success: false, error: 'يرجى إدخال اسم مستخدم فريد للدخول' }, { status: 400 });
+    if (password.trim().length < 8) return NextResponse.json({ success: false, error: 'كلمة المرور يجب ألا تقل عن 8 أحرف' }, { status: 400 });
+    const permissions = Array.isArray(body?.permissions) ? body.permissions.filter((p: unknown): p is string => typeof p === 'string' && p !== '*') : [];
+    const staff = await pgCreateStaffMember({ name, username, password: password.trim(), phone: typeof body?.phone === 'string' ? body.phone : '', jobTitle: typeof body?.jobTitle === 'string' ? body.jobTitle : 'موظف', role: typeof body?.role === 'string' ? body.role : 'custom', permissions, isActive: body?.isActive !== false });
+    return NextResponse.json({ success: true, message: 'تم إضافة الموظف بنجاح وتفعيل حسابه 🎉', staff });
+  } catch (error) {
+    console.error('POST /api/admin/staff failed:', error);
+    const message = error instanceof Error ? error.message : '';
+    const safe = message.includes('مسجل مسبقاً');
+    return NextResponse.json({ success: false, error: safe ? message : 'تعذر إضافة حساب الموظف' }, { status: safe ? 400 : 500 });
   }
 }
