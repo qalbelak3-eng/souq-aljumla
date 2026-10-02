@@ -29,11 +29,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     // Security Check: Authorized entity to view order details:
     // 1. Admin with 'orders' permission
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     const isAdminAuthorized = admin && hasPermission(admin, 'orders');
 
     // 2. Authenticated Customer who owns the order
-    const authenticatedCustomer = getAuthenticatedCustomer(request);
+    const authenticatedCustomer = await getAuthenticatedCustomer(request);
     const orderPhoneClean = toCanonicalIraqiPhone(order.customer?.phone) || (order.customer?.phone || '').replace(/\D/g, '');
     const authPhoneClean = toCanonicalIraqiPhone(authenticatedCustomer?.phone) || (authenticatedCustomer?.phone || '').replace(/\D/g, '');
     const isCustomerOwner = !!(
@@ -86,7 +86,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
     // 1. Enforce admin authentication & 'orders' permission
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
     }
@@ -272,7 +272,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     // 1. Enforce admin authentication & 'orders' permission
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
     }
@@ -371,7 +371,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
     // 1. Enforce admin authentication & 'orders' permission
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (جلسة غير مسجلة)' }, { status: 401 });
     }
