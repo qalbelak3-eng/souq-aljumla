@@ -6,6 +6,9 @@ import { getPostgresClient, isDatabaseConfigured, getAllDomainDataSources } from
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// The Drizzle journal intentionally tracks the original generated migration chain only (0000 -> 0005).
+// Later SQL migrations are verified below by checking their concrete schema effects instead of pretending
+// that they are entries in drizzle/meta/_journal.json.
 const REQUIRED_MIGRATION_COUNT = 6;
 const EXPECTED_LATEST_MIGRATION_TIMESTAMP = '1789999000000';
 const EXPECTED_LATEST_MIGRATION_TAG = '0005_audit_hardening_triggers';
@@ -49,7 +52,52 @@ export async function GET(req: NextRequest) {
     const latestCreatedAt = latestMigration ? String(latestMigration.created_at) : null;
     const allHashesValid = appliedMigrations.length === REQUIRED_MIGRATION_COUNT && appliedMigrations.every(m => typeof m.hash === 'string' && m.hash.length === 64);
     const allRequiredMigrationsApplied = trackingTableExists && appliedCount === REQUIRED_MIGRATION_COUNT && latestCreatedAt === EXPECTED_LATEST_MIGRATION_TIMESTAMP && allHashesValid;
-    checks.migrations = { name: 'Drizzle Migrations History Tracking', passed: allRequiredMigrationsApplied, details: { trackingTableExists, trackingTablePath: '"drizzle"."__drizzle_migrations"', appliedCount, requiredCount: REQUIRED_MIGRATION_COUNT, allHashesVerified: allHashesValid, latestAppliedTimestamp: latestCreatedAt, expectedLatestTimestamp: EXPECTED_LATEST_MIGRATION_TIMESTAMP, expectedLatestTag: EXPECTED_LATEST_MIGRATION_TAG } };
+    checks.migrations = { name: 'Drizzle Migrations History Tracking (0000-0005)', passed: allRequiredMigrationsApplied, details: { trackingTableExists, trackingTablePath: '"drizzle"."__drizzle_migrations"', appliedCount, requiredCount: REQUIRED_MIGRATION_COUNT, allHashesVerified: allHashesValid, latestAppliedTimestamp: latestCreatedAt, expectedLatestTimestamp: EXPECTED_LATEST_MIGRATION_TIMESTAMP, expectedLatestTag: EXPECTED_LATEST_MIGRATION_TAG } };
+
+    // 0022_metadata_lucky_wheel_settings.sql: verify the real database effect, independently of Drizzle journal.
+    const luckyWheelTableExists = existingTableSet.has('lucky_wheel_settings');
+    let luckyWheelSingletonExists = false;
+    if (luckyWheelTableExists) {
+      const luckyWheelRows = await sqlClient`SELECT id FROM lucky_wheel_settings WHERE id = 1 LIMIT 1;`;
+      luckyWheelSingletonExists = luckyWheelRows.length === 1;
+    }
+    checks.luckyWheelMigration = {
+      name: 'Post-Drizzle SQL Migration 0022 (Lucky Wheel Settings)',
+      passed: luckyWheelTableExists && luckyWheelSingletonExists,
+      details: { tableExists: luckyWheelTableExists, singletonRowId1Exists: luckyWheelSingletonExists },
+    };
+
+    // 0023_customer_profile_postgres.sql: verify all profile columns and coordinate constraints exist.
+    const requiredCustomerProfileColumns = ['avatar', 'latitude', 'longitude', 'maps_url', 'saved_addresses'];
+    const customerProfileColumns = await sqlClient`
+      SELECT column_name, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'financial_accounts'
+        AND column_name = ANY(${requiredCustomerProfileColumns});
+    `;
+    const existingCustomerProfileColumnSet = new Set(customerProfileColumns.map((c: any) => String(c.column_name)));
+    const missingCustomerProfileColumns = requiredCustomerProfileColumns.filter(c => !existingCustomerProfileColumnSet.has(c));
+    const savedAddressesColumn = customerProfileColumns.find((c: any) => String(c.column_name) === 'saved_addresses');
+    const savedAddressesNotNull = savedAddressesColumn?.is_nullable === 'NO';
+
+    const requiredCustomerProfileConstraints = ['chk_account_latitude', 'chk_account_longitude'];
+    const customerProfileConstraints = await sqlClient`
+      SELECT conname as name
+      FROM pg_constraint
+      WHERE conname = ANY(${requiredCustomerProfileConstraints});
+    `;
+    const existingCustomerProfileConstraintSet = new Set(customerProfileConstraints.map((c: any) => String(c.name)));
+    const missingCustomerProfileConstraints = requiredCustomerProfileConstraints.filter(c => !existingCustomerProfileConstraintSet.has(c));
+    checks.customerProfileMigration = {
+      name: 'Post-Drizzle SQL Migration 0023 (Customer Profile PostgreSQL)',
+      passed: missingCustomerProfileColumns.length === 0 && savedAddressesNotNull && missingCustomerProfileConstraints.length === 0,
+      details: {
+        missingColumns: missingCustomerProfileColumns,
+        savedAddressesNotNull,
+        missingConstraints: missingCustomerProfileConstraints,
+      },
+    };
 
     const requiredFunctions = ['enforce_voucher_immutability','enforce_order_archive_only','verify_driver_repayment_integrity','enforce_inventory_movement_immutability','verify_inventory_movement_reference'];
     const functionsInDb = await sqlClient`SELECT proname FROM pg_proc WHERE proname = ANY(${requiredFunctions});`;
