@@ -26,28 +26,19 @@ export async function GET(request: Request) {
     const limit = limitParam ? Number(limitParam) : undefined;
     const status = (searchParams.get('status') as any) || undefined;
 
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     const isStaffOrAdmin = admin && hasPermission(admin, 'orders');
 
     if (isStaffOrAdmin) {
-      // Admin with 'orders' permission can query all orders or filter by query parameters
       const userId = searchParams.get('userId') || undefined;
       const phone = searchParams.get('phone') || undefined;
       const email = searchParams.get('email') || undefined;
 
-      const orders = await pgGetOrders({
-        userId,
-        phone,
-        email,
-        limit,
-        status,
-      });
-
+      const orders = await pgGetOrders({ userId, phone, email, limit, status });
       return NextResponse.json({ success: true, orders, count: orders.length });
     }
 
-    // Customer flow: MUST authenticate server-side via trusted session
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) {
       return NextResponse.json({
         success: false,
@@ -55,8 +46,6 @@ export async function GET(request: Request) {
       }, { status: 401 });
     }
 
-    // STRICT SERVER-SIDE ISOLATION:
-    // Extract identity EXCLUSIVELY from customer session. URL query params cannot override or access another customer's data!
     const orders = await pgGetOrders({
       userId: customer.id,
       phone: customer.phone,
@@ -90,7 +79,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'يرجى إكمال جميع بيانات العميل المطلوبة' }, { status: 400 });
     }
 
-    // Server-side lat/lng range validation (Req #9)
     if (customer.lat !== undefined && customer.lat !== null && customer.lat !== '') {
       const latVal = Number(customer.lat);
       if (isNaN(latVal) || latVal < -90 || latVal > 90) {
@@ -114,9 +102,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'سلة المشتريات فارغة' }, { status: 400 });
     }
 
-    // Session-derived operator and trusted identity resolution (Requirement 4)
-    const admin = getAuthenticatedAdmin(request);
-    const customerSession = getAuthenticatedCustomer(request);
+    const admin = await getAuthenticatedAdmin(request);
+    const customerSession = await getAuthenticatedCustomer(request);
 
     let trustedUser: any = null;
 
@@ -143,14 +130,12 @@ export async function POST(request: Request) {
         customer.phone = customerSession.phone;
       }
     } else {
-      // Unauthenticated / guest customer: strictly individual account
       trustedUser = null;
       customer.userId = undefined;
     }
 
     const effectiveAccountType = trustedUser?.accountType || 'individual';
 
-    // Check if customer is a pending merchant or market
     if (
       trustedUser &&
       (effectiveAccountType === 'market' ||
@@ -161,19 +146,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'حسابك (ماركت/تاجر) قيد المراجعة والتدقيق من قبل الإدارة حالياً. لا يمكن إرسال فواتير الشراء إلا بعد قيام الإدارة بالاتصال بك واعتماد الحساب.',
+          error: 'حسابك (ماركت/تاجر) قيد المراجعة والتدقيق من قبل الإدارة حالياً. لا يمكن إرسال فواتير الشراء إلا بعد قيام الإدارة بالاتصال بك واعتماد الحساب.',
         },
         { status: 403 }
       );
     }
 
-    // Server-side recalculation of each item price based on verified product catalog
     const settings = await pgGetStoreSettings();
     const allProducts = await pgGetProducts();
     let calculatedSubtotal = 0;
 
-    // Strict product, quantity, and stale cart price validation (Defense-in-depth & Phase 2B1)
     for (const item of items) {
       const prodId = item.productId || item.id;
       if (!prodId) {
@@ -194,8 +176,6 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
 
-      // Stale cart price detection (Requirement 9 & Phase 2B1/2B3):
-      // When client requests price change protection (rejectStaleCartPrice: true), reject if price changed
       const shouldRejectStale = body.rejectStaleCartPrice === true || body.enforceExactCartPrices === true || item.enforceExactPrice === true;
       if (!admin && shouldRejectStale && item.price !== undefined && item.price !== null && item.price !== '') {
         const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
@@ -217,17 +197,12 @@ export async function POST(request: Request) {
       const qtyRes = validateOrderItemQuantity(item.quantity);
       const qty = qtyRes.quantity!;
       const saleType = item.saleType === 'wholesale' ? 'wholesale' : item.saleType === 'box' ? 'box' : 'retail';
-
-      // Strictly derive price from Final Pricing Authority (Phase Commerce-2B3)
       const authPricing = resolveAuthoritativeProductPrice({ product: prod, saleType: saleType as any, user: trustedUser });
       const officialPrice = authPricing.finalUnitPrice;
-
       const itemTotal = officialPrice * qty;
       calculatedSubtotal += itemTotal;
-
       const cashbackRate = getProductCashbackRate(prod, trustedUser, settings, saleType as any);
       const earnedCashback = cashbackRate * qty;
-
       const originalPriceSnap = authPricing.originalUnitPrice;
       const offerIdSnap = authPricing.offerId || undefined;
       const offerDiscountSnap = authPricing.offerSavingsPerUnit;
@@ -261,7 +236,6 @@ export async function POST(request: Request) {
     });
 
     const totalEarnedCashback = verifiedItems.reduce((s: number, it: any) => s + (Number(it.earnedCashback) || 0), 0);
-
     const minOrder = Number(settings.minOrderAmount) || 0;
     if (minOrder > 0 && calculatedSubtotal < minOrder) {
       return NextResponse.json({
@@ -270,7 +244,6 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Server-side delivery fee & warehouse readiness verification (Strict Second Defense)
     const pricingMode = settings.deliveryPricingMode || 'fixed';
     if (pricingMode === 'distance_tiered' || pricingMode === 'per_km') {
       const isValidWarehouse =
@@ -289,18 +262,14 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              'لا يمكن إتمام الطلب بنظام حساب المسافة لعدم ضبط إحداثيات المستودع في إعدادات المتجر. يرجى مراجعة إدارة المتجر.',
+            error: 'لا يمكن إتمام الطلب بنظام حساب المسافة لعدم ضبط إحداثيات المستودع في إعدادات المتجر. يرجى مراجعة إدارة المتجر.',
           },
           { status: 400 }
         );
       }
     }
 
-    // Strictly recomputed server-side without trusting client deliveryFee (Requirement 8)
     const verifiedDeliveryFee = getEffectiveDeliveryFee(calculatedSubtotal, settings, customer);
-
-    // Server-side coupon verification (Requirement 3, 7, 10 & Commerce-2C1)
     let verifiedDiscount = 0;
     if (couponCode && String(couponCode).trim()) {
       const calculatedNonDiscountedSubtotal = verifiedItems.reduce((acc: number, it: any) => {
@@ -323,7 +292,6 @@ export async function POST(request: Request) {
       }
       verifiedDiscount = couponRes.discount;
     } else if (discount !== undefined && discount !== null && Number(discount) > 0) {
-      // Disallow arbitrary discounts from customers (Requirement 7)
       if (!admin || !hasPermission(admin, 'orders')) {
         return NextResponse.json(
           { success: false, error: 'غير مصرح للعميل بتحديد خصم مباشر. يجب استخدام كود خصم معتمد.' },
@@ -333,12 +301,10 @@ export async function POST(request: Request) {
       verifiedDiscount = Math.min(calculatedSubtotal, Math.max(0, Number(discount)));
     }
 
-    // Server-side cashback discount verification (Commerce-2A Server-Authoritative)
     let verifiedCashbackDiscount = 0;
     const requestedCashback = Number(usedCashbackDiscount);
 
     if (!isNaN(requestedCashback) && requestedCashback > 0) {
-      // 1. Authentication check: Guest cannot redeem cashback
       if (!customerSession && !admin) {
         return NextResponse.json(
           { success: false, error: 'غير مصرح للزائر باستخدام رصيد الأرباح. يرجى تسجيل الدخول بحسابك أولاً.' },
@@ -346,7 +312,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // 2. Resolve customer's trusted financial account
       const customerAccount = await pgResolveCustomerAccount({
         accountId,
         userId: customerSession?.id || (admin ? customer.userId : undefined),
@@ -360,16 +325,13 @@ export async function POST(request: Request) {
         );
       }
 
-      // 3. Fetch real spendable balance from PostgreSQL cashback_ledger
       const availableBalance = await pgGetAccountCashbackBalance(customerAccount.id);
-
       if (availableBalance <= 0) {
         return NextResponse.json(
           { success: false, error: 'رصيد الأرباح المتاح لديك هو 0 د.ع ولا يمكن استخدام رصيد أرباح في هذا الطلب' },
           { status: 400 }
         );
       }
-
       if (requestedCashback > availableBalance) {
         return NextResponse.json(
           {
@@ -379,15 +341,11 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-
-      // 4. Stacking bounds: Cashback discount cannot exceed remaining subtotal after coupon discount
       const maxAllowableCashback = Math.max(0, calculatedSubtotal - verifiedDiscount);
       verifiedCashbackDiscount = Math.min(requestedCashback, availableBalance, maxAllowableCashback);
     }
 
-    // Calculate final trusted total
     const finalTotal = Math.max(0, calculatedSubtotal + verifiedDeliveryFee - verifiedDiscount - verifiedCashbackDiscount);
-
     const operator = admin
       ? { name: admin.name, username: admin.username, role: admin.role, id: admin.id }
       : customerSession
@@ -422,15 +380,13 @@ export async function POST(request: Request) {
       idempotencyKey,
     });
 
-    // Generate cryptographic order access token for secure tracking (especially for guests)
     const orderAccessToken = signOrderAccessToken({
       orderId: newOrder.id,
       orderNumber: newOrder.orderNumber,
       phone: customer.phone,
-      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+      exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     });
 
-    // Send push alert to customer phone
     try {
       await sendDirectCustomerAlert({
         userId: customer.userId,
@@ -442,7 +398,6 @@ export async function POST(request: Request) {
     } catch (e) {}
 
     const whatsappUrl = generateWhatsAppLink(newOrder, settings);
-
     const response = NextResponse.json({
       success: true,
       order: newOrder,
@@ -450,7 +405,6 @@ export async function POST(request: Request) {
       whatsappUrl,
     }, { status: 201 });
 
-    // Set scoped cookie for guest tracking on this browser
     response.cookies.set({
       name: `etihad_order_token_${newOrder.id}`,
       value: orderAccessToken,
