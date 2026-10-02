@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       if (!user) return NextResponse.json({ success: false, error: 'المستخدم غير موجود' }, { status: 404 });
       return NextResponse.json({ success: true, user: publicUser(user) });
     }
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (يتطلب تسجيل الدخول للاطلاع على بيانات الحساب)' }, { status: 401 });
     const user = getUsers().find(u => u.id === customer.id);
     if (!user) return NextResponse.json({ success: false, error: 'المستخدم غير موجود' }, { status: 404 });
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) return NextResponse.json({ success: false, error: 'غير مصرح لك بالوصول (يتطلب تسجيل الدخول كزبون لتعديل الملف الشخصي)' }, { status: 401 });
     const body = await request.json(); const raw = body.updates || body;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return NextResponse.json({ success: false, error: 'بيانات التحديث غير صالحة' }, { status: 400 });
