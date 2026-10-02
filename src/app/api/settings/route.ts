@@ -17,7 +17,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' }, { status: 401 });
     }
