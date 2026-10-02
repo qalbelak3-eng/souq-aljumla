@@ -10,7 +10,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'غير مصرح لك بالوصول (يتطلب تسجيل الدخول كمسؤول)' },
@@ -39,7 +39,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
@@ -81,7 +81,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
@@ -124,4 +124,3 @@ export async function POST(
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }
 }
-
