@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     // 1. RBAC Authentication & Authorization check (Requirement 5)
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     if (!admin) {
       return NextResponse.json(
         { success: false, error: 'يجب تسجيل الدخول كمسؤول أولاً' },
