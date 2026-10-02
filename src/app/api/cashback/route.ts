@@ -11,8 +11,8 @@ export async function GET(request: Request) {
     const queryPhone = searchParams.get('phone');
     const queryAccountId = searchParams.get('accountId');
 
-    const customerSession = getAuthenticatedCustomer(request);
-    const admin = getAuthenticatedAdmin(request);
+    const customerSession = await getAuthenticatedCustomer(request);
+    const admin = await getAuthenticatedAdmin(request);
 
     // If neither customer nor admin is logged in, return 0 balance for guest
     if (!customerSession && !admin) {
