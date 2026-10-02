@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, boolean, date, timestamp, text, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, boolean, date, timestamp, text, index, uniqueIndex, check, doublePrecision, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { authIdentities } from './auth';
 
@@ -7,21 +7,24 @@ export const financialAccounts = pgTable('financial_accounts', {
   accountCode: varchar('account_code', { length: 30 }).notNull().unique(),
   name: varchar('name', { length: 150 }).notNull(),
   businessName: varchar('business_name', { length: 150 }),
-  phone: varchar('phone', { length: 20 }), // Nullable as finalized in DB-1 Addendum #1
-  category: varchar('category', { length: 20 }).notNull(), // 'customer' | 'supplier' | 'driver' | 'employee'
-  pricingTier: varchar('pricing_tier', { length: 20 }).default('retail').notNull(), // 'retail' | 'market' | 'wholesale' | 'special' | 'general'
+  phone: varchar('phone', { length: 20 }),
+  category: varchar('category', { length: 20 }).notNull(),
+  pricingTier: varchar('pricing_tier', { length: 20 }).default('retail').notNull(),
   fixedDiscountPercent: numeric('fixed_discount_percent', { precision: 5, scale: 2 }).default('0.00'),
   city: varchar('city', { length: 100 }),
   address: text('address'),
-  authIdentityId: uuid('auth_identity_id')
-    .unique()
-    .references(() => authIdentities.id, { onDelete: 'set null' }),
-  merchantStatus: varchar('merchant_status', { length: 20 }).default('none').notNull(), // 'none' | 'pending' | 'approved' | 'rejected'
-  merchantTier: varchar('merchant_tier', { length: 20 }), // 'bronze' | 'silver' | 'gold'
+  authIdentityId: uuid('auth_identity_id').unique().references(() => authIdentities.id, { onDelete: 'set null' }),
+  merchantStatus: varchar('merchant_status', { length: 20 }).default('none').notNull(),
+  merchantTier: varchar('merchant_tier', { length: 20 }),
   businessType: varchar('business_type', { length: 150 }),
   storefrontImage: text('storefront_image'),
+  avatar: text('avatar'),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  mapsUrl: text('maps_url'),
+  savedAddresses: jsonb('saved_addresses').$type<unknown[]>().default([]).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
-  archivedAt: timestamp('archived_at', { withTimezone: true }), // For safe account deactivation without deleting history (DB-2A Item 7)
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -30,23 +33,22 @@ export const financialAccounts = pgTable('financial_accounts', {
   index('idx_accounts_phone').on(table.phone),
   index('idx_accounts_merchant_status').on(table.merchantStatus),
   index('idx_accounts_merchant_tier').on(table.merchantTier),
-  // Partial unique index: phone must be unique only when not null (DB-2A Item 4)
   uniqueIndex('uq_accounts_phone_non_null').on(table.phone).where(sql`${table.phone} IS NOT NULL`),
   check('chk_account_category', sql`${table.category} IN ('customer', 'supplier', 'driver', 'employee')`),
   check('chk_account_pricing_tier', sql`${table.pricingTier} IN ('retail', 'market', 'wholesale', 'special', 'general')`),
   check('chk_account_merchant_status', sql`${table.merchantStatus} IN ('none', 'pending', 'approved', 'rejected')`),
   check('chk_account_merchant_tier', sql`${table.merchantTier} IS NULL OR ${table.merchantTier} IN ('bronze', 'silver', 'gold')`),
   check('chk_account_discount', sql`${table.fixedDiscountPercent} >= 0 AND ${table.fixedDiscountPercent} <= 100`),
+  check('chk_account_latitude', sql`${table.latitude} IS NULL OR (${table.latitude} >= -90 AND ${table.latitude} <= 90)`),
+  check('chk_account_longitude', sql`${table.longitude} IS NULL OR (${table.longitude} >= -180 AND ${table.longitude} <= 180)`),
 ]);
 
 export const accountContacts = pgTable('account_contacts', {
   id: uuid('id').defaultRandom().primaryKey(),
-  accountId: uuid('account_id')
-    .notNull()
-    .references(() => financialAccounts.id, { onDelete: 'cascade' }),
-  type: varchar('type', { length: 20 }).notNull(), // 'mobile' | 'whatsapp' | 'landline' | 'email'
+  accountId: uuid('account_id').notNull().references(() => financialAccounts.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 20 }).notNull(),
   value: varchar('value', { length: 150 }).notNull(),
-  label: varchar('label', { length: 50 }), // e.g. 'المحاسب', 'المبيعات', 'المستودع'
+  label: varchar('label', { length: 50 }),
   isPrimary: boolean('is_primary').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -57,11 +59,8 @@ export const accountContacts = pgTable('account_contacts', {
 
 export const accountOpeningBalances = pgTable('account_opening_balances', {
   id: uuid('id').defaultRandom().primaryKey(),
-  accountId: uuid('account_id')
-    .notNull()
-    .unique()
-    .references(() => financialAccounts.id, { onDelete: 'restrict' }),
-  type: varchar('type', { length: 10 }).notNull(), // 'debit' (لنا) | 'credit' (علينا)
+  accountId: uuid('account_id').notNull().unique().references(() => financialAccounts.id, { onDelete: 'restrict' }),
+  type: varchar('type', { length: 10 }).notNull(),
   amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
   entryDate: date('entry_date').defaultNow().notNull(),
   notes: text('notes'),
