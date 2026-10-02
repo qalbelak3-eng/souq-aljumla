@@ -10,8 +10,8 @@ import { getAuthenticatedAdmin, getAuthenticatedCustomer, hasPermission } from '
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function canManageComplaints(request: NextRequest) {
-  const admin = getAuthenticatedAdmin(request);
+async function canManageComplaints(request: NextRequest) {
+  const admin = await getAuthenticatedAdmin(request);
   if (!admin) return null;
   if (admin.role === 'admin' || hasPermission(admin, 'complaints')) return admin;
   return null;
@@ -19,7 +19,7 @@ function canManageComplaints(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = canManageComplaints(request);
+    const admin = await canManageComplaints(request);
     if (admin) {
       const { searchParams } = new URL(request.url);
       const phone = searchParams.get('phone') || undefined;
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Customers may only read their own complaints. Never trust phone/userId query params.
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) {
       return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const customer = getAuthenticatedCustomer(request);
+    const customer = await getAuthenticatedCustomer(request);
     if (!customer) {
       return NextResponse.json({ success: false, error: 'يجب تسجيل الدخول لإرسال الشكوى' }, { status: 401 });
     }
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const admin = canManageComplaints(request);
+    const admin = await canManageComplaints(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بإدارة الشكاوى' }, { status: 403 });
     }
@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const admin = canManageComplaints(request);
+    const admin = await canManageComplaints(request);
     if (!admin) {
       return NextResponse.json({ success: false, error: 'غير مصرح لك بحذف الشكاوى' }, { status: 403 });
     }
