@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const identifier = searchParams.get('identifier') || searchParams.get('phone') || searchParams.get('email');
-    const admin = getAuthenticatedAdmin(request);
+    const admin = await getAuthenticatedAdmin(request);
     const isAdmin = admin && (hasPermission(admin, 'merchants') || hasPermission(admin, 'orders') || admin.role === 'admin');
     if (isAdmin) {
       if (!identifier) return NextResponse.json({ success: false, error: 'المعرف مطلوب لعمليات الإدارة' }, { status: 400 });
