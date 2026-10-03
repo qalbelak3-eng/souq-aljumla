@@ -17,7 +17,6 @@ const tempDir = path.join(os.tmpdir(), 'ep_test_commerce_phase2b2_' + Date.now()
 const dbUrl = `postgres://postgres:password@127.0.0.1:${PORT}/postgres`;
 process.env.DATABASE_URL = dbUrl;
 process.env.DB_POOL_MAX = '5';
-process.env.DATA_SOURCE_CATALOG_BASE = 'postgres';
 process.env.ADMIN_SESSION_SECRET = 'commerce-phase2b2-test-secret-min-32-chars-long';
 process.env.CUSTOMER_SESSION_SECRET = 'commerce-phase2b2-test-secret-min-32-chars-long';
 

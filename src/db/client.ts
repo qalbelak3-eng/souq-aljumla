@@ -2,35 +2,6 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
-/**
- * Domain-Level Data Source Routing Types
- * Every domain has exactly ONE authoritative write source at any time.
- * Wave 1 Default: All domains are set to 'json'.
- */
-export type DomainName =
-  | 'METADATA'
-  | 'CATALOG_BASE'
-  | 'ACCOUNTS'
-  | 'COMMERCE'
-  | 'FINANCE';
-
-export type DataSourceType = 'json' | 'postgres';
-
-export function getDomainDataSource(domain: DomainName): DataSourceType {
-  const envVar = `DATA_SOURCE_${domain}`;
-  const val = (process.env[envVar] || 'json').trim().toLowerCase();
-  return val === 'postgres' ? 'postgres' : 'json';
-}
-
-export function getAllDomainDataSources(): Record<DomainName, DataSourceType> {
-  return {
-    METADATA: getDomainDataSource('METADATA'),
-    CATALOG_BASE: getDomainDataSource('CATALOG_BASE'),
-    ACCOUNTS: getDomainDataSource('ACCOUNTS'),
-    COMMERCE: getDomainDataSource('COMMERCE'),
-    FINANCE: getDomainDataSource('FINANCE'),
-  };
-}
 
 /**
  * Helper to sanitize database connection strings so passwords or tokens

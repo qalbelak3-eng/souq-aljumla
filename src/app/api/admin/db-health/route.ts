@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { pgGetActiveStaffForSession } from '@/lib/postgres-session-auth';
-import { getPostgresClient, isDatabaseConfigured, getAllDomainDataSources } from '@/db/client';
+import { getPostgresClient, isDatabaseConfigured } from '@/db/client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -23,14 +23,13 @@ export async function GET(req: NextRequest) {
   const isAuthorizedAdmin = session.role === 'admin' || admin.role === 'admin' || admin.role === 'master' || (admin.permissions || []).includes('*');
   if (!isAuthorizedAdmin) return NextResponse.json({ success: false, error: 'هذه العملية محصورة بصلاحيات المدير العام فقط (Master Admin)' }, { status: 403 });
 
-  const domainRouting = getAllDomainDataSources();
   const checks: Record<string, CheckItem> = {};
   const timestamp = new Date().toISOString();
-  if (!isDatabaseConfigured()) return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'DATABASE_URL environment variable is not configured', domains: domainRouting }, { status: 503 });
+  if (!isDatabaseConfigured()) return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'DATABASE_URL environment variable is not configured', runtime: 'postgresql-only' }, { status: 503 });
 
   let sqlClient;
   try { sqlClient = getPostgresClient(); }
-  catch (err: any) { console.error('[DB-HEALTH] Database connection initialization error:', err?.message); return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'PostgreSQL connection unavailable', domains: domainRouting }, { status: 503 }); }
+  catch (err: any) { console.error('[DB-HEALTH] Database connection initialization error:', err?.message); return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'PostgreSQL connection unavailable', runtime: 'postgresql-only' }, { status: 503 }); }
 
   try {
     const pingStart = Date.now();
@@ -113,9 +112,9 @@ export async function GET(req: NextRequest) {
     const poolResults = await Promise.all(Array.from({ length: 3 }, (_, i) => sqlClient`SELECT ${i}::int as query_id;`));
     checks.poolLifecycle = { name: 'Connection Pool Acquire & Release Lifecycle', passed: poolResults.every((res, i) => Number(res[0]?.query_id) === i), details: { concurrentQueriesRun: 3, lifecycleDurationMs: Date.now() - poolTestStart } };
     const allPassed = Object.values(checks).every(c => c.passed);
-    return NextResponse.json({ success: allPassed, status: allPassed ? 'HEALTHY' : 'UNHEALTHY', timestamp, operator: { username: admin.username, role: admin.role }, checks, domains: domainRouting }, { status: allPassed ? 200 : 503 });
+    return NextResponse.json({ success: allPassed, status: allPassed ? 'HEALTHY' : 'UNHEALTHY', timestamp, operator: { username: admin.username, role: admin.role }, checks, runtime: 'postgresql-only' }, { status: allPassed ? 200 : 503 });
   } catch (err: any) {
     console.error('[DB-HEALTH] Database query execution failure:', err?.message);
-    return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'PostgreSQL connection unavailable', domains: domainRouting }, { status: 503 });
+    return NextResponse.json({ success: false, status: 'UNHEALTHY', timestamp, error: 'PostgreSQL connection unavailable', runtime: 'postgresql-only' }, { status: 503 });
   }
 }
