@@ -754,6 +754,8 @@ export interface ProfitReportItem {
   grossProfit: number; // صافي الربح
   marginPercentage: number; // نسبة هامش الربح
   itemsCount: number;
+  hasIncompleteCostData?: boolean;
+  unknownCostItemsCount?: number;
 }
 
 export interface ProductProfitItem {
@@ -767,6 +769,8 @@ export interface ProductProfitItem {
   totalCost: number;
   grossProfit: number;
   marginPercentage: number;
+  hasIncompleteCostData?: boolean;
+  isCostUnknown?: boolean;
 }
 
 export interface ProfitReportSummary {
@@ -780,6 +784,8 @@ export interface ProfitReportSummary {
   marginPercentage: number; // نسبة هامش الربح الإجمالية
   ordersBreakdown: ProfitReportItem[];
   productsBreakdown: ProductProfitItem[];
+  hasIncompleteCostData?: boolean;
+  unknownCostItemsCount?: number;
 }
 
 export interface InventoryMovementItem {

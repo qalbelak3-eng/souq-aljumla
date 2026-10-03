@@ -56,28 +56,11 @@ async function startDatabase() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migrations (0000 -> 0011)...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-    'drizzle/0011_offer_historical_snapshot.sql',
-    'drizzle/0012_reversal_governance_hardening.sql',
-    'drizzle/0013_product_active_archived.sql',
-    'drizzle/0014_coupon_financial_hardening.sql',
-    'drizzle/0015_coupon_redemption_idempotency.sql',
-    'drizzle/0016_order_idempotency_cashback_integrity.sql',
-    'drizzle/0017_order_lifecycle_reversals.sql',
-    'drizzle/0018_commerce_phase2c4b_hardening.sql',
-    'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -441,45 +424,43 @@ async function runCommercePhase2b2Tests() {
   console.log('\n--- TEST GROUP 6: Admin Pricing Override Security Hardening & RBAC ---');
 
   const { SESSION_COOKIE_NAME, signAdminSession } = await import('./src/lib/auth.ts');
-  const { ensureDbExists } = await import('./src/lib/db.ts');
   const { POST: productsPostHandler } = await import('./src/app/api/products/route.ts');
   const {
     PUT: productPutHandler,
     DELETE: productDeleteHandler,
   } = await import('./src/app/api/products/[id]/route.ts');
 
-  // Setup staff accounts in inMemDb for session authentication
-  const inMemDb = ensureDbExists();
-  inMemDb.staff = inMemDb.staff || [];
+  // Setup staff accounts in PostgreSQL for session authentication
+  const [staffAuth1] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07705555551', 'staff', true) RETURNING id;
+  `;
+  const [staffRow1] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAuth1.id}, 'product_mgr', 'مسؤول المنتجات المعتمد', 'staff', ARRAY['products'], 'مسؤول المنتجات')
+    RETURNING id;
+  `;
 
-  const authorizedStaff = {
-    id: 'staff-product-mgr-101',
-    name: 'مسؤول المنتجات المعتمد',
-    username: 'product_mgr',
-    role: 'staff',
-    permissions: ['products'],
-    isActive: true,
-  };
-  const unauthorizedStaff = {
-    id: 'staff-no-products-202',
-    name: 'موظف بدون صلاحية المنتجات',
-    username: 'unauth_staff',
-    role: 'staff',
-    permissions: ['reports'],
-    isActive: true,
-  };
-  inMemDb.staff.push(authorizedStaff, unauthorizedStaff);
+  const [staffAuth2] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07705555552', 'staff', true) RETURNING id;
+  `;
+  const [staffRow2] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAuth2.id}, 'unauth_staff', 'موظف بدون صلاحية المنتجات', 'staff', ARRAY['reports'], 'موظف')
+    RETURNING id;
+  `;
 
   const authCookie = signAdminSession({
-    userId: authorizedStaff.id,
-    username: authorizedStaff.username,
+    userId: staffRow1.id,
+    username: 'product_mgr',
     role: 'staff',
     exp: Math.floor(Date.now() / 1000) + 86400,
   });
 
   const unauthCookie = signAdminSession({
-    userId: unauthorizedStaff.id,
-    username: unauthorizedStaff.username,
+    userId: staffRow2.id,
+    username: 'unauth_staff',
     role: 'staff',
     exp: Math.floor(Date.now() / 1000) + 86400,
   });

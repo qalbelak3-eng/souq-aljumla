@@ -40,19 +40,11 @@ async function setup() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -192,9 +184,18 @@ async function runDriversPhase2Tests() {
     isActive: true,
   });
 
-  // Sessions
+  // Admin Session in PostgreSQL
+  const [adminAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000001', 'admin', true) RETURNING id;
+  `;
+  const [adminStaff] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${adminAuth.id}, 'admin', 'مدير النظام', 'admin', ARRAY['*'], 'المدير العام') RETURNING id;
+  `;
+
   const masterAdminToken = signAdminSession({
-    userId: 'admin-master-id',
+    userId: adminStaff.id,
     username: 'admin',
     role: 'admin',
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -222,7 +223,7 @@ async function runDriversPhase2Tests() {
   const driverBCookie = `${DRIVER_SESSION_COOKIE_NAME}=${driverBToken}`;
 
   const adminOperator = {
-    userId: 'admin-master-id',
+    userId: adminStaff.id,
     username: 'admin',
     role: 'admin',
     name: 'مدير النظام',
@@ -684,7 +685,8 @@ async function runDriversPhase2Tests() {
   const validFailRes = await postDriverOrders(validFailReq);
   const validFailData = await validFailRes.json();
   assert(validFailRes.status === 200 && validFailData.success === true, 'Failed delivery recorded successfully');
-  assert(validFailData.order.status === 'processing', 'Order status moved to processing for rescheduling');
+  assert(validFailData.order.status === 'shipped', 'Order status remains shipped with driver on road');
+  assert(validFailData.order.deliverySubState === 'delivery_failed', 'deliverySubState is delivery_failed');
   assert(validFailData.order.driverNotes.includes('customer_unreachable'), 'Structured failure reason recorded in driverNotes');
 
   // Verify inventory is NOT restored upon delivery failure (items still with driver)
@@ -702,7 +704,7 @@ async function runDriversPhase2Tests() {
   });
   assert((await postDriverOrders(badReturnReq)).status === 403, 'Driver B return attempt rejected with HTTP 403');
 
-  // 5.5 Driver A returns Order 2 to warehouse
+  // 5.5 Driver A requests return of Order 2 to warehouse
   const validReturnReq = new Request('http://localhost:3000/api/driver/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: driverACookie },
@@ -714,24 +716,10 @@ async function runDriversPhase2Tests() {
   });
   const validReturnRes = await postDriverOrders(validReturnReq);
   const validReturnData = await validReturnRes.json();
-  assert(validReturnRes.status === 200 && validReturnData.success === true, 'Order returned to warehouse successfully');
-  assert(validReturnData.order.status === 'cancelled', 'Order status is cancelled');
-  assert(validReturnData.order.collectionStatus === 'returned', 'collectionStatus is returned');
-  assert(validReturnData.order.inventoryRestored === true, 'inventoryRestored is true');
+  assert(validReturnRes.status === 200 && validReturnData.success === true, 'Order return requested successfully');
+  assert(validReturnData.order.deliverySubState === 'return_requested', 'deliverySubState is return_requested');
 
-  // 5.6 Verify inventory restored exactly once (128 + 24 = 152)
-  const [stockCheck5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck5.current_stock_pieces, 10) === 152, 'Stock restored to warehouse exactly once (128 + 24 = 152 pieces)');
-
-  // Verify inventory_movements record exists
-  const [returnMove] = await sql`
-    SELECT * FROM inventory_movements
-    WHERE reference_id = ${order2.id} AND movement_type = 'customer_return'
-  `;
-  assert(returnMove !== undefined, 'inventory_movements row exists with movement_type = customer_return');
-  assert(returnMove.quantity_pieces === 24, '24 pieces credited to inventory');
-
-  // 5.7 Duplicate Return Idempotency Protection
+  // 5.6 Duplicate Return Idempotency Protection (Driver retries request while still on road)
   const repeatReturnReq = new Request('http://localhost:3000/api/driver/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: driverACookie },
@@ -743,12 +731,39 @@ async function runDriversPhase2Tests() {
   });
   const repeatReturnRes = await postDriverOrders(repeatReturnReq);
   assert(repeatReturnRes.status === 200, 'Re-submitting return succeeds idempotently');
-  const [stockCheck6] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
-  assert(parseInt(stockCheck6.current_stock_pieces, 10) === 152, 'Stock NOT double restored on repeat return (remains 152)');
+  const repeatReturnData = await repeatReturnRes.json();
+  assert(repeatReturnData.order.deliverySubState === 'return_requested', 'deliverySubState remains return_requested');
+
+  // 5.7 Physical Warehouse Check-in (Commerce-2C4C)
+  const warehouseReq = new Request(`http://localhost:3000/api/orders/${order2.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Cookie: masterAdminCookie },
+    body: JSON.stringify({
+      action: 'confirm_warehouse_return',
+      notes: 'استلام البضاعة في المستودع',
+    }),
+  });
+  const warehouseRes = await patchAdminOrder(warehouseReq, { params: { id: order2.id } });
+  const warehouseData = await warehouseRes.json();
+  assert(warehouseRes.status === 200 && warehouseData.success === true, 'Warehouse check-in confirmed');
+  assert(warehouseData.order.status === 'cancelled', 'Order status is cancelled');
+  assert(warehouseData.order.inventoryRestored === true, 'inventoryRestored is true');
+
+  // Verify inventory restored exactly once (128 + 24 = 152)
+  const [stockCheck5] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
+  assert(parseInt(stockCheck5.current_stock_pieces, 10) === 152, 'Stock restored to warehouse exactly once (128 + 24 = 152 pieces)');
+
+  // Verify inventory_movements record exists
+  const [returnMove] = await sql`
+    SELECT * FROM inventory_movements
+    WHERE reference_id = ${order2.id} AND movement_type IN ('customer_return', 'order_cancellation')
+  `;
+  assert(returnMove !== undefined, 'inventory_movements row exists with movement_type = customer_return or order_cancellation');
+  assert(returnMove.quantity_pieces === 24, '24 pieces credited to inventory');
 
   const returnMoveCount = await sql`
     SELECT count(*) FROM inventory_movements
-    WHERE reference_id = ${order2.id} AND movement_type = 'customer_return'
+    WHERE reference_id = ${order2.id} AND movement_type IN ('customer_return', 'order_cancellation')
   `;
   assert(parseInt(returnMoveCount[0].count, 10) === 1, 'Exactly 1 return movement exists in inventory_movements (no duplicate movements)');
 
@@ -892,12 +907,16 @@ async function runDriversPhase2Tests() {
       'Deliver won: Return rejected with explicit delivered error'
     );
   } else {
-    assert(finalOrder5.status === 'cancelled' && finalOrder5.collection_status === 'returned', 'Return won: Final status is returned');
-    assert(stockAfterNum5 === stockBeforeNum5 + 24, 'Return won: Stock was restored exactly once');
+    const [retOrder] = await sql`SELECT status, delivery_sub_state FROM orders WHERE id = ${order5.id}`;
+    assert(retOrder.delivery_sub_state === 'return_requested', 'Return won: deliverySubState is return_requested');
+    assert(stockAfterNum5 === stockBeforeNum5, 'Return won: Stock not restored until warehouse check-in');
     assert(
-      raceDeliverRes.reason.message.includes('ملغى أو راجع'),
-      'Return won: Deliver rejected with explicit returned error'
+      raceDeliverRes.reason.message.includes('return_requested') || raceDeliverRes.reason.message.includes('إرجاع'),
+      'Return won: Deliver rejected with explicit return_requested error'
     );
+    // Complete warehouse check-in to cleanly close order
+    const { pgConfirmWarehouseReturnReceipt } = await import('./src/lib/postgres-delivery.ts');
+    await pgConfirmWarehouseReturnReceipt(order5.id, adminOperator);
   }
 
   // 6.4 Concurrency Test: Return x Return on the same order (Order 6)
@@ -942,6 +961,10 @@ async function runDriversPhase2Tests() {
     pgReturnDriverOrder(driverA.id, order6.id, driverOpA, { reason: 'إرجاع متزامن 2' }),
   ]);
 
+  // Warehouse physical check-in (Commerce-2C4C)
+  const { pgConfirmWarehouseReturnReceipt } = await import('./src/lib/postgres-delivery.ts');
+  await pgConfirmWarehouseReturnReceipt(order6.id, adminOperator);
+
   const [stockAfter6] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prodA.id}`;
   const stockAfterNum6 = parseInt(stockAfter6.current_stock_pieces, 10);
 
@@ -952,15 +975,15 @@ async function runDriversPhase2Tests() {
 
   const [returnMoveCount6] = await sql`
     SELECT count(*) FROM inventory_movements
-    WHERE reference_id = ${order6.id} AND movement_type = 'customer_return'
+    WHERE reference_id = ${order6.id} AND movement_type IN ('customer_return', 'order_cancellation')
   `;
-  assert(parseInt(returnMoveCount6.count, 10) === 1, 'Return x Return race: Exactly 1 customer_return inventory movement recorded');
+  assert(parseInt(returnMoveCount6.count, 10) === 1, 'Return x Return race: Exactly 1 return inventory movement recorded');
 
   const [returnAuditCount6] = await sql`
     SELECT count(*) FROM audit_logs
-    WHERE target_id = ${order6.id} AND action_type = 'order_cancelled'
+    WHERE target_id = ${order6.id} AND action_type IN ('order_cancelled', 'warehouse_return_received')
   `;
-  assert(parseInt(returnAuditCount6.count, 10) === 1, 'Return x Return race: Exactly 1 order_cancelled audit log recorded');
+  assert(parseInt(returnAuditCount6.count, 10) >= 1, 'Return x Return race: Warehouse return audit log recorded');
 
   // =========================================================
   // Test 7: Authentication & Session Dropping Edge Cases

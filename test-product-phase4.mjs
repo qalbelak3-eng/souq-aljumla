@@ -1,16 +1,57 @@
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
 import postgres from 'postgres';
+import EpDefault from 'embedded-postgres';
 
-// Ensure DATABASE_URL is set
-const dbUrl = process.env.DATABASE_URL;
-if (!dbUrl) {
-  console.error('ERROR: DATABASE_URL environment variable is required to run this test.');
-  console.error('Example: DATABASE_URL="postgres://user:pass@127.0.0.1:5432/dbname" node test-product-phase4.mjs');
-  process.exit(1);
+const Ep = EpDefault.default || EpDefault;
+const PORT = 54370;
+let ep = null;
+let tempDir = null;
+
+async function runSqlScript(client, filePath) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  if (content.includes('--> statement-breakpoint')) {
+    const stmts = content.split('--> statement-breakpoint');
+    for (const stmt of stmts) {
+      const trimmed = stmt.trim();
+      if (trimmed) {
+        await client.unsafe(trimmed);
+      }
+    }
+  } else {
+    await client.unsafe(content);
+  }
 }
 
-const sql = postgres(dbUrl, { max: 5 });
-
 async function runAll15Tests() {
+  let dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.log('DATABASE_URL not provided, starting embedded PostgreSQL on port', PORT);
+    tempDir = path.join(os.tmpdir(), 'ep_test_prod_phase4_' + Date.now());
+    ep = new Ep({ databaseDir: tempDir, port: PORT });
+    await ep.initialise();
+    await ep.start();
+    dbUrl = `postgres://postgres:password@127.0.0.1:${PORT}/postgres`;
+    process.env.DATABASE_URL = dbUrl;
+
+    const initClient = postgres(dbUrl, { max: 1 });
+    const migrations = fs
+      .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+      .map((f) => path.join('drizzle', f));
+
+    for (const m of migrations) {
+      const fullPath = path.resolve(process.cwd(), m);
+      if (fs.existsSync(fullPath)) {
+        await runSqlScript(initClient, fullPath);
+      }
+    }
+    await initClient.end();
+  }
+
+  const sql = postgres(dbUrl, { max: 5 });
   console.log('===============================================================');
   console.log('      PHASE 4 & 5: POSTGRESQL 15 MANDATORY TESTS RUNNER        ');
   console.log('===============================================================');
@@ -341,7 +382,12 @@ async function runAll15Tests() {
   } catch (err) {
     console.error('Fatal error during test run:', err);
   } finally {
-    await sql.end();
+    if (sql) await sql.end();
+    if (ep) {
+      console.log('Stopping embedded PostgreSQL...');
+      await ep.stop();
+      console.log('Embedded PostgreSQL stopped.');
+    }
   }
 }
 

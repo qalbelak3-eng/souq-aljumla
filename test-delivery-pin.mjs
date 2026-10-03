@@ -40,19 +40,11 @@ async function setup() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -151,19 +143,29 @@ async function runDeliveryPinTests() {
     ) RETURNING id;
   `;
 
+  const [custAuthA] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07701112222', 'customer', true)
+    RETURNING id;
+  `;
   const [custAccountA] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier, is_active
+      account_code, name, phone, category, pricing_tier, is_active, auth_identity_id
     ) VALUES (
-      'ACC-CUST-101', 'سوبرماركت الرشيد', '07701112222', 'customer', 'market', true
+      'ACC-CUST-101', 'سوبرماركت الرشيد', '07701112222', 'customer', 'market', true, ${custAuthA.id}
     ) RETURNING id;
   `;
 
+  const [custAuthB] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07703334444', 'customer', true)
+    RETURNING id;
+  `;
   const [custAccountB] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier, is_active
+      account_code, name, phone, category, pricing_tier, is_active, auth_identity_id
     ) VALUES (
-      'ACC-CUST-102', 'سوبرماركت دجلة', '07703334444', 'customer', 'market', true
+      'ACC-CUST-102', 'سوبرماركت دجلة', '07703334444', 'customer', 'market', true, ${custAuthB.id}
     ) RETURNING id;
   `;
 
@@ -207,9 +209,25 @@ async function runDeliveryPinTests() {
     VALUES ('07700000000', 'admin', true)
     RETURNING id;
   `;
+  const [adminStaffProfile] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${adminAuthIdentity.id}, 'ops_admin', 'مدير العمليات والتوصيل', 'admin', ARRAY['orders', 'drivers'], 'مدير العمليات')
+    RETURNING id;
+  `;
+
+  const [admin2AuthIdentity] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000001', 'staff', true)
+    RETURNING id;
+  `;
+  const [admin2StaffProfile] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${admin2AuthIdentity.id}, 'readonly_admin', 'مشاهد فقط', 'staff', ARRAY['analytics'], 'مشاهد')
+    RETURNING id;
+  `;
 
   const adminToken = signAdminSession({
-    userId: adminAuthIdentity.id,
+    userId: adminStaffProfile.id,
     username: 'ops_admin',
     name: 'مدير العمليات والتوصيل',
     role: 'admin',
@@ -219,7 +237,7 @@ async function runDeliveryPinTests() {
   const adminCookie = `${SESSION_COOKIE_NAME}=${adminToken}`;
 
   const adminNoPermToken = signAdminSession({
-    userId: 'admin-2',
+    userId: admin2StaffProfile.id,
     username: 'readonly_admin',
     name: 'مشاهد فقط',
     role: 'staff',
@@ -228,48 +246,8 @@ async function runDeliveryPinTests() {
   });
   const adminNoPermCookie = `${SESSION_COOKIE_NAME}=${adminNoPermToken}`;
 
-  const { ensureDbExists } = await import('./src/lib/db.ts');
-  const memDb = ensureDbExists();
-  if (!memDb.users) memDb.users = [];
-  memDb.users.push(
-    {
-      id: custAccountA.id,
-      name: 'سوبرماركت الرشيد',
-      phone: '07701112222',
-      role: 'customer',
-      isActive: true,
-    },
-    {
-      id: custAccountB.id,
-      name: 'سوبرماركت دجلة',
-      phone: '07703334444',
-      role: 'customer',
-      isActive: true,
-    }
-  );
-
-  if (!memDb.staff) memDb.staff = [];
-  memDb.staff.push(
-    {
-      id: adminAuthIdentity.id,
-      username: 'ops_admin',
-      name: 'مدير العمليات والتوصيل',
-      role: 'staff',
-      permissions: ['orders', 'drivers'],
-      isActive: true,
-    },
-    {
-      id: 'admin-2',
-      username: 'readonly_admin',
-      name: 'مشاهد فقط',
-      role: 'staff',
-      permissions: ['analytics'],
-      isActive: true,
-    }
-  );
-
   const adminOperator = {
-    userId: adminAuthIdentity.id,
+    userId: adminStaffProfile.id,
     username: 'ops_admin',
     role: 'admin',
     name: 'مدير العمليات والتوصيل',
@@ -1046,9 +1024,14 @@ async function runDeliveryPinTests() {
   const cancelPin = decryptPin(cancelDb.delivery_pin_encrypted);
 
   // Driver marks delivery as returned/failed
-  const { pgReturnDriverOrder } = await import('./src/lib/postgres-delivery.ts');
+  const { pgReturnDriverOrder, pgConfirmWarehouseReturnReceipt } = await import('./src/lib/postgres-delivery.ts');
   await pgReturnDriverOrder(driverA.id, orderCancel.id, driverOpA, {
     reason: 'رفض الزبون استلام البضاعة بالكامل',
+  });
+
+  // Physical Warehouse Check-in (Commerce-2C4C) restores inventory
+  await pgConfirmWarehouseReturnReceipt(orderCancel.id, adminOperator, {
+    notes: 'استلام البضاعة المرجعة في المستودع',
   });
 
   const [stockAfterReturn16] = await sql`SELECT current_stock_pieces FROM products WHERE id = ${prod.id}`;

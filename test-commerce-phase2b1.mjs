@@ -54,28 +54,11 @@ async function startDatabase() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-    'drizzle/0011_offer_historical_snapshot.sql',
-    'drizzle/0012_pricing_tier_snapshots.sql',
-    'drizzle/0013_product_active_archived.sql',
-    'drizzle/0014_coupon_financial_hardening.sql',
-    'drizzle/0015_coupon_redemption_idempotency.sql',
-    'drizzle/0016_order_idempotency_cashback_integrity.sql',
-    'drizzle/0017_order_lifecycle_reversals.sql',
-    'drizzle/0018_commerce_phase2c4b_hardening.sql',
-    'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -123,7 +106,6 @@ async function runCommercePhase2b1Tests() {
   const { GET: offerByIdGetHandler, PUT: offerByIdPutHandler, DELETE: offerByIdDeleteHandler } = await import('./src/app/api/offers/[id]/route.ts');
   const { POST: ordersPostHandler } = await import('./src/app/api/orders/route.ts');
 
-  const { ensureDbExists } = await import('./src/lib/db.ts');
 
   let passed = 0;
   let failed = 0;
@@ -192,45 +174,40 @@ async function runCommercePhase2b1Tests() {
     ) RETURNING *;
   `;
 
+  const [custAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07703333333', 'customer', true) RETURNING id;
+  `;
   const [customerAccount] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier, city, address
+      account_code, name, phone, category, pricing_tier, city, address, auth_identity_id
     ) VALUES (
-      'ACC-CUST-OFFER', 'زبون تجربة العروض', '07703333333', 'customer', 'retail', 'كربلاء', 'حي الوفاء'
+      'ACC-CUST-OFFER', 'زبون تجربة العروض', '07703333333', 'customer', 'retail', 'كربلاء', 'حي الوفاء', ${custAuth.id}
     ) RETURNING *;
   `;
 
-  const inMemDb = ensureDbExists();
-  inMemDb.users = inMemDb.users || [];
-  inMemDb.users.push({
-    id: customerAccount.id,
-    name: customerAccount.name,
-    phone: customerAccount.phone,
-    role: 'customer',
-    accountType: 'individual',
-    isActive: true,
-  });
+  const [staffAuth1] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07703333334', 'staff', true) RETURNING id;
+  `;
+  const [staffRow1] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAuth1.id}, 'admin_offers', 'مدير العروض والتسعير', 'staff', ARRAY['offers', 'products', 'orders', 'financial'], 'مدير العروض')
+    RETURNING id;
+  `;
 
-  inMemDb.staff = inMemDb.staff || [];
-  inMemDb.staff.push({
-    id: 'staff-offer-tester',
-    name: 'مدير العروض والتسعير',
-    username: 'admin_offers',
-    role: 'staff',
-    permissions: ['offers', 'products', 'orders', 'financial'],
-    isActive: true,
-  });
-  inMemDb.staff.push({
-    id: 'staff-no-perm',
-    name: 'موظف بدون صلاحية العروض',
-    username: 'staff_viewer',
-    role: 'staff',
-    permissions: ['reports'],
-    isActive: true,
-  });
+  const [staffAuth2] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07703333335', 'staff', true) RETURNING id;
+  `;
+  const [staffRow2] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAuth2.id}, 'staff_viewer', 'موظف بدون صلاحية العروض', 'staff', ARRAY['reports'], 'موظف')
+    RETURNING id;
+  `;
 
   const adminCookie = signAdminSession({
-    id: 'staff-offer-tester',
+    userId: staffRow1.id,
     name: 'مدير العروض والتسعير',
     username: 'admin_offers',
     role: 'staff',
@@ -239,7 +216,7 @@ async function runCommercePhase2b1Tests() {
   });
 
   const staffWithoutOfferPermCookie = signAdminSession({
-    id: 'staff-no-perm',
+    userId: staffRow2.id,
     name: 'موظف بدون صلاحية العروض',
     username: 'staff_viewer',
     role: 'staff',
@@ -768,24 +745,17 @@ async function runCommercePhase2b1Tests() {
   // Archive existing offers on prod1 to test baseline tier pricing
   await sql`UPDATE product_offers SET is_active = false, is_archived = true WHERE product_id = ${prod1.id}`;
 
+  const [goldAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07704444444', 'customer', true) RETURNING id;
+  `;
   const [goldAccount] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier, merchant_status, merchant_tier, city, address
+      account_code, name, phone, category, pricing_tier, merchant_status, merchant_tier, city, address, auth_identity_id
     ) VALUES (
-      'ACC-GOLD-MERCHANT', 'تاجر ذهبي معتمد', '07704444444', 'customer', 'wholesale', 'approved', 'gold', 'كربلاء', 'سوق الجملة'
+      'ACC-GOLD-MERCHANT', 'تاجر ذهبي معتمد', '07704444444', 'customer', 'wholesale', 'approved', 'gold', 'كربلاء', 'سوق الجملة', ${goldAuth.id}
     ) RETURNING *;
   `;
-
-  inMemDb.users.push({
-    id: goldAccount.id,
-    name: goldAccount.name,
-    phone: goldAccount.phone,
-    role: 'customer',
-    accountType: 'wholesale',
-    merchantStatus: 'approved',
-    merchantTier: 'gold',
-    isActive: true,
-  });
 
   const goldCookie = signCustomerSession({
     userId: goldAccount.id,

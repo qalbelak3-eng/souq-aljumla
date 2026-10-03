@@ -1,5 +1,5 @@
-﻿import { NextResponse } from 'next/server';
-import { getInventoryReport } from '@/lib/db';
+import { NextResponse } from 'next/server';
+import { pgGetInventoryReport } from '@/lib/postgres-reports';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
 
-    const report = getInventoryReport(startDate, endDate);
+    const report = await pgGetInventoryReport(startDate, endDate);
     return NextResponse.json({
       success: true,
       report,

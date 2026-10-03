@@ -16,11 +16,18 @@ function verify<T extends { exp: number }>(token: string): T | null { if (!token
 function bearerOrCookie(request: Request, cookieName: string) { const auth = request.headers.get('authorization') || ''; if (auth.startsWith('Bearer ')) return auth.slice(7).trim(); const match = (request.headers.get('cookie') || '').match(new RegExp(`(?:^|;\\s*)${cookieName}=([^;]+)`)); return match ? decodeURIComponent(match[1]) : null; }
 
 export interface SessionPayload { userId: string; username: string; role: string; exp: number }
-export interface AuthenticatedAdmin { id: string; name: string; username: string; role: 'admin'|'staff'; jobTitle?: string; permissions: string[]; isActive: boolean }
+export interface AuthenticatedAdmin { id: string; authIdentityId?: string; name: string; username: string; role: 'admin'|'staff'; jobTitle?: string; permissions: string[]; isActive: boolean }
 export const signAdminSession = (p: SessionPayload) => sign(p);
 export const verifyAdminSessionToken = (t: string) => verify<SessionPayload>(t);
 export function getSessionFromRequest(request: Request) { const token = bearerOrCookie(request, SESSION_COOKIE_NAME); if (!token) return null; const p = verifyAdminSessionToken(token); return p && (p.role === 'admin' || p.role === 'staff') ? p : null; }
-export async function getAuthenticatedAdmin(request: Request): Promise<AuthenticatedAdmin|null> { const s = getSessionFromRequest(request); if (!s) return null; const staff = await pgGetActiveStaffForSession({userId:s.userId, username:s.username}); if (!staff) return null; const master = s.role === 'admin' || staff.role === 'admin' || staff.role === 'master'; return {id:staff.id,name:staff.name,username:staff.username,role:master?'admin':'staff',jobTitle:staff.jobTitle,permissions:master?['*']:staff.permissions,isActive:true}; }
+export async function getAuthenticatedAdmin(request: Request): Promise<AuthenticatedAdmin|null> {
+  const s = getSessionFromRequest(request);
+  if (!s) return null;
+  const staff = await pgGetActiveStaffForSession({userId:s.userId, username:s.username});
+  if (!staff) return null;
+  const master = staff.role === 'admin' || staff.role === 'master';
+  return {id:staff.id,authIdentityId:staff.authIdentityId,name:staff.name,username:staff.username,role:master?'admin':'staff',jobTitle:staff.jobTitle,permissions:master?['*']:staff.permissions,isActive:true};
+}
 export const getAuthenticatedAdminPg = getAuthenticatedAdmin;
 export function hasPermission(admin: AuthenticatedAdmin|null, permission: string) { if (!admin?.isActive) return false; if (admin.role === 'admin') return true; const p=admin.permissions||[]; return p.includes('*') || p.includes(permission) || (permission.startsWith('accounting:')&&p.includes('accounting')) || (permission.startsWith('drivers:')&&(p.includes('drivers')||p.includes('accounting'))) || (permission.startsWith('vault:')&&p.includes('accounting')); }
 

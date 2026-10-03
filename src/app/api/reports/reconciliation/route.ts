@@ -1,5 +1,5 @@
-﻿import { NextResponse } from 'next/server';
-import { getDailyReconciliationReport } from '@/lib/db';
+import { NextResponse } from 'next/server';
+import { pgGetDailyReconciliationReport } from '@/lib/postgres-reports';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date') || undefined;
 
-    const report = getDailyReconciliationReport(date);
+    const report = await pgGetDailyReconciliationReport(date);
     return NextResponse.json({
       success: true,
       report,

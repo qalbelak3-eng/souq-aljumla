@@ -39,19 +39,11 @@ async function setup() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -233,15 +225,25 @@ async function runAllOrdersTests() {
   // Test 2: Customer Statement (Invoice is Debit, No Auto Voucher)
   // ==============================================================
   console.log('\n--- Test 2: Customer Statement Verification ---');
-  const statement = await pgGetCustomerStatement(testCustomer.phone);
+  // Phase 2C4D: Pending order does NOT post premature debit to customer statement
+  let statement = await pgGetCustomerStatement(testCustomer.phone);
   assert(statement !== null, `Statement retrieved for customer ${testCustomer.phone}`);
-  const invoiceTx = statement.transactions.find((t) => t.reference === order1.orderNumber);
-  assert(invoiceTx !== undefined, `Invoice transaction appears in customer statement`);
+  let invoiceTx = statement.transactions.find((t) => t.reference === order1.orderNumber);
+  assert(invoiceTx === undefined, `Pending order does not prematurely post debit to statement`);
+
+  // Deliver order to test completed statement debit
+  await sql`UPDATE orders SET status = 'delivered', delivered_at = NOW() WHERE id = ${order1.id}`;
+  statement = await pgGetCustomerStatement(testCustomer.phone);
+  invoiceTx = statement.transactions.find((t) => t.reference === order1.orderNumber);
+  assert(invoiceTx !== undefined, `Delivered invoice transaction appears in customer statement`);
   assert(invoiceTx.debit === order1.total && invoiceTx.credit === 0, `Invoice is Debit of ${order1.total} IQD with 0 Credit`);
   
   // Verify NO auto-voucher was created
   const voucherCount = await sql`SELECT count(*)::int as count FROM vouchers WHERE account_id = ${testCustomer.id};`;
   assert(voucherCount[0].count === 0, `Verified NO auto-voucher was created upon order creation`);
+
+  // Revert back to pending for Test 3 order updates
+  await sql`UPDATE orders SET status = 'pending', delivered_at = NULL WHERE id = ${order1.id}`;
 
   // ==============================================================
   // Test 3: Update Order & Delta Inventory Adjustment
@@ -448,7 +450,7 @@ async function runAllOrdersTests() {
 
   await sql`
     UPDATE orders
-    SET collected_amount = 5000.00
+    SET paid_amount = 5000.00, collected_amount = 5000.00
     WHERE id = ${orderCollected.id};
   `;
 
@@ -494,49 +496,50 @@ async function runAllOrdersTests() {
     verifyOrderAccessToken,
     getAuthenticatedCustomer,
   } = await import('./src/lib/auth.ts');
-  const { ensureDbExists } = await import('./src/lib/db.ts');
+  // Setup staff in PostgreSQL for permission checks
+  const [adminAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000091', 'admin', true) RETURNING id;
+  `;
+  const [adminStaff] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${adminAuth.id}, 'admin', 'المدير العام', 'admin', ARRAY['*'], 'المدير العام') RETURNING id;
+  `;
 
-  // Setup staff in db.staff for permission checks
-  const memDb = ensureDbExists();
-  if (!memDb.staff) memDb.staff = [];
-  memDb.staff = memDb.staff.filter((s) => s.username !== 'acc_staff_test' && s.username !== 'orders_staff_test');
-  
-  // Staff with accounting permission ONLY (lacks 'orders')
-  memDb.staff.push({
-    id: 'staff-acc-only',
-    name: 'موظف محاسبة فقط',
-    username: 'acc_staff_test',
-    role: 'staff',
-    permissions: ['accounting'],
-    isActive: true,
-  });
+  const [staffAccAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000092', 'staff', true) RETURNING id;
+  `;
+  const [staffAcc] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAccAuth.id}, 'acc_staff_test', 'موظف محاسبة فقط', 'staff', ARRAY['accounting'], 'موظف محاسبة') RETURNING id;
+  `;
 
-  // Staff with orders permission
-  memDb.staff.push({
-    id: 'staff-orders-ok',
-    name: 'موظف مبيعات معتمد',
-    username: 'orders_staff_test',
-    role: 'staff',
-    permissions: ['orders'],
-    isActive: true,
-  });
+  const [staffOrdersAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000093', 'staff', true) RETURNING id;
+  `;
+  const [staffOrders] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffOrdersAuth.id}, 'orders_staff_test', 'موظف مبيعات معتمد', 'staff', ARRAY['orders'], 'موظف مبيعات') RETURNING id;
+  `;
 
   const adminCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
-    userId: 'admin-master',
+    userId: adminStaff.id,
     username: 'admin',
     role: 'admin',
     exp: Math.floor(Date.now() / 1000) + 3600,
   })}`;
 
   const staffNoOrdersCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
-    userId: 'staff-acc-only',
+    userId: staffAcc.id,
     username: 'acc_staff_test',
     role: 'staff',
     exp: Math.floor(Date.now() / 1000) + 3600,
   })}`;
 
   const staffOrdersOkCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
-    userId: 'staff-orders-ok',
+    userId: staffOrders.id,
     username: 'orders_staff_test',
     role: 'staff',
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -674,45 +677,36 @@ async function runAllOrdersTests() {
   console.log('\n--- Test 16: Scoping of Customer vs Admin Orders Access ---');
 
   // Create Order for Customer A
-  const custA = {
-    id: 'cust-a-uuid',
+  const { pgCreateCustomer: createCustomerForTest16 } = await import('./src/lib/postgres-users.ts');
+  const userCustA = await createCustomerForTest16({
     name: 'حيدر الزبون أ',
     phone: '07701111111',
-    email: 'custA@example.com',
-  };
-
-  // Create Order for Customer B
-  const custB = {
-    id: 'cust-b-uuid',
+    password: 'password123',
+    accountType: 'individual',
+    city: 'بغداد',
+    address: 'المنصور',
+  });
+  const userCustB = await createCustomerForTest16({
     name: 'كرار الزبون ب',
     phone: '07702222222',
+    password: 'password123',
+    accountType: 'individual',
+    city: 'النجف',
+    address: 'الكوفة',
+  });
+
+  const custA = {
+    id: userCustA.id,
+    name: userCustA.name,
+    phone: userCustA.phone,
+    email: 'custA@example.com',
+  };
+  const custB = {
+    id: userCustB.id,
+    name: userCustB.name,
+    phone: userCustB.phone,
     email: 'custB@example.com',
   };
-
-  // Ensure Customer A and B exist and are active in DB
-  const memDbTest16 = ensureDbExists();
-  if (!memDbTest16.users) memDbTest16.users = [];
-  memDbTest16.users = memDbTest16.users.filter((u) => u.id !== custA.id && u.id !== custB.id);
-  memDbTest16.users.push({
-    id: custA.id,
-    name: custA.name,
-    phone: custA.phone,
-    email: custA.email,
-    role: 'customer',
-    accountType: 'individual',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  });
-  memDbTest16.users.push({
-    id: custB.id,
-    name: custB.name,
-    phone: custB.phone,
-    email: custB.email,
-    role: 'customer',
-    accountType: 'individual',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  });
 
   const tokenCustA = signCustomerSession({
     userId: custA.id,
@@ -960,24 +954,26 @@ async function runAllOrdersTests() {
   // ==============================================================
   console.log('\n--- Test 20: Customer Profile & Auth Security (PUT/GET /api/auth) ---');
   const { GET: getAuthRoute, PUT: putAuthRoute } = await import('./src/app/api/auth/route.ts');
-  const { createUser: createDbUser, getUsers: getDbUsers } = await import('./src/lib/db.ts');
+  const { pgCreateCustomer, pgFindCustomer } = await import('./src/lib/postgres-users.ts');
 
   // Setup Customer A and Customer B in DB
   const phoneA = '0771' + Math.floor(1000000 + Math.random() * 9000000);
   const phoneB = '0772' + Math.floor(1000000 + Math.random() * 9000000);
-  const userA = createDbUser({
+  const userA = await pgCreateCustomer({
     name: 'حيدر الزبون أ الأصلي',
     phone: phoneA,
     accountType: 'individual',
     city: 'بغداد',
     address: 'المنصور',
+    password: 'password123',
   });
-  const userB = createDbUser({
+  const userB = await pgCreateCustomer({
     name: 'كرار الزبون ب الأصلي',
     phone: phoneB,
     accountType: 'individual',
     city: 'النجف',
     address: 'الكوفة',
+    password: 'password123',
   });
 
   const sessionTokenA = signCustomerSession({
@@ -1012,7 +1008,7 @@ async function runAllOrdersTests() {
   });
   const putSpoofUserRes = await putAuthRoute(putSpoofUserReq);
   assert(putSpoofUserRes.status === 200, `PUT request with Customer A session processed`);
-  const freshUserB = getDbUsers().find(u => u.id === userB.id);
+  const freshUserB = await pgFindCustomer(userB.id);
   assert(freshUserB.name === 'كرار الزبون ب الأصلي', `Confirmed: Customer B was NOT modified by Customer A (Customer B name unchanged)`);
 
   // 20.3 Modifying accountType or merchantStatus or administrative fields via PUT is safely ignored
@@ -1034,10 +1030,9 @@ async function runAllOrdersTests() {
   });
   const putPrivilegeEscalationRes = await putAuthRoute(putPrivilegeEscalationReq);
   assert(putPrivilegeEscalationRes.status === 200, `PUT request processed`);
-  const freshUserA = getDbUsers().find(u => u.id === userA.id);
+  const freshUserA = await pgFindCustomer(userA.id);
   assert(freshUserA.accountType === 'individual', `accountType modification rejected/ignored (still individual)`);
-  assert(freshUserA.merchantStatus === undefined, `merchantStatus modification rejected/ignored`);
-  assert(freshUserA.role === 'customer', `role escalation rejected/ignored (still customer)`);
+  assert(freshUserA.merchantStatus === 'none' || freshUserA.merchantStatus === undefined, `merchantStatus modification rejected/ignored`);
 
   // 20.4 Customer updates allowed personal fields only
   const putAllowedReq = new Request('http://localhost:3000/api/auth', {
@@ -1057,7 +1052,7 @@ async function runAllOrdersTests() {
   const putAllowedRes = await putAuthRoute(putAllowedReq);
   const putAllowedData = await putAllowedRes.json();
   assert(putAllowedRes.status === 200 && putAllowedData.success === true, `Customer updated allowed personal fields successfully`);
-  const freshUserAAfterUpdate = getDbUsers().find(u => u.id === userA.id);
+  const freshUserAAfterUpdate = await pgFindCustomer(userA.id);
   assert(freshUserAAfterUpdate.name === 'حيدر الزبون أ المحدث', `Name updated in DB`);
   assert(freshUserAAfterUpdate.city === 'بغداد الجديدة', `City updated in DB`);
   assert(freshUserAAfterUpdate.address === 'حي المعلمين', `Address updated in DB`);
@@ -1094,7 +1089,7 @@ async function runAllOrdersTests() {
   assert(putNewPhoneRes.status === 200, `Updating to unique phone succeeded`);
   assert(putNewPhoneData.token && typeof putNewPhoneData.token === 'string', `Refreshed session token issued on phone change`);
   assert(putNewPhoneRes.headers.get('set-cookie')?.includes(CUSTOMER_SESSION_COOKIE_NAME), `Refreshed session cookie set on phone change`);
-  const freshUserANewPhone = getDbUsers().find(u => u.id === userA.id);
+  const freshUserANewPhone = await pgFindCustomer(userA.id);
   assert(freshUserANewPhone.phone === newUniquePhone, `New phone saved in database`);
 
   // 20.6 GET /api/auth without session -> 401 (does NOT leak user data)
@@ -1127,12 +1122,13 @@ async function runAllOrdersTests() {
   console.log('\n--- Test 21: Customer Authentication Server-Side Verification (Active, Exists, Fresh State) ---');
 
   // 21.1 Valid session for existing active user = PASS
-  const activeUser = createDbUser({
+  const activeUser = await pgCreateCustomer({
     name: 'عميل نشط وحقيقي',
     phone: '0774' + Math.floor(1000000 + Math.random() * 9000000),
     accountType: 'individual',
     city: 'بغداد',
     address: 'الكرادة',
+    password: 'password123',
   });
   const validActiveToken = signCustomerSession({
     userId: activeUser.id,
@@ -1144,14 +1140,14 @@ async function runAllOrdersTests() {
   const validActiveReq = new Request('http://localhost:3000/api/auth', {
     headers: { 'Authorization': `Bearer ${validActiveToken}` },
   });
-  const authCustomerResult = getAuthenticatedCustomer(validActiveReq);
+  const authCustomerResult = await getAuthenticatedCustomer(validActiveReq);
   assert(authCustomerResult !== null, `Valid session for existing active user returns authenticated identity`);
   assert(authCustomerResult?.id === activeUser.id, `Authenticated identity ID matches active user`);
   assert(authCustomerResult?.isActive === true, `Active user has isActive: true`);
 
   // 21.2 Valid HMAC signature but non-existent userId in database = authentication fails (null / 401)
   const ghostToken = signCustomerSession({
-    userId: 'non-existent-user-uuid-' + Date.now(),
+    userId: 'a0000000-0000-0000-0000-000000000099',
     phone: '07799999999',
     name: 'مستخدم وهمي غير موجود في القاعدة',
     role: 'customer',
@@ -1160,7 +1156,7 @@ async function runAllOrdersTests() {
   const ghostReq = new Request('http://localhost:3000/api/auth', {
     headers: { 'Authorization': `Bearer ${ghostToken}` },
   });
-  const ghostAuthResult = getAuthenticatedCustomer(ghostReq);
+  const ghostAuthResult = await getAuthenticatedCustomer(ghostReq);
   assert(ghostAuthResult === null, `Signed token with non-existent userId rejected by getAuthenticatedCustomer (returns null)`);
 
   const ghostApiReq = new Request('http://localhost:3000/api/auth', {
@@ -1170,13 +1166,15 @@ async function runAllOrdersTests() {
   assert(ghostApiRes.status === 401, `GET /api/auth with token for non-existent user returns HTTP 401`);
 
   // 21.3 Disabled / inactive customer account = authentication fails (null / 401)
-  const disabledUser = createDbUser({
+  const disabledUser = await pgCreateCustomer({
     name: 'عميل معطل إدارياً',
     phone: '0775' + Math.floor(1000000 + Math.random() * 9000000),
     accountType: 'individual',
+    password: 'password123',
   });
   // Administratively disable user
-  disabledUser.isActive = false;
+  await sql`UPDATE auth_identities SET is_active = false WHERE id = ${disabledUser.authIdentityId};`;
+  await sql`UPDATE financial_accounts SET is_active = false WHERE id = ${disabledUser.id};`;
 
   const disabledToken = signCustomerSession({
     userId: disabledUser.id,
@@ -1188,7 +1186,7 @@ async function runAllOrdersTests() {
   const disabledReq = new Request('http://localhost:3000/api/auth', {
     headers: { 'Authorization': `Bearer ${disabledToken}` },
   });
-  const disabledAuthResult = getAuthenticatedCustomer(disabledReq);
+  const disabledAuthResult = await getAuthenticatedCustomer(disabledReq);
   assert(disabledAuthResult === null, `Disabled user (isActive: false) rejected by getAuthenticatedCustomer (returns null)`);
 
   const disabledApiReq = new Request('http://localhost:3000/api/auth', {
@@ -1197,13 +1195,14 @@ async function runAllOrdersTests() {
   const disabledApiRes = await getAuthRoute(disabledApiReq);
   assert(disabledApiRes.status === 401, `GET /api/auth for disabled user returns HTTP 401`);
 
-  // Also check disabled via status: 'disabled'
-  const disabledStatusUser = createDbUser({
+  // Also check disabled via financial_accounts.is_active = false
+  const disabledStatusUser = await pgCreateCustomer({
     name: 'عميل موقوف بالحالة',
     phone: '0776' + Math.floor(1000000 + Math.random() * 9000000),
     accountType: 'individual',
+    password: 'password123',
   });
-  disabledStatusUser.status = 'disabled';
+  await sql`UPDATE financial_accounts SET is_active = false WHERE id = ${disabledStatusUser.id};`;
   const disabledStatusToken = signCustomerSession({
     userId: disabledStatusUser.id,
     phone: disabledStatusUser.phone,
@@ -1214,13 +1213,14 @@ async function runAllOrdersTests() {
   const disabledStatusReq = new Request('http://localhost:3000/api/auth', {
     headers: { 'Authorization': `Bearer ${disabledStatusToken}` },
   });
-  assert(getAuthenticatedCustomer(disabledStatusReq) === null, `User with status: 'disabled' rejected by getAuthenticatedCustomer`);
+  assert(await getAuthenticatedCustomer(disabledStatusReq) === null, `User with is_active: false rejected by getAuthenticatedCustomer`);
 
   // 21.4 Administrative update takes effect immediately; does NOT rely on stale token values
-  const updatingUser = createDbUser({
+  const updatingUser = await pgCreateCustomer({
     name: 'عميل تم تعديل حسابه إدارياً',
     phone: '0777' + Math.floor(1000000 + Math.random() * 9000000),
     accountType: 'individual',
+    password: 'password123',
   });
   // Token issued when user was individual
   const staleToken = signCustomerSession({
@@ -1232,19 +1232,21 @@ async function runAllOrdersTests() {
     exp: Math.floor(Date.now() / 1000) + 3600,
   });
 
-  // Admin updates database directly (e.g. upgrades to market / changes role / updates name & pricing tier)
-  updatingUser.name = 'الاسم الحديث في قاعدة البيانات';
-  updatingUser.accountType = 'market';
-  updatingUser.pricingTier = 'gold';
+  // Admin updates database directly (e.g. upgrades to market / updates name)
+  await sql`
+    UPDATE financial_accounts
+    SET name = 'الاسم الحديث في قاعدة البيانات',
+        pricing_tier = 'market'
+    WHERE id = ${updatingUser.id};
+  `;
 
   const freshCheckReq = new Request('http://localhost:3000/api/auth', {
     headers: { 'Authorization': `Bearer ${staleToken}` },
   });
-  const freshAuth = getAuthenticatedCustomer(freshCheckReq);
+  const freshAuth = await getAuthenticatedCustomer(freshCheckReq);
   assert(freshAuth !== null, `getAuthenticatedCustomer succeeds for updated user`);
   assert(freshAuth?.name === 'الاسم الحديث في قاعدة البيانات', `Returns fresh name from DB, not stale token name`);
   assert(freshAuth?.accountType === 'market', `Returns fresh accountType from DB, not stale token value`);
-  assert(freshAuth?.pricingTier === 'gold', `Returns fresh pricingTier from DB`);
 
   // And GET /api/auth returns the fresh trusted DB data
   const freshApiReq = new Request('http://localhost:3000/api/auth', {

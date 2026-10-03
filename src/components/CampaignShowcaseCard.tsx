@@ -17,9 +17,6 @@ interface CampaignShowcaseCardProps {
 }
 
 export default function CampaignShowcaseCard({ banner, allProducts = [], className = '' }: CampaignShowcaseCardProps) {
-  if (banner.isTextShelf || !banner.image) {
-    return <TextProductShelf banner={banner} allProducts={allProducts} className={className} />;
-  }
   const { user, isApprovedMerchant } = useAuth();
   const { cart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
@@ -27,6 +24,7 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (banner.isTextShelf || !banner.image) return;
     if (Array.isArray(allProducts) && allProducts.length > 0) {
       if (banner.campaignProductIds && banner.campaignProductIds.length > 0) {
         const matched = banner.campaignProductIds
@@ -75,6 +73,10 @@ export default function CampaignShowcaseCard({ banner, allProducts = [], classNa
       scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
+
+  if (banner.isTextShelf || !banner.image) {
+    return <TextProductShelf banner={banner} allProducts={allProducts} className={className} />;
+  }
 
   const destinationUrl = banner.linkUrl && banner.linkUrl !== '/products'
     ? banner.linkUrl

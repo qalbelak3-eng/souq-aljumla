@@ -54,28 +54,11 @@ async function startDatabase() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-    'drizzle/0011_offer_historical_snapshot.sql',
-    'drizzle/0012_pricing_tier_snapshots.sql',
-    'drizzle/0013_product_active_archived.sql',
-    'drizzle/0014_coupon_financial_hardening.sql',
-    'drizzle/0015_coupon_redemption_idempotency.sql',
-    'drizzle/0016_order_idempotency_cashback_integrity.sql',
-    'drizzle/0017_order_lifecycle_reversals.sql',
-    'drizzle/0018_commerce_phase2c4b_hardening.sql',
-    'drizzle/0019_commerce_phase2c4b_supplier_integrity.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -164,42 +147,29 @@ async function runCommercePhase2aTests() {
     ) RETURNING *;
   `;
 
-  const { ensureDbExists } = await import('./src/lib/db.ts');
-
+  const [authA] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07701111111', 'customer', true) RETURNING id;
+  `;
   const [testCustomerA] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier
+      account_code, name, phone, category, pricing_tier, auth_identity_id
     ) VALUES (
-      'ACC-CUST-A', 'الزبون الأول أحمد', '07701111111', 'customer', 'retail'
+      'ACC-CUST-A', 'الزبون الأول أحمد', '07701111111', 'customer', 'retail', ${authA.id}
     ) RETURNING *;
   `;
 
+  const [authB] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07702222222', 'customer', true) RETURNING id;
+  `;
   const [testCustomerB] = await sql`
     INSERT INTO financial_accounts (
-      account_code, name, phone, category, pricing_tier
+      account_code, name, phone, category, pricing_tier, auth_identity_id
     ) VALUES (
-      'ACC-CUST-B', 'الزبون الثاني بلال', '07702222222', 'customer', 'retail'
+      'ACC-CUST-B', 'الزبون الثاني بلال', '07702222222', 'customer', 'retail', ${authB.id}
     ) RETURNING *;
   `;
-
-  const inMemDb = ensureDbExists();
-  inMemDb.users = inMemDb.users || [];
-  inMemDb.users.push({
-    id: testCustomerA.id,
-    name: testCustomerA.name,
-    phone: testCustomerA.phone,
-    role: 'customer',
-    accountType: 'individual',
-    isActive: true,
-  });
-  inMemDb.users.push({
-    id: testCustomerB.id,
-    name: testCustomerB.name,
-    phone: testCustomerB.phone,
-    role: 'customer',
-    accountType: 'individual',
-    isActive: true,
-  });
 
   // Pre-seed coupon for stacking test
   await pgCreateCoupon({

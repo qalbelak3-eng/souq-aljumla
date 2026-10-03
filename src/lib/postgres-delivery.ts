@@ -557,22 +557,22 @@ export async function pgNotifyDriverArrived(
 
     const order = orderRows[0];
 
-    // Object-Level Authorization
-    if (!order.driverId || order.driverId !== driverId) {
-      throw new Error('هذا الطلب غير مسند إليك');
-    }
-
-    // Status validations
-    if (order.status === 'pending' || order.status === 'processing') {
-      throw new Error(`لا يمكن تسجيل وصول المندوب قبل بدء التوصيل وخروج الطلبية (حالة الطلب: ${order.status})`);
+    // Status validations (Terminal states)
+    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
+      throw new Error('لا يمكن تسجيل وصول المندوب لطلبية ملغاة أو راجعة');
     }
 
     if (order.status === 'delivered') {
       throw new Error('لا يمكن تسجيل وصول المندوب لطلبية تم تسليمها بالفعل');
     }
 
-    if (order.status === 'cancelled' || order.collectionStatus === 'returned') {
-      throw new Error('لا يمكن تسجيل وصول المندوب لطلبية ملغاة أو راجعة');
+    // Object-Level Authorization
+    if (!order.driverId || order.driverId !== driverId) {
+      throw new Error('هذا الطلب غير مسند إليك');
+    }
+
+    if (order.status === 'pending' || order.status === 'processing') {
+      throw new Error(`لا يمكن تسجيل وصول المندوب قبل بدء التوصيل وخروج الطلبية (حالة الطلب: ${order.status})`);
     }
 
     if (order.status !== 'shipped') {
@@ -644,14 +644,14 @@ export async function pgDeliverDriverOrder(
 
     const order = orderRows[0];
 
-    // Object-Level Authorization
-    if (!order.driverId || order.driverId !== driverId) {
-      throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إتمام تسليمه');
-    }
-
     // Terminal State Checks
     if (order.status === 'cancelled' || order.status === 'returned' || order.collectionStatus === 'returned') {
       throw new Error('الطلب ملغى أو راجع ولا يمكن إتمام تسليمه');
+    }
+
+    // Object-Level Authorization
+    if (!order.driverId || order.driverId !== driverId) {
+      throw new Error('هذا الطلب غير مسند إليك ولا يمكنك إتمام تسليمه');
     }
 
     // Idempotency check:
@@ -941,6 +941,28 @@ export async function pgAdminOverrideDelivery(
 
     const deliveredAt = order.deliveredAt || new Date();
 
+    let resolvedAuthIdentityId: string | null = null;
+    const targetUserId = (adminOperator as any)?.authIdentityId || adminOperator.userId;
+    if (targetUserId && isUuid(targetUserId)) {
+      const [authRow] = await tx
+        .select({ id: authIdentities.id })
+        .from(authIdentities)
+        .where(eq(authIdentities.id, targetUserId))
+        .limit(1);
+      if (authRow) {
+        resolvedAuthIdentityId = authRow.id;
+      } else {
+        const [staffRow] = await tx
+          .select({ authIdentityId: staffProfiles.authIdentityId })
+          .from(staffProfiles)
+          .where(eq(staffProfiles.id, targetUserId))
+          .limit(1);
+        if (staffRow) {
+          resolvedAuthIdentityId = staffRow.authIdentityId;
+        }
+      }
+    }
+
     const [updatedOrder] = await tx
       .update(orders)
       .set({
@@ -949,7 +971,7 @@ export async function pgAdminOverrideDelivery(
         deliveryVerifiedAt: new Date(),
         deliveryProofMethod: 'admin_override',
         deliveryOverrideReason: trimmedReason,
-        deliveryOverrideBy: adminOperator.userId && isUuid(adminOperator.userId) ? adminOperator.userId : null,
+        deliveryOverrideBy: resolvedAuthIdentityId,
         deliveryOverrideByName: adminOperator.name || adminOperator.username,
         deliveryPinEncrypted: null,
         deliveryPinAttempts: 0,

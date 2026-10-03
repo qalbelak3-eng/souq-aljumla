@@ -53,19 +53,11 @@ async function setup() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const p = path.resolve(process.cwd(), m);
@@ -74,6 +66,17 @@ async function setup() {
     }
   }
   console.log('   All migrations applied.');
+
+  // Seed test admin for session tests
+  const [authRow] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000001', 'admin', true)
+    RETURNING id;
+  `;
+  await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${authRow.id}, 'admin', 'المدير العام', 'admin', ARRAY['*'], 'المدير العام');
+  `;
 }
 
 async function teardown() {
@@ -479,10 +482,17 @@ async function runDispatchPhase3Tests() {
   assert(readyPerKmMissingPrice.deliveryReady === false, 'B.1c-1: getDeliveryReadiness is false for per_km when pricePerKm is 0');
 
   // --- Test B.1c-2: POST /api/settings Backend Validation & Rejection ---
+  const adminCookie = `${SESSION_COOKIE_NAME}=${signAdminSession({
+    userId: 'admin-master',
+    username: 'admin',
+    role: 'admin',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}`;
+
   // Scenario 1: Reject saving distance_tiered without warehouse coordinates
   const reqRejectMissing = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({
       deliveryPricingMode: 'distance_tiered',
       warehouseLat: null,
@@ -498,7 +508,7 @@ async function runDispatchPhase3Tests() {
   // Scenario 2: Reject out-of-bounds latitude
   const reqRejectLat = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({
       deliveryPricingMode: 'distance_tiered',
       warehouseLat: 120,
@@ -513,7 +523,7 @@ async function runDispatchPhase3Tests() {
   // Scenario 3: Reject partial coordinate (latitude provided without longitude)
   const reqRejectPartial = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({
       warehouseLat: 32.6068,
       warehouseLng: null,
@@ -525,7 +535,7 @@ async function runDispatchPhase3Tests() {
   // Scenario 4: Allow mode 'fixed' without warehouse coordinates
   const reqAllowFixed = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({
       deliveryPricingMode: 'fixed',
       deliveryFee: 4000,
@@ -593,7 +603,7 @@ async function runDispatchPhase3Tests() {
   // --- Test B.1c-4: Admin configures real warehouse in PostgreSQL via POST /api/settings ---
   const updateSettingsReq = new Request('http://localhost:3000/api/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({
       deliveryPricingMode: 'distance_tiered',
       warehouseLat: 32.6068,

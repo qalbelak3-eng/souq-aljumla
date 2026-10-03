@@ -1304,6 +1304,16 @@ export default function AdminReportsPage() {
 
             {profitReport && (
               <>
+                {profitReport.hasIncompleteCostData && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-amber-900 text-xs font-bold">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <div>
+                      <span>تنبيه: يتضمن التقرير {profitReport.unknownCostItemsCount} منتج/صنف بتكلفة غير محددة (غير مسجلة في الفاتورة أو الكتالوج).</span>
+                      <span className="block font-normal text-amber-700 mt-0.5">تم استبعاد إيراد هذه الأصناف من حساب صافي الأرباح المؤكدة تجنباً لاحتساب كامل الإيراد كربح وهمي.</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
@@ -1384,6 +1394,11 @@ export default function AdminReportsPage() {
                               </td>
                               <td className="p-3 text-left font-black text-emerald-700">
                                 {inv.grossProfit.toLocaleString()} د.ع
+                                {inv.hasIncompleteCostData && (
+                                  <span className="block text-[10px] font-normal text-amber-600">
+                                    (أرباح جزئية)
+                                  </span>
+                                )}
                               </td>
                               <td className="p-3 text-center font-bold text-slate-600">
                                 {inv.marginPercentage.toFixed(1)}%

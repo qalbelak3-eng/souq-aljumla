@@ -52,10 +52,27 @@ const selection = {
   accountActive: financialAccounts.isActive, identityActive: authIdentities.isActive, createdAt: financialAccounts.createdAt,
 };
 
+function isUuid(value?: string | null): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 export async function pgFindCustomer(identifier: string): Promise<PgCustomerUser | null> {
-  const value = identifier.trim(); if (!value) return null; const db = getDb(); const phone = normalizePhone(value);
-  const rows = await db.select(selection).from(financialAccounts).innerJoin(authIdentities, eq(financialAccounts.authIdentityId, authIdentities.id))
-    .where(phone ? or(eq(authIdentities.phone, phone), eq(financialAccounts.id, value)) : eq(financialAccounts.id, value)).limit(1);
+  const value = identifier.trim();
+  if (!value) return null;
+  const db = getDb();
+  const phone = normalizePhone(value);
+  const conditions = [];
+  if (isUuid(value)) {
+    conditions.push(eq(financialAccounts.id, value));
+  }
+  if (phone) {
+    conditions.push(eq(authIdentities.phone, phone));
+  }
+  if (conditions.length === 0) return null;
+
+  const rows = await db.select(selection).from(financialAccounts)
+    .innerJoin(authIdentities, eq(financialAccounts.authIdentityId, authIdentities.id))
+    .where(conditions.length === 1 ? conditions[0] : or(...conditions)).limit(1);
   return rows[0] ? toUser(rows[0]) : null;
 }
 

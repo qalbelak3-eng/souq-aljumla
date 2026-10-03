@@ -50,19 +50,11 @@ async function setup() {
 
   console.log('2. Applying schema and migration triggers...');
 
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -70,7 +62,18 @@ async function setup() {
       await runSqlScript(sql, fullPath);
     }
   }
-  console.log('   All migrations (0000 - 0009) applied successfully.\n');
+  console.log('   All migrations applied successfully.\n');
+
+  // Seed test admin for session tests
+  const [authRow] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000001', 'admin', true)
+    RETURNING id;
+  `;
+  await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${authRow.id}, 'admin', 'مشرف التوزيع', 'admin', ARRAY['*'], 'مشرف التوزيع');
+  `;
 }
 
 let passed = 0;

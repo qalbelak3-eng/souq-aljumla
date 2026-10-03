@@ -40,19 +40,11 @@ async function setup() {
   sql = postgres(dbUrl, { max: 5 });
 
   console.log('2. Applying schema and migration triggers...');
-  const migrations = [
-    'drizzle/0000_magical_warbound.sql',
-    'drizzle/0001_cheerful_morph.sql',
-    'drizzle/0002_voucher_immutability_trigger.sql',
-    'drizzle/0003_kind_chimera.sql',
-    'drizzle/0004_tiresome_kid_colt.sql',
-    'drizzle/0005_audit_hardening_triggers.sql',
-    'drizzle/0006_driver_settlement_lifecycle.sql',
-    'drizzle/0007_delivery_pin_proof.sql',
-    'drizzle/0008_delivery_pin_encrypted.sql',
-    'drizzle/0009_driver_operational_status.sql',
-    'drizzle/0010_order_coupon_snapshot.sql',
-  ];
+  const migrations = fs
+    .readdirSync(path.resolve(process.cwd(), 'drizzle'))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join('drizzle', f));
 
   for (const m of migrations) {
     const fullPath = path.resolve(process.cwd(), m);
@@ -116,9 +108,27 @@ async function runDriversPhase1Tests() {
   );
   const { POST: postDriverAuth } = await import('./src/app/api/driver/auth/route.ts');
 
-  // Setup Admin Sessions
+  // Setup Admin Sessions in PostgreSQL
+  const [adminAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000001', 'admin', true) RETURNING id;
+  `;
+  const [adminStaff] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${adminAuth.id}, 'admin', 'المدير العام', 'admin', ARRAY['*'], 'المدير العام') RETURNING id;
+  `;
+
+  const [staffAuth] = await sql`
+    INSERT INTO auth_identities (phone, role, is_active)
+    VALUES ('07700000002', 'staff', true) RETURNING id;
+  `;
+  const [accStaff] = await sql`
+    INSERT INTO staff_profiles (auth_identity_id, username, name, role, permissions, job_title)
+    VALUES (${staffAuth.id}, 'reports_user', 'مشاهد تقارير فقط', 'staff', ARRAY['reports'], 'موظف تقارير') RETURNING id;
+  `;
+
   const masterAdminToken = signAdminSession({
-    userId: 'admin-master',
+    userId: adminStaff.id,
     username: 'admin',
     role: 'admin',
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -126,25 +136,12 @@ async function runDriversPhase1Tests() {
   const masterAdminCookie = `${SESSION_COOKIE_NAME}=${masterAdminToken}`;
 
   const staffWithoutDriversToken = signAdminSession({
-    userId: 'staff-acc-only',
-    username: 'accountant_user',
+    userId: accStaff.id,
+    username: 'reports_user',
     role: 'staff',
     exp: Math.floor(Date.now() / 1000) + 3600,
   });
   const staffWithoutDriversCookie = `${SESSION_COOKIE_NAME}=${staffWithoutDriversToken}`;
-
-  // Register staff with only accounting permission in memory db for session validation
-  const { ensureDbExists } = await import('./src/lib/db.ts');
-  const memDb = ensureDbExists();
-  if (!memDb.staff) memDb.staff = [];
-  memDb.staff.push({
-    id: 'staff-acc-only',
-    name: 'محاسب فقط',
-    username: 'accountant_user',
-    role: 'accountant',
-    permissions: ['accounting'],
-    isActive: true,
-  });
 
   // --- Test 1: Vehicles CRUD in PostgreSQL ---
   console.log('--- Test 1: Vehicles CRUD in PostgreSQL ---');
