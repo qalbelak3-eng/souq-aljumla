@@ -315,15 +315,23 @@ export async function pgUpdateCompany(
     `;
   }
 
-  if (updates.categories !== undefined && Array.isArray(updates.categories)) {
+  const newCategories = updates.categories !== undefined && Array.isArray(updates.categories)
+    ? updates.categories
+    : updates.category !== undefined && typeof updates.category === 'string'
+      ? (updates.category.trim() ? [updates.category.trim()] : [])
+      : undefined;
+
+  if (newCategories !== undefined) {
     await sql`DELETE FROM company_categories WHERE company_id = ${id};`;
-    const resolvedCats = await resolveCategoryRowsByNames(updates.categories);
-    for (const cat of resolvedCats) {
-      await sql`
-        INSERT INTO company_categories (company_id, category_id)
-        VALUES (${id}, ${cat.id})
-        ON CONFLICT DO NOTHING;
-      `;
+    if (newCategories.length > 0) {
+      const resolvedCats = await resolveCategoryRowsByNames(newCategories);
+      for (const cat of resolvedCats) {
+        await sql`
+          INSERT INTO company_categories (company_id, category_id)
+          VALUES (${id}, ${cat.id})
+          ON CONFLICT DO NOTHING;
+        `;
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, integer, boolean, date, timestamp, text, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, integer, boolean, date, timestamp, text, index, check, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const categories = pgTable('categories', {
@@ -24,6 +24,18 @@ export const companies = pgTable('companies', {
   icon: varchar('icon', { length: 50 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const companyCategories = pgTable('company_categories', {
+  companyId: uuid('company_id')
+    .notNull()
+    .references(() => companies.id, { onDelete: 'cascade' }),
+  categoryId: uuid('category_id')
+    .notNull()
+    .references(() => categories.id, { onDelete: 'cascade' }),
+}, (table) => [
+  primaryKey({ columns: [table.companyId, table.categoryId] }),
+  index('idx_company_categories_category_id').on(table.categoryId),
+]);
 
 export const products = pgTable('products', {
   id: uuid('id').defaultRandom().primaryKey(),
